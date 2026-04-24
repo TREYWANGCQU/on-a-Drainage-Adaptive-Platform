@@ -1,10 +1,24 @@
-from starlette.config import Config
-from starlette.datastructures import CommaSeparatedStrings
+from typing import List
+from pydantic import AnyHttpUrl
+from pydantic_settings import BaseSettings
 
-config = Config(".env")
+class Settings(BaseSettings):
+    """
+    全局配置类：管理环境变量、API版本及跨域策略
+    """
+    API_V1_STR: str = "/api/v1"
+    PROJECT_NAME: str = "隧道智能排水自适应平台"
+    
+    # CORS 跨域配置：允许前端开发环境（Vite/Vue）及 Tauri 容器访问
+    BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8080",
+    ]
 
-PROJECT_NAME = "Tunnel Drainage Platform"
-VERSION = "1.0.0"
-API_PREFIX = "/api"
+    class Config:
+        # 区分大小写设置
+        case_sensitive = True
 
-ALLOWED_HOSTS = config("ALLOWED_HOSTS", cast=CommaSeparatedStrings, default=["*"])
+# 实例化配置对象供全局调用
+settings = Settings()
