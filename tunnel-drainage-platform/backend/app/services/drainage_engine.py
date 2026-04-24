@@ -16,17 +16,36 @@ from app.services.get_rock_parameters import get_rock_parameters
 from app.services.calculate_Hq import calculate_Hq
 from app.services import highway_safety_factor as hw
 
+import numpy as np  
+def make_serializable(obj):
+    """
+    递归遍历对象，将所有 NumPy 数据类型转换为 Python 原生类型
+    """
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, np.generic):  # 涵盖 np.float64, np.int32 等所有 NumPy 标量
+        return obj.item()
+    elif isinstance(obj, dict):
+        return {k: make_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [make_serializable(v) for v in obj]
+    return obj
+
 def run_calculation(data):
     """
     分发计算逻辑，支持单洞/双洞及高/低水位。
     透传原始计算结果用于 Echarts 渲染。
     """
+    # ================= 状态标识 =================
+    is_double = (data.tunnel_type == "double")
+    is_high = (data.water_level == "high")
+
     # ================= 分发逻辑 =================
-    if data.tunnel_type == "double" and data.water_level == "high":
+    if is_double and is_high:
         calc_module = pdh
-    elif data.tunnel_type == "double" and data.water_level == "low":
+    elif is_double and not is_high:
         calc_module = pdl
-    elif data.tunnel_type == "single" and data.water_level == "high":
+    elif not is_double and is_high:
         calc_module = psh
     else:  # single & low
         calc_module = psl
@@ -50,17 +69,23 @@ def run_calculation(data):
         par.rg = data.Rg# 单洞 Schema 中 Rg 对应 par.rg，注浆圈外半径
     
     
-    # 补充内部计算用隐式参数 (与原 main.py 保持一致)
-    aspect_ratio = data.aspect_ratio  # 隧道高宽比
-    depth = data.c  # Schema 中 c 为埋深
-    grades = data.grades # 围岩级别
-    concrete_grade = data.concrete_grade# 混凝土等级
-    Ag = data.Ag# 配筋面积
-    as_mm = data.as_mm# 钢筋保护层厚度
-    tol_safety_factor = data.tol_safety_factor# 容许安全系数
+    # 动态匹配单双洞的半径变量名
+    r1_val = par.R1 if not is_double else par.r1
+    r2_val = par.R2 if not is_double else par.r2
+    rg_init = par.Rg if not is_double else par.rg
+    
+    # 补充内部计算用隐式参数
+    aspect_ratio = data.aspect_ratio  
+    depth = data.c  
+    grades = data.grades 
+    concrete_grade = data.concrete_grade
+    Ag = data.Ag
+    as_mm = data.as_mm
+    tol_safety_factor = data.tol_safety_factor
+    
     w = par.r
     h_tunnel = w * aspect_ratio
-    t = par.r1 - par.r
+    t = r1_val - par.r  # 修正：单洞用 R1，双洞用 r1
 
     Ec, vc, mc = get_concrete_parameters(concrete_grade)
     rock_params = get_rock_parameters(grades)
@@ -71,11 +96,17 @@ def run_calculation(data):
     Hq = calculate_Hq(depth, w, grades)
 
     # ================= 原始状态计算 =================
-    current_CN = getattr(data, "CN", 61.0) 
+    # 优先使用内部模型计算出的 CN 值 (单洞逻辑)，否则降级取 data 传入值
+    current_CN = getattr(par, "CN", getattr(data, "CN", 61.0)) 
     h0 = calc_module.h0_scs_cn(par.h, par.p_mm, current_CN)
-    original = calc_module.calc_state_by_rg(par.rg, par, h0)
+    
+    # 抹平底层函数名大小写差异 (单洞 calc_state_by_Rg vs 双洞 calc_state_by_rg)
+    calc_state_func = getattr(calc_module, "calc_state_by_rg", getattr(calc_module, "calc_state_by_Rg", None))
+    original = calc_state_func(rg_init, par, h0)
 
-    water_head_original = original['P'] / 10
+    # 提取压力用于迭代：高水位取 'P'，低水位取 'P_crown'
+    water_head_original = original.get('P', original.get('P_crown', 0)) / 10
+    
     if water_head_original <= Hq:
         p_load = (ms - 1000) * 9.8 * water_head_original + ms * 9.8 * (Hq - water_head_original)
     else:
@@ -92,8 +123,9 @@ def run_calculation(data):
     # ================= 临界水头迭代 =================
     water_head_crit = water_head_original
     res_crit = res_original
-    max_iterations = 200 # 防止死循环
+    max_iterations = 500 # 迭代上限，防止死循环
     iteration = 0
+    
     if now_k <= tol_safety_factor:
         water_head_crit = Hq
         water_head_step = 0.05
@@ -109,13 +141,28 @@ def run_calculation(data):
             k_list_crit = [hw.get_safety_factor(-n/1000, abs(m)/1000, concrete_grade, "HRB400", t, Ag, as_mm) for n, m in zip(N_crit, M_crit)]
             now_k = min(k_list_crit)
 
-    par.P_crit = water_head_crit * 10
-    rg_crit = calc_module.solve_rg_from_Pcrit(P_crit=par.P_crit, h0=h0, p=par)
-    tg_crit = max(0.0, rg_crit - par.r2)
-    critical = calc_module.calc_state_by_rg(rg_crit, par, h0)
+    # ================= 反算临界 Rg =================
+    # 根据单/双洞和高/低水位，动态调用反算函数及入参装配
+    if is_double:
+        if is_high:
+            P_crit_input = par.P_crit = water_head_crit * 10
+            rg_crit = calc_module.solve_rg_from_Pcrit(P_crit=P_crit_input, h0=h0, p=par)
+        else:
+            P_crit_input = par.Pcrown_crit = water_head_crit * 10
+            rg_crit = calc_module.solve_rg_from_Pcrown_crit(Pcrown_crit=P_crit_input, h0=h0, p=par)
+    else:
+        if is_high:
+            P_crit_input = par.P_crit = water_head_crit * 10
+            rg_crit = calc_module.solve_Rg_from_P_crit(P_crit=P_crit_input, h0=h0, gamma=par.gamma, K=par.K, Kg=par.Kg, K1=par.K1, K2=par.K2, r=par.r, R1=par.R1, R2=par.R2)
+        else:
+            P_crit_input = par.Pcrown_crit = water_head_crit * 10
+            rg_crit = calc_module.solve_Rg_from_Pcrown_crit(Pcrown_crit=P_crit_input, h0=h0, gamma=par.gamma, K=par.K, Kg=par.Kg, K1=par.K1, K2=par.K2, r=par.r, R1=par.R1, R2=par.R2)
+
+    tg_crit = max(0.0, rg_crit - r2_val)
+    critical = calc_state_func(rg_crit, par, h0)
 
     # ================= Echart作图数据透传组装 =================
-    return {
+    raw_result = {
         "tunnel_type": data.tunnel_type,
         "water_level": data.water_level,
         "original_state": {
@@ -124,33 +171,39 @@ def run_calculation(data):
             "control_M": M_orig[control_idx],
             "control_N": N_orig[control_idx],
             "control_idx": control_idx,
-            "q": original['q'], # 透传原始状态的排水流量
-            "Q": original['Q'],# 透传原始状态的排水总量
-            "P": original['P'], # 透传原始状态的水压力
-            "ring_diam_recommend": original['ring_diam_recommend'],# 透传原始状态的环向管推荐直径
-            "ring_spacing_recommend": original['ring_spacing_recommend'],# 透传原始状态的环向管推荐间距
-            "long_diam_recommend": original['long_diam_recommend'],# 透传原始状态的纵向管推荐直径
-            "lateral_diam_recommend": original['lateral_diam_recommend'],# 透传原始状态的横向管推荐直径
-            "lateral_spacing_recommend": original['lateral_spacing_recommend']# 透传原始状态的横向管推荐间距
+            # 使用 .get() 确保高低水位切换时不会触发 KeyError
+            "q": original.get('q', 0.0), 
+            "Q": original.get('Q', 0.0),
+            "P": original.get('P'),
+            "P_crown": original.get('P_crown'),
+            "P_invert": original.get('P_invert'),
+            "ring_diam_recommend": original.get('ring_diam_recommend', 0),
+            "ring_spacing_recommend": original.get('ring_spacing_recommend', 0),
+            "long_diam_recommend": original.get('long_diam_recommend', 0),
+            "lateral_diam_recommend": original.get('lateral_diam_recommend', 0),
+            "lateral_spacing_recommend": original.get('lateral_spacing_recommend', 0)
         },
         "critical_state": {
             "final_safety_factor": now_k,
             "final_waterHead": water_head_crit,
-            "P_crit_input": par.P_crit,
+            "P_crit_input": P_crit_input,
             "rg_crit": rg_crit,
             "tg_crit": tg_crit,
-            "q": critical['q'], # 透传临界状态的排水流量
-            "Q": critical['Q'],# 透传临界状态的排水总量
-            "P": critical['P'],# 透传临界状态的水压力
-            "ring_diam_recommend": critical['ring_diam_recommend'],# 透传临界状态的环向管推荐直径
-            "ring_spacing_recommend": critical['ring_spacing_recommend'],# 透传临界状态的环向管推荐间距
-            "long_diam_recommend": critical['long_diam_recommend'],# 透传临界状态的纵向管推荐直径
-            "lateral_diam_recommend": critical['lateral_diam_recommend'],# 透传临界状态的横向管推荐直径
-            "lateral_spacing_recommend": critical['lateral_spacing_recommend']# 透传临界状态的横向管推荐间距
+            "q": critical.get('q', 0.0), 
+            "Q": critical.get('Q', 0.0),
+            "P": critical.get('P'),
+            "P_crown": critical.get('P_crown'),
+            "P_invert": critical.get('P_invert'),
+            "ring_diam_recommend": critical.get('ring_diam_recommend', 0),
+            "ring_spacing_recommend": critical.get('ring_spacing_recommend', 0),
+            "long_diam_recommend": critical.get('long_diam_recommend', 0),
+            "lateral_diam_recommend": critical.get('lateral_diam_recommend', 0),
+            "lateral_spacing_recommend": critical.get('lateral_spacing_recommend', 0)
         },
         "echart_data": {
-            "Hq": Hq, # 透传拱顶水头 Hq 用于 Echarts 水头线图
-            "lining_res_original": res_original, # 包含全部原状态力学响应和节点坐标：N_elem, M_elem, 以及节点坐标等，用于 Echarts 力学响应云图和变形云图
-            "lining_res_critical": res_crit      # 包含全部临界状态力学响应和节点坐标：N_elem, M_elem, 以及节点坐标等，用于 Echarts 力学响应云图和变形云图
+            "Hq": Hq, 
+            "lining_res_original": res_original, # 这里的巨量 NumPy 数组将被安全转化为 list
+            "lining_res_critical": res_crit      
         }
     }
+    return make_serializable(raw_result) # 确保所有数据类型都可序列化为 JSON，特别是 NumPy 数据类型

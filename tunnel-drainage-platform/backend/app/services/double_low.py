@@ -412,7 +412,7 @@ def main(p: Params):
     print("原始条件：")
     print(f"q = {original['q']:.5f} m^3/(d·m)")
     print(f"Q = {original['Q']:.5f} m^3/d")
-    print(f"P_crown = {original['P_crown']:.4f} kPa")
+    print(f"P_crown = {original['P_crown']:.4f} kPa") 
     print(f"P_invert = {original['P_invert']:.4f} kPa")
     print(f"ring_diam_recommend = {original['ring_diam_recommend']:.3f} m")
     print(f"ring_spacing_recommend = {original['ring_spacing_recommend']:.3f} m")

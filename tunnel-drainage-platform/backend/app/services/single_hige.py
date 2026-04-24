@@ -399,7 +399,7 @@ def main(p: Params):
     cn_value = p.CN
     h0 = h0_scs_cn(p.h, p.p_mm, cn_value)
 
-    original = calc_state_by_Rg(p.Rg, p, h0)
+    original = calc_state_by_rg(p.Rg, p, h0)
 
     Rg_crit = solve_Rg_from_P_crit(
         P_crit=p.P_crit,
@@ -410,7 +410,7 @@ def main(p: Params):
     )
     tg_crit = max(0.0, Rg_crit - p.R2)
 
-    critical = calc_state_by_Rg(Rg_crit, p, h0)
+    critical = calc_state_by_rg(Rg_crit, p, h0)
 
     line = "-" * 60
 

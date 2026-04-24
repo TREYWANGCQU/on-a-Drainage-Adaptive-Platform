@@ -52,6 +52,7 @@
 
 测试参数示例：
 ```json
+//单洞测试
 {
   "tunnel_type": "single",
   "water_level": "low",
@@ -94,6 +95,53 @@
   "tol_safety_factor": 2,
   "aspect_ratio": 0.7
 }
+
+//双洞测试
+{
+  "tunnel_type": "double",
+  "water_level": "high",
+  "K": 0.15,
+  "h": 90.5,
+  "ha": 0.0,
+  "p_mm": 1025.2,
+  "Kg": 0.00864,
+  "K1": 0.000864,
+  "K2": 0.00864,
+  "cn_condition": "灌溉良好",
+  "land_use": "居住地",
+  "grades": 4,
+  "CN": 61.0,
+  "r": 7.95,
+  "r1": 8.35,
+  "r2": 8.57,
+  "rg": 9.57,
+  "c": 50.0,
+  "start_chainage": 0.0,
+  "end_chainage": 100.0,
+  "concrete_grade": "C40",
+  "rebar_type": "HRB400",
+  "Ag": 1091.0,
+  "D_spacing": 40.0,
+  "beta2": 1.0,
+  "Pcrown_crit": 100.0,
+  "P_crit": 600.0,
+  "I_long": 0.02,
+  "double_side": true,
+  "as_mm": 50.0,
+  "gamma": 10.0,
+  "n_long": 0.012,
+  "n_ring": 0.012,
+  "I_ring": 0.73,
+  "n_lat": 0.012,
+  "I_lat": 0.01,
+  "S_code_max": 10.0,
+  "S_min": 5.0,
+  "d_ring_default": 0.05,
+  "d_long_default": 0.1,
+  "d_lat_default": 0.08,
+  "tol_safety_factor": 2.0,
+  "aspect_ratio": 0.7
+}
 ```
 
 #### 2. API 数据契约与 I/O 测试
@@ -127,3 +175,65 @@
 #### 4. 热更新 (Reload) 与并发验证
 * **文件监听测试：** 保持服务运行，修改 `drainage_engine.py` 中的某一计算系数并保存。验证终端触发 `Reloading process` 日志，再次发起相同 POST 请求，核对返回的间距/孔径数值是否已依据新系数发生改变。
 * **并发处理排查：** 快速连续发送多次 POST 请求，监控控制台是否有资源互斥锁定报错。确保封装后的 `drainage_engine.py` 函数为无状态设计，不会因全局变量导致不同请求的参数互相污染。
+
+
+## 发现的bug或问题
+### 模块与函数名同名歧义
+
+### 临时开放公网方法
+
+#### 放行 Uvicorn Host：
+原启动命令 uvicorn app.main:app --reload 默认绑定 127.0.0.1，仅接收本机请求。需修改启动指令，监听局域网内所有请求：
+
+```Bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+前置关键代码修正：FastAPI CORS 防火墙策略
+无论采用上述哪种公网暴露方案，一旦 API 地址从 localhost 变为公网域名，前端页面发起调用时将触发浏览器的跨域资源共享（CORS）拦截。在测试阶段，需放宽后端 CORS 限制。
+
+修改 backend/app/main.py（或所在入口文件）：
+```python
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+# ... 其他 import ...
+
+app = FastAPI(title="隧道排水计算引擎 API")
+
+# 配置 CORS 中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # 测试阶段允许所有域名跨域。生产环境请替换为具体的前端域名
+    allow_credentials=True,
+    allow_methods=["*"], # 允许所有请求方法 (GET, POST, OPTIONS 等)
+    allow_headers=["*"], # 允许所有请求头
+)
+
+# ... 路由挂载 app.include_router(...) ...
+```
+安全建议： 测试完成后，及时关闭公网映射；暴露于公网期间，/docs (Swagger UI) 将对所有人可见。若存在敏感业务逻辑，建议在此阶段通过 Nginx 或穿透工具层增加 Basic Auth 认证。
+
+### 异常诊断：FastAPI JSON 序列化失败
+错误 TypeError: cannot convert dictionary update sequence element #0 to a sequence 发生在 FastAPI 底层的 jsonable_encoder 尝试将 Python 对象转换为 JSON 格式的过程中。
+
+核心原因：
+底层结构力学计算函数 analyze_tunnel_lining_full 返回的结果（即代码中的 res_original 和 res_crit）内部大概率包含了 NumPy 数组 (numpy.ndarray) 或 NumPy 标量 (numpy.float64, numpy.int64)。
+FastAPI 原生并不支持直接序列化 NumPy 对象。当它遇到不认识的类型时，会尝试使用 dict(obj) 进行兜底转换；如果该对象是一个一维的 NumPy 数组（例如由浮点数组成的数组），dict() 会尝试将这些标量视作键值对来迭代，从而触发此报错。
+
+修复方案：引入递归序列化清洗器
+需要将底层算法返回的所有带有 NumPy 基因的数据，彻底“降维”转换为 Python 原生的 list、float 和 int，然后再交由 FastAPI 输出。
+
+
+### 临界状态的最大迭代次数
+```python
+    max_iterations = 200 # 迭代上限，防止死循环
+    iteration = 0
+    
+    if now_k <= tol_safety_factor:
+        water_head_crit = Hq
+        water_head_step = 0.05
+        max_head = depth
+        
+        while (now_k > tol_safety_factor + 0.001) and (max_head > water_head_crit) and (iteration < max_iterations):
+            water_head_crit += water_head_step
+
+```

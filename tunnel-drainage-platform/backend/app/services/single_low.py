@@ -358,7 +358,7 @@ def main(p: Params):
     h0 = h0_scs_cn(p.h, p.p_mm, cn_value)
 
     # -------- 原始条件 --------
-    original = calc_state_by_Rg(p.Rg, p, h0)
+    original = calc_state_by_rg(p.Rg, p, h0)
 
     # -------- 临界状态 --------
     Rg_crit = solve_Rg_from_Pcrown_crit(
@@ -370,7 +370,7 @@ def main(p: Params):
     )
     tg_crit = Rg_crit - p.R2
 
-    critical = calc_state_by_Rg(Rg_crit, p, h0)
+    critical = calc_state_by_rg(Rg_crit, p, h0)
 
     # 输出
     line = "-" * 60
