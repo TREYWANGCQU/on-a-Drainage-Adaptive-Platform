@@ -1,56 +1,12 @@
-### 阶段二：后端测试与 Debug 详细工程方案
+## 阶段二：后端测试与 Debug 详细工程方案
 
-针对 `uvicorn app.main:app --reload` 启动后的服务化阶段，制定以下具体的工程测试与 Debug 方案，确保 Pydantic 数据契约与 `drainage_engine.py` 计算逻辑的准确对接。
+### 最快测试计算核心说明
+#### 0. 访问网址
+**[http://ctjs.reaticle.com:28500/docs](http://ctjs.reaticle.com:28500/docs)**
 
-#### 0. 测试python环境启动
-
-在执行 `uvicorn app.main:app --reload` 或进行任何后端 Debug 前，维持环境隔离是前置条件。因为在【阶段一】中，核心依赖包（FastAPI、Uvicorn、Pydantic、Pandas 等）已定点安装在该虚拟环境中。若在未激活状态下运行，系统将默认调用全局 Python 解释器，导致无法找到相关依赖并触发 `ModuleNotFoundError` 报错。
-
-**标准操作路径如下：**
-
-1. **进入项目根目录**：
-   在终端中导航至 `tunnel-drainage-platform\backend`。
-
-   特别注意：
-   - 同步按照 from app.services import xxx 的绝对路径格式进行修改
-   ```python
-    # 修改前：
-    # import double_hige as pdh
-
-    # 修改后：
-    from app.services import double_hige as pdh
-   ```
-
-2. **激活虚拟环境**：
-   * **Windows 系统**：
-     ```bash
-     .\venv\Scripts\activate
-     ```
-   * **macOS/Linux 系统**：
-     ```bash
-     source venv/bin/activate
-     ```
-
-3. **状态验证**：
-   观察终端命令行提示符，若最前端出现 `(venv)` 字样，即表明环境隔离已生效。
-
-
-4. **定位并启动服务**：
-   根据设定的工程目录架构，入口文件位于 `backend` 目录下。因此需要先进入后端目录再执行启动指令：
-   ```bash
-   cd backend
-   uvicorn main:app --reload
-   ```
-
-
-#### 1. 基础服务与路由挂载验证
-在终端执行 `uvicorn app.main:app --reload` 后，需首先验证服务基座的连通性。
-
-* **进程状态监控：** 检查终端输出日志，确认无模块导入错误（如缺少 `pandas`, `numpy` 等依赖），确认服务监听在 `127.0.0.1:8000`。
-* **Swagger UI 挂载确认：** 浏览器访问 `http://127.0.0.1:8000/docs`。检查 OpenAPI 文档是否成功生成，并在界面中定位到目标路由：`POST /api/v1/calculate/drainage`。
-* **Schema 渲染检查：** 在 Swagger UI 的 Schema 区域，核对单洞（33 个参数）与双洞（34 个参数）的请求体结构是否与 `backend/app/models/schemas.py` 定义严格一致，验证 12 个默认参数是否已正确显示默认值。
-
-测试参数示例：
+#### 1. 主要步骤
+- 点击:【计算引擎】-> [Try it out]
+- 输入测试参数，示例：
 ```json
 //单洞测试
 {
@@ -143,6 +99,68 @@
   "aspect_ratio": 0.7
 }
 ```
+- 点击：【Execute】
+- 查看计算返回结果【Response body】，进行数据对比
+
+#### 必要说明
+- 此后台为临时公网测试，默认关闭，联系我打开(y.wang@reaticle.com, 15696124832)
+
+界面图：![计算引擎后台界面](./ref/imgs/ctjs.reaticle.com_28500_docs.png)
+
+
+### Debug 详细工程方案
+
+针对 `uvicorn app.main:app --reload` 启动后的服务化阶段，制定以下具体的工程测试与 Debug 方案，确保 Pydantic 数据契约与 `drainage_engine.py` 计算逻辑的准确对接。
+
+#### 0. 测试python环境启动
+
+在执行 `uvicorn app.main:app --reload` 或进行任何后端 Debug 前，维持环境隔离是前置条件。因为在【阶段一】中，核心依赖包（FastAPI、Uvicorn、Pydantic、Pandas 等）已定点安装在该虚拟环境中。若在未激活状态下运行，系统将默认调用全局 Python 解释器，导致无法找到相关依赖并触发 `ModuleNotFoundError` 报错。
+
+**标准操作路径如下：**
+
+1. **进入项目根目录**：
+   在终端中导航至 `tunnel-drainage-platform\backend`。
+
+   特别注意：
+   - 同步按照 from app.services import xxx 的绝对路径格式进行修改
+   ```python
+    # 修改前：
+    # import double_hige as pdh
+
+    # 修改后：
+    from app.services import double_hige as pdh
+   ```
+
+2. **激活虚拟环境**：
+   * **Windows 系统**：
+     ```bash
+     .\venv\Scripts\activate
+     ```
+   * **macOS/Linux 系统**：
+     ```bash
+     source venv/bin/activate
+     ```
+
+3. **状态验证**：
+   观察终端命令行提示符，若最前端出现 `(venv)` 字样，即表明环境隔离已生效。
+
+
+4. **定位并启动服务**：
+   根据设定的工程目录架构，入口文件位于 `backend` 目录下。因此需要先进入后端目录再执行启动指令：
+   ```bash
+   cd backend
+   uvicorn main:app --reload
+   ```
+
+
+#### 1. 基础服务与路由挂载验证
+在终端执行 `uvicorn app.main:app --reload` 后，需首先验证服务基座的连通性。
+
+* **进程状态监控：** 检查终端输出日志，确认无模块导入错误（如缺少 `pandas`, `numpy` 等依赖），确认服务监听在 `127.0.0.1:8000`。
+* **Swagger UI 挂载确认：** 浏览器访问 `http://127.0.0.1:8000/docs`。检查 OpenAPI 文档是否成功生成，并在界面中定位到目标路由：`POST /api/v1/calculate/drainage`。
+* **Schema 渲染检查：** 在 Swagger UI 的 Schema 区域，核对单洞与双洞的请求体结构是否与 `backend/app/models/schemas.py` 定义严格一致，验证默认参数是否已正确显示默认值。
+
+
 
 #### 2. API 数据契约与 I/O 测试
 利用 Swagger UI 或外部工具（如 Postman）构造 JSON 报文进行接口吞吐测试，验证 Pydantic 模型的拦截与解析能力。
@@ -177,8 +195,15 @@
 * **并发处理排查：** 快速连续发送多次 POST 请求，监控控制台是否有资源互斥锁定报错。确保封装后的 `drainage_engine.py` 函数为无状态设计，不会因全局变量导致不同请求的参数互相污染。
 
 
-## 发现的bug或问题
-### 模块与函数名同名歧义
+## 发现的主要bug或问题
+### python模块与函数名同名歧义
+```python
+from app.services.analyze_tunnel_lining_full import analyze_tunnel_lining_full #精确导入函数本身,避免 from module import * 导入导致的命名空间混乱
+from app.services.get_concrete_parameters import get_concrete_parameters
+from app.services.get_rock_parameters import get_rock_parameters
+
+```
+
 
 ### 临时开放公网方法
 
@@ -223,9 +248,9 @@ FastAPI 原生并不支持直接序列化 NumPy 对象。当它遇到不认识�
 需要将底层算法返回的所有带有 NumPy 基因的数据，彻底“降维”转换为 Python 原生的 list、float 和 int，然后再交由 FastAPI 输出。
 
 
-### 临界状态的最大迭代次数
+### 临界状态的最大迭代次数缺失
 ```python
-    max_iterations = 200 # 迭代上限，防止死循环
+    max_iterations = 500 # 迭代上限，防止死循环
     iteration = 0
     
     if now_k <= tol_safety_factor:
