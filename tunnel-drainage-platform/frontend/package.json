@@ -10,13 +10,15 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2",
+    "@element-plus/icons-vue": "^2.3.2",
+    "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-opener": "^2",
-    "axios": "^1.15.1",
+    "axios": "^1.15.2",
     "element-plus": "^2.13.7",
     "pinia": "^3.0.4",
     "three": "^0.184.0",
     "vue": "^3.5.13",
+    "vue-router": "^4.6.4",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

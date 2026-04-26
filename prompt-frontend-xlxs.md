@@ -1,3 +1,288 @@
+# Output
+
+- 直接给出`tunnel-drainage-platform\frontend\src\utils\excelIO.ts`,结出必要注释
+- 直接给出`tunnel-drainage-platform\frontend\src\utils\math.ts`, 结出必要注释
+
+
+# Costraints
+
+* **引入核心库**：基于 `xlsx` (SheetJS) 封装读写类。
+* **多分区模板适配**：调整空 Excel 模板的表头生成逻辑，嵌入跨分区（起终点里程）的列定义。
+* **序列化快照批量生成**：在 excelIO.ts 中升级解析器。读取用户上传的跨分区 Excel 后，按里程区段自动进行数据切片，依次生成对应的状态字典，并批量封装为快照序列推送到 snapshotStore 存档。
+* **开发下载模板功能**：根据当前的洞型（单/双洞），生成包含标准表头的空 Excel 模板，配置数据有效性提示供用户下载。
+* **开发上传解析功能**：利用 `<el-upload>` 组件拦截文件读取，在 `excelIO.ts` 中将二进制文件解析为 JSON 字典，随后映射并推送到 `parameterStore` 中。导出功能同理，将当前状态机数据导出为 `.xlsx` 归档。
+# SourceData
+
+## parameterStore.ts
+```ts
+import { defineStore } from 'pinia';
+
+// --- 类型定义 ---
+// 提取 12 个高级设置默认参数作为公共基础接口
+interface AdvancedParams {
+  as_mm: number;
+  gamma: number;
+  n_long: number;
+  n_ring: number;
+  I_ring: number;
+  n_lat: number;
+  I_lat: number;
+  S_code_max: number;
+  S_min: number;
+  d_ring_default: number;
+  d_long_default: number;
+  d_lat_default: number;
+  tol_safety_factor: number;
+  aspect_ratio: number;
+}
+
+// 单洞参数结构 (38个参数)
+export interface SingleTubeParams extends AdvancedParams {
+  tunnel_type: 'single';
+  water_level: 'low' | 'high';
+  K: number; h: number; p_mm: number; Kg: number; K1: number; K2: number;
+  cn_condition: string; land_use: string; grades: number;
+  r: number; R1: number; R2: number; Rg: number; c: number;
+  start_chainage: number; end_chainage: number; // 分区里程
+  concrete_grade: string; rebar_type: string; Ag: number;
+  beta2: number; Pcrown_crit: number; P_crit: number;
+  I_long: number; double_side: boolean;
+}
+
+// 双洞参数结构 (41个参数)
+export interface DoubleTubeParams extends AdvancedParams {
+  tunnel_type: 'double';
+  water_level: 'low' | 'high';
+  K: number; h: number; ha: number; p_mm: number; Kg: number; K1: number; K2: number;
+  cn_condition: string; land_use: string; grades: number; CN: number;
+  r: number; r1: number; r2: number; rg: number; c: number;
+  start_chainage: number; end_chainage: number; // 分区里程
+  concrete_grade: string; rebar_type: string; Ag: number;
+  D_spacing: number; beta2: number; Pcrown_crit: number; P_crit: number;
+  I_long: number; double_side: boolean;
+}
+
+// 统一的默认高级参数对象（规范推荐值/经验值）
+const defaultAdvancedSettings = {
+  as_mm: 50.0,
+  gamma: 10.0,
+  n_long: 0.012,
+  n_ring: 0.012,
+  I_ring: 0.73,
+  n_lat: 0.012,
+  I_lat: 0.01,
+  S_code_max: 10.0,
+  d_ring_default: 0.050,
+  d_long_default: 0.100,
+  d_lat_default: 0.080,
+  tol_safety_factor: 2.0,
+  aspect_ratio: 0.7
+};
+
+export const useParameterStore = defineStore('parameter', {
+  state: () => ({
+    // 当前激活的隧道类型
+    activeTunnelType: 'single' as 'single' | 'double',
+    
+    // 单洞状态机初始化
+    singleParams: {
+      tunnel_type: 'single',
+      water_level: 'low',
+      K: 0, h: 0, p_mm: 0, Kg: 0, K1: 0, K2: 0,
+      cn_condition: '灌溉良好', land_use: '林地', grades: 3,
+      r: 0, R1: 0, R2: 0, Rg: 0, c: 0,
+      start_chainage: 0, end_chainage: 0,
+      concrete_grade: 'C30', rebar_type: 'HRB400', Ag: 0,
+      beta2: 1.0, Pcrown_crit: 50.0, P_crit: 500.0,
+      I_long: 0.02, double_side: true,
+      S_min: 3.0, // 单洞特有最小间距
+      ...defaultAdvancedSettings
+    } as SingleTubeParams,
+
+    // 双洞状态机初始化
+    doubleParams: {
+      tunnel_type: 'double',
+      water_level: 'low',
+      K: 0, h: 0, ha: 0, p_mm: 0, Kg: 0, K1: 0, K2: 0,
+      cn_condition: '灌溉良好', land_use: '林地', grades: 3, CN: 61.0,
+      r: 0, r1: 0, r2: 0, rg: 0, c: 0,
+      start_chainage: 0, end_chainage: 0,
+      concrete_grade: 'C30', rebar_type: 'HRB400', Ag: 0,
+      D_spacing: 0, beta2: 1.0, Pcrown_crit: 100.0, P_crit: 600.0,
+      I_long: 0.02, double_side: true,
+      S_min: 5.0, // 双洞默认略大
+      ...defaultAdvancedSettings
+    } as DoubleTubeParams
+  }),
+
+  getters: {
+    // 获取当前计算所需的完整负荷数据
+    currentPayload: (state) => {
+      return state.activeTunnelType === 'single' ? state.singleParams : state.doubleParams;
+    }
+  },
+
+  actions: {
+    // 单字段更新，支持表单双向绑定与精确修改
+    updateParam<K extends keyof SingleTubeParams | keyof DoubleTubeParams>(key: K, value: any) {
+      if (this.activeTunnelType === 'single') {
+        (this.singleParams as any)[key] = value;
+      } else {
+        (this.doubleParams as any)[key] = value;
+      }
+    },
+
+    // 全量覆写，适用于案例库加载、快照回溯与 Excel 批量导入映射
+    overrideAll(data: any, type: 'single' | 'double' = 'single') {
+      this.activeTunnelType = type;
+      if (type === 'single') {
+        this.singleParams = { ...this.singleParams, ...data };
+      } else {
+        this.doubleParams = { ...this.doubleParams, ...data };
+      }
+    },
+
+    // 切换当前洞型
+    switchTunnelType(type: 'single' | 'double') {
+      this.activeTunnelType = type;
+    }
+  }
+});
+```
+## snapshotStore.ts
+```ts
+import { defineStore } from 'pinia';
+import { useParameterStore } from './parameterStore';
+
+// --- 类型定义 ---
+// 单个快照数据结构
+export interface Snapshot {
+  id: string;
+  timestamp: number;
+  remark: string;
+  start_chainage: number; // 核心索引：分区起点
+  end_chainage: number;   // 核心索引：分区终点
+  params: any;            // 保存当时的 parameterStore.currentPayload
+  results?: any;          // 保存计算返回结果（如间距、孔径、安全系数）
+}
+
+// 多分区快照序列结构（支撑 3D 组合拼装）
+export interface SnapshotSequence {
+  sequenceId: string;
+  sequenceName: string;
+  snapshots: Snapshot[]; // 包含该序列下的全部里程分段快照
+}
+
+const STORAGE_KEY = 'tunnel_drainage_snapshots';
+const SEQUENCE_KEY = 'tunnel_drainage_sequences';
+
+export const useSnapshotStore = defineStore('snapshot', {
+  state: () => ({
+    snapshots: [] as Snapshot[],           // 散列快照池
+    sequences: [] as SnapshotSequence[]    // 聚合序列池（针对多分区）
+  }),
+
+  actions: {
+    // ==========================================
+    // 基础 CRUD 操作与本地持久化
+    // ==========================================
+    
+    // 初始化时从本地存储加载
+    loadFromLocal() {
+      const localSnapshots = localStorage.getItem(STORAGE_KEY);
+      const localSequences = localStorage.getItem(SEQUENCE_KEY);
+      if (localSnapshots) this.snapshots = JSON.parse(localSnapshots);
+      if (localSequences) this.sequences = JSON.parse(localSequences);
+    },
+
+    // 同步写入本地存储
+    saveToLocal() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.snapshots));
+      localStorage.setItem(SEQUENCE_KEY, JSON.stringify(this.sequences));
+    },
+
+    // 捕获当前参数状态，生成独立快照
+    createSnapshot(remark: string, results?: any) {
+      const paramStore = useParameterStore();
+      const currentData = JSON.parse(JSON.stringify(paramStore.currentPayload)); // 深拷贝解耦
+      
+      const newSnapshot: Snapshot = {
+        id: `snap_${Date.now()}`,
+        timestamp: Date.now(),
+        remark,
+        start_chainage: currentData.start_chainage,
+        end_chainage: currentData.end_chainage,
+        params: currentData,
+        results
+      };
+      
+      this.snapshots.push(newSnapshot);
+      this.saveToLocal();
+      return newSnapshot;
+    },
+
+    // 删除单体快照
+    deleteSnapshot(id: string) {
+      this.snapshots = this.snapshots.filter(s => s.id !== id);
+      this.saveToLocal();
+    },
+
+    // 应用快照至当前表单
+    applySnapshot(id: string) {
+      const target = this.snapshots.find(s => s.id === id);
+      if (target) {
+        const paramStore = useParameterStore();
+        paramStore.overrideAll(target.params, target.params.tunnel_type);
+      }
+    },
+
+    // ==========================================
+    // 多分区快照序列管理 (支撑 3D 成果拼接)
+    // ==========================================
+
+    // 构建或更新快照序列（适用于 Excel 批量导入后聚合生成）
+    buildSequence(sequenceName: string, snapshotList: Snapshot[]) {
+      // 按照里程起点进行排序，确保 3D 组装时的空间连续性
+      const sortedSnapshots = [...snapshotList].sort((a, b) => a.start_chainage - b.start_chainage);
+      
+      const newSequence: SnapshotSequence = {
+        sequenceId: `seq_${Date.now()}`,
+        sequenceName,
+        snapshots: sortedSnapshots
+      };
+
+      this.sequences.push(newSequence);
+      // 同时将列表中的快照推入基础快照池
+      sortedSnapshots.forEach(snap => {
+        if (!this.snapshots.some(s => s.id === snap.id)) {
+          this.snapshots.push(snap);
+        }
+      });
+      
+      this.saveToLocal();
+      return newSequence;
+    },
+
+    // 提取聚合序列数据供 3D 画布批量渲染
+    getSequenceDataFor3D(sequenceId: string) {
+      const targetSequence = this.sequences.find(seq => seq.sequenceId === sequenceId);
+      if (!targetSequence) return null;
+      
+      // 返回有序的几何拼装数据指令集
+      return targetSequence.snapshots.map(snap => ({
+        start: snap.start_chainage,
+        end: snap.end_chainage,
+        tunnel_type: snap.params.tunnel_type,
+        params: snap.params,
+        results: snap.results
+      }));
+    }
+  }
+});
+```
+
+
+## 整体技术架构
 
 ### 一、 总体系统架构
 
