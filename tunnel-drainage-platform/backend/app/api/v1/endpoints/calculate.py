@@ -13,7 +13,7 @@ router = APIRouter()
 async def calculate_drainage(data: Union[SingleTubeSchema, DoubleTubeSchema]):
     """
     排水计算核心接口：
-    1. 接收单洞(38参数)或双洞(41参数)模型数据。
+    1. 接收单洞(38参数)或双洞(40参数)模型数据。
     2. 自动分发对应的双洞/单洞、高/低水位模型计算。
     3. 透传包括内力、应力节点在内的所有 Echarts 作图计算结果。
     """

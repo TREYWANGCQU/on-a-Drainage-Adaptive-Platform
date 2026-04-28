@@ -1,14 +1,19 @@
 <template>
-  <el-form 
-    :model="formData" 
-    :rules="formRules" 
-    ref="formRef" 
-    label-width="140px" 
-    size="small"
-  >
+  <el-form :model="formData" :rules="formRules" ref="formRef" label-width="140px" size="small">
     <el-collapse v-model="activeNames">
-      
+
       <el-collapse-item title="📍 基础定位与地质水文参数" name="1">
+        <el-row :gutter="20">
+          <el-col :span="24">
+            <el-form-item label="隧道类型">
+              <el-radio-group v-model="paramStore.activeTunnelType" @change="paramStore.switchTunnelType">
+                <el-radio label="single">单洞隧道</el-radio>
+                <el-radio label="double">双洞隧道</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="分区起点里程(m)" prop="start_chainage">
@@ -23,33 +28,37 @@
         </el-row>
 
         <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="水位条件">
-              <el-select v-model="formData.water_level">
-                <el-option label="低水位" value="low" />
-                <el-option label="高水位" value="high" />
-              </el-select>
-            </el-form-item>
-          </el-col>
+
           <el-col :span="12">
             <el-form-item label="岩体渗透系数">
               <el-input-number v-model="formData.K" :step="0.1" />
             </el-form-item>
           </el-col>
-        </el-row>
-        <el-row :gutter="20">
+
           <el-col :span="12">
             <el-form-item label="初始地下水头(m)">
               <el-input-number v-model="formData.h" :step="1" />
             </el-form-item>
           </el-col>
+        </el-row>
+        <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="年降雨量(mm)">
               <el-input-number v-model="formData.p_mm" :step="100" />
             </el-form-item>
           </el-col>
+
+          <el-col :span="12" v-if="formData.tunnel_type === 'double'">
+            <el-form-item label="下边界水头(m)">
+              <el-input-number v-model="formData.ha" :step="0.5" />
+            </el-form-item>
+          </el-col>
         </el-row>
-        
+
+
+
+
+
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="隧道埋深(m)">
@@ -75,74 +84,64 @@
           <el-col :span="12">
             <el-form-item label="用地类型">
               <el-select v-model="formData.land_use">
-                <el-option v-for="item in ['工业用地', '商业用地', '居住地', '农业用地', '牧草地', '林地']" :key="item" :label="item" :value="item" />
+                <el-option v-for="item in ['工业用地', '商业用地', '居住地', '农业用地', '牧草地', '林地']" :key="item" :label="item"
+                  :value="item" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-row :gutter="20" v-if="formData.tunnel_type === 'double'">
-          <el-col :span="12">
-            <el-form-item label="下边界水头(m)">
-              <el-input-number v-model="formData.ha" :step="0.5" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="径流曲线数(CN)">
-              <el-input-number v-model="formData.CN" :step="1" />
-            </el-form-item>
-          </el-col>
-        </el-row>
+
+      </el-collapse-item>
 
       <el-collapse-item title="📏 结构尺寸参数" name="2">
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="单洞等效内半径(m)">
+            <el-form-item label="隧道等效内半径(m)">
               <el-input-number v-model="formData.r" :step="0.5" />
             </el-form-item>
           </el-col>
-        <el-col :span="12">
-            <el-form-item label="注浆圈外半径(m)">
-              <el-input-number v-if="formData.tunnel_type === 'double'" v-model="formData.rg" :step="0.5" />
-              <el-input-number v-else v-model="formData.Rg" :step="0.5" />
+          <el-col :span="12">
+            <el-form-item label="初支外半径(m)">
+              <el-input-number v-model="formData.r1" :step="0.5" />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="20" v-if="formData.tunnel_type === 'double'">
+        <el-row :gutter="20">
           <el-col :span="12">
+            <el-form-item label="二衬外半径(m)">
+              <el-input-number v-model="formData.r2" :step="0.5" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="注浆圈外半径(m)">
+              <el-input-number v-model="formData.rg" :step="0.5" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="隧道高宽比(h/w)">
+              <el-input-number v-model="formData.aspect_ratio" :step="0.1" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12" , v-if="formData.tunnel_type === 'double'">
             <el-form-item label="双洞中心间距(m)">
               <el-input-number v-model="formData.D_spacing" :step="1" />
             </el-form-item>
           </el-col>
         </el-row>
 
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="初支外半径(m)">
-              <el-input-number v-if="formData.tunnel_type === 'double'" v-model="formData.r1" :step="0.1" />
-              <el-input-number v-else v-model="formData.R1" :step="0.1" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="二衬外半径(m)">
-              <el-input-number v-if="formData.tunnel_type === 'double'" v-model="formData.r2" :step="0.1" />
-              <el-input-number v-else v-model="formData.R2" :step="0.1" />
-            </el-form-item>
-          </el-col>
-        </el-row>
+
       </el-collapse-item>
 
       <el-collapse-item title="🧱 材料属性参数" name="3">
         <el-row :gutter="20">
-         <el-col :span="12">
+          <el-col :span="12">
             <el-form-item label="混凝土等级">
               <el-select v-model="formData.concrete_grade">
-                <el-option 
-                  v-for="grade in ['C15', 'C20', 'C25', 'C30', 'C35', 'C40', 'C45', 'C50']" 
-                  :key="grade" 
-                  :label="grade" 
-                  :value="grade" 
-                />
+                <el-option v-for="grade in ['C15', 'C20', 'C25', 'C30', 'C35', 'C40', 'C45', 'C50']" :key="grade"
+                  :label="grade" :value="grade" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -152,7 +151,7 @@
             </el-form-item>
           </el-col>
         </el-row>
-<el-row :gutter="20">
+        <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="钢筋类型">
               <el-select v-model="formData.rebar_type">
@@ -170,52 +169,50 @@
         </el-row>
 
         <el-row :gutter="20">
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="注浆圈渗透系数">
               <el-input-number v-model="formData.Kg" :step="0.01" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col :span="12">
             <el-form-item label="初支渗透系数">
               <el-input-number v-model="formData.K1" :step="0.001" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
             <el-form-item label="二衬渗透系数">
               <el-input-number v-model="formData.K2" :step="0.001" />
             </el-form-item>
           </el-col>
-        </el-row>
-
-        <el-row :gutter="20">
-          <el-col :span="8">
-            <el-form-item label="涌水量折减系数">
-              <el-input-number v-model="formData.beta2" :step="0.1" :max="1" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="临界拱顶水压力">
-              <el-input-number v-model="formData.Pcrown_crit" :step="10" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="临界统一外水压力">
-              <el-input-number v-model="formData.P_crit" :step="50" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="纵向排水管水力坡降">
               <el-input-number v-model="formData.I_long" :step="0.01" />
             </el-form-item>
           </el-col>
+
         </el-row>
+
+
+
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="涌水量折减系数">
+              <el-input-number v-model="formData.beta2" :step="0.1" :max="1" />
+            </el-form-item>
+          </el-col>
+         
+
+        </el-row>
+
+
 
       </el-collapse-item>
 
-      <el-collapse-item title="⚙️ 高级默认参数设置 (按规范取值)" name="4">
+      <el-collapse-item title="⚙️ 高级默认参数设置 )" name="4">
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="容许安全系数">
@@ -224,77 +221,84 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="水的重度(kN/m³)">
-              <el-input-number v-model="formData.gamma" :disabled="true" />
+              <el-input-number v-model="formData.gamma" :step="0.1" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
-          <el-col :span="8">
-            <el-form-item label="保护层厚度(mm)">
+          <el-col :span="12">
+            <el-form-item label="钢筋保护层厚度(mm)">
               <el-input-number v-model="formData.as_mm" :step="1" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item label="高宽比(h/w)">
-              <el-input-number v-model="formData.aspect_ratio" :step="0.1" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="规范最大盲管间距">
+
+          <el-col :span="12">
+            <el-form-item label="规范最大允许盲管间距(m)">
               <el-input-number v-model="formData.S_code_max" :step="1" />
             </el-form-item>
           </el-col>
         </el-row>
 
         <el-row :gutter="20">
-          <el-col :span="8">
-            <el-form-item label="工程最小间距(m)">
+          <el-col :span="12">
+            <el-form-item label="工程实际最小允许间距(m)">
               <el-input-number v-model="formData.S_min" :step="0.5" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item label="环向管内径(m)">
+          <el-col :span="12">
+            <el-form-item label="环向管默认内径(m)">
               <el-input-number v-model="formData.d_ring_default" :step="0.01" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="8">
-            <el-form-item label="纵向管内径(m)">
-              <el-input-number v-model="formData.d_long_default" :step="0.01" />
             </el-form-item>
           </el-col>
         </el-row>
 
         <el-row :gutter="20">
-          <el-col :span="8">
-            <el-form-item label="横向管内径(m)">
+          <el-col :span="12">
+            <el-form-item label="纵向管默认内径(m)">
+              <el-input-number v-model="formData.d_long_default" :step="0.01" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="横向管默认内径(m)">
               <el-input-number v-model="formData.d_lat_default" :step="0.01" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item label="纵向管曼宁粗糙度">
+        </el-row>
+
+        <el-row :gutter="20">
+
+          <el-col :span="12">
+            <el-form-item label="纵向排水管曼宁粗糙度">
               <el-input-number v-model="formData.n_long" :step="0.001" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item label="环向管曼宁粗糙度">
+          <el-col :span="12">
+            <el-form-item label="环向排水管曼宁粗糙度">
               <el-input-number v-model="formData.n_ring" :step="0.001" />
             </el-form-item>
           </el-col>
         </el-row>
 
+
+
         <el-row :gutter="20">
-          <el-col :span="8">
-            <el-form-item label="环向管水力坡降">
+
+          <el-col :span="12">
+            <el-form-item label="环向排水管水力坡降">
               <el-input-number v-model="formData.I_ring" :step="0.01" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item label="横向管曼宁粗糙度">
+          <el-col :span="12">
+            <el-form-item label="横向排水管曼宁粗糙度">
               <el-input-number v-model="formData.n_lat" :step="0.001" />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item label="横向管水力坡降">
+        </el-row>
+
+        <el-row :gutter="20">
+
+          <el-col :span="12">
+            <el-form-item label="横向排水管水力坡降">
               <el-input-number v-model="formData.I_lat" :step="0.01" />
             </el-form-item>
           </el-col>

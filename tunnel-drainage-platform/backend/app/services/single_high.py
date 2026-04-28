@@ -130,26 +130,26 @@ def seepage_q_and_pressure_given_h0(
 
 
 # ---------- 3) 由临界压力解析反算临界 Rg ----------
-def solve_Rg_from_P_crit(
+def solve_rg_from_Pcrit(
     P_crit: float,
     h0: float,
     gamma: float,
     K: float, Kg: float, K1: float, K2: float,
-    r: float, R1: float, R2: float
+    r: float, r1: float, r2: float
 ) -> float:
     """
     根据高水位统一外水压力临界值 P_crit，按解析关系反算临界注浆圈外半径 Rg_crit。
 
     特别约定：
     - 当 P_crit >= P_max（或在容差内接近 P_max）时，不报错，
-      直接取边界解 Rg_crit = R2。
+      直接取边界解 Rg_crit = r2。
     """
     if P_crit is None:
         raise ValueError("P_crit 未输入，无法反算临界 Rg。")
     if P_crit <= 0:
         raise ValueError("P_crit 必须大于 0。")
-    if h0 <= R2:
-        raise ValueError("必须满足 h0 > R2，否则解析式不成立。")
+    if h0 <= r2:
+        raise ValueError("必须满足 h0 > r2，否则解析式不成立。")
 
     A = K1 / Kg
     B = K1 / K
@@ -157,15 +157,15 @@ def solve_Rg_from_P_crit(
         raise ValueError("当前参数满足 Kg = K，Rg 在公式中消失，无法唯一反算临界 Rg。")
 
     ln = math.log
-    L1 = ln(R1 / r)
-    C0 = (K1 / K2) * ln(R2 / R1) + L1
+    L1 = ln(r1 / r)
+    C0 = (K1 / K2) * ln(r2 / r1) + L1
 
     # 最大压力：Rg = R2
-    denom_p_max = B * ln(h0 / R2) + C0
+    denom_p_max = B * ln(h0 / r2) + C0
     P_max = gamma * h0 * L1 / denom_p_max
 
     # 最小极限压力：Rg -> h0
-    denom_p_min = A * ln(h0 / R2) + C0
+    denom_p_min = A * ln(h0 / r2) + C0
     P_min = gamma * h0 * L1 / denom_p_min
 
     P_tol = 1e-4
@@ -173,7 +173,7 @@ def solve_Rg_from_P_crit(
 
     # 若输入压力达到或略超过最大可实现压力，直接按边界状态处理
     if P_crit >= P_max - P_tol:
-        return R2
+        return r2
 
     # 若小于最小极限压力，仍视为无解
     if P_crit < P_min - P_tol:
@@ -187,19 +187,19 @@ def solve_Rg_from_P_crit(
 
     # denom_target = B*ln(h0/Rg) + A*ln(Rg/R2) + C0
     #              = (A-B)*ln(Rg) + B*ln(h0) - A*ln(R2) + C0
-    ln_Rg = (denom_target - B * ln(h0) + A * ln(R2) - C0) / (A - B)
+    ln_Rg = (denom_target - B * ln(h0) + A * ln(r2) - C0) / (A - B)
     Rg_crit = math.exp(ln_Rg)
 
     # 浮点误差修正
-    if Rg_crit < R2 and (R2 - Rg_crit) <= Rg_tol:
-        Rg_crit = R2
+    if Rg_crit <  r2 and (r2 - Rg_crit) <= Rg_tol:
+        Rg_crit = r2
 
     if Rg_crit >= h0 and (Rg_crit - h0) <= Rg_tol:
         Rg_crit = h0 * (1.0 - 1e-10)
 
-    if not (R2 <= Rg_crit < h0):
+    if not (r2 <= Rg_crit < h0):
         raise ValueError(
-            f"反算得到的 Rg_crit = {Rg_crit:.6f} m 不满足物理约束 R2 <= Rg < h0，"
+            f"反算得到的 Rg_crit = {Rg_crit:.6f} m 不满足物理约束 r2 <= Rg < h0，"
             f"请检查输入的 P_crit 是否合理。"
         )
 
@@ -304,7 +304,7 @@ def calc_state_by_rg(Rg_use: float, p, h0: float):
     """
     q_in, P = seepage_q_and_pressure_given_h0(
         p.K, h0, p.gamma, p.Kg, p.K1, p.K2,
-        p.r, p.R1, p.R2, Rg_use
+        p.r, p.r1, p.r2, Rg_use
     )
 
     q = p.beta2 * q_in
@@ -342,13 +342,16 @@ class Params:
 
     # 几何
     r: float = 7.95
-    R1: float = 8.35
-    R2: float = 8.57
-    Rg: float = 8.57
+    r1: float = 8.35
+    r2: float = 8.57
+    rg: float = 8.57
+    c: float = 32.0 #隧道埋深
 
     # 分区起终点里程
     start_chainage: float = 0.0
     end_chainage: float = 47.0
+
+    
 
     # 曼宁参数：纵 / 环 / 横
     n_long: float = 0.012
@@ -359,7 +362,7 @@ class Params:
     I_lat: float = 0.01
 
     # 设计控制
-    beta2: float = 1.0
+    beta2: float = 1.0 #设计涌水量系数
     double_side: bool = True
     S_code_max: Optional[float] = 10.0
     S_min: float = 3.0
@@ -399,16 +402,16 @@ def main(p: Params):
     cn_value = p.CN
     h0 = h0_scs_cn(p.h, p.p_mm, cn_value)
 
-    original = calc_state_by_rg(p.Rg, p, h0)
+    original = calc_state_by_rg(p.rg, p, h0)
 
-    Rg_crit = solve_Rg_from_P_crit(
+    Rg_crit = solve_rg_from_Pcrit(
         P_crit=p.P_crit,
         h0=h0,
         gamma=p.gamma,
         K=p.K, Kg=p.Kg, K1=p.K1, K2=p.K2,
-        r=p.r, R1=p.R1, R2=p.R2
+        r=p.r, R1=p.r1, R2=p.r2
     )
-    tg_crit = max(0.0, Rg_crit - p.R2)
+    tg_crit = max(0.0, Rg_crit - p.r2)
 
     critical = calc_state_by_rg(Rg_crit, p, h0)
 

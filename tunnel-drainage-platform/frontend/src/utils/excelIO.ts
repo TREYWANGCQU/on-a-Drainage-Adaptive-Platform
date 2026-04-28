@@ -6,59 +6,86 @@ import { useSnapshotStore } from '../store/snapshotStore';
 
 /**
  * 字段映射字典，维护中文表头与 Store 内部状态键的对应关系。
- * 包含跨分区定义的核心字段（起点里程、终点里程）。
+ * 包含跨分区定义的核心字段,包含所有业务参数。
  */
 const fieldMapping: Record<string, string> = {
   '起点里程': 'start_chainage',
   '终点里程': 'end_chainage',
   '隧道类型': 'tunnel_type',
-  '水位等级': 'water_level',
-  '渗透系数K': 'K',
-  '水头高度h': 'h',
-  '降雨量p_mm': 'p_mm',
-  '地表径流CN条件': 'cn_condition',
+  '渗透系数(m/d)K': 'K',
+  '水头高度(m)h': 'h',
+  '降雨量(mm)p_mm': 'p_mm',
+  '注浆圈渗透系数(m/d)Kg': 'Kg',
+  '初期支护渗透系数(m/d)K1': 'K1',
+  '二次衬砌渗透系数 (m/d)K2': 'K2',
+  '双线低水位 (m)ha，双洞低水位特有参数': 'ha', //双洞低水位特有参数，单洞设计时输入0
+  '灌溉条件': 'cn_condition',
   '土地利用类型': 'land_use',
   '围岩等级': 'grades',
-  '等效半径r': 'r',
+  '隧道等效内半径 (m)r': 'r',
+  '初支外半径r1 (m)': 'r1',
+  '二衬外半径r2 (m)': 'r2',
+  '注浆圈外半径rg (m)': 'rg',
+  '隧道埋深c (m)': 'c',
+  '隧道高宽比 h/w': 'aspect_ratio',
   '混凝土标号': 'concrete_grade',
   '钢筋类型': 'rebar_type',
-  '临界水头Pcrown_crit': 'Pcrown_crit',
-  // 双洞特有参数
-  '双洞间距D_spacing': 'D_spacing',
-  '中隔墙水头ha': 'ha'
+  '配筋面积Ag (m²)': 'Ag',
+  '双洞间距 (m)，单洞设计时输入0': 'D_spacing',// 双洞特有参数，单洞设计时输入0
+  '纵向排水管水力坡降': 'I_long',
+  '是否双侧排水': 'double_side',
+  '设计涌水量折减系数': 'beta2',
+  // 可根据需要继续添加其他参数映射
 };
 
 // 逆向映射字典（导出时使用）
-const reverseFieldMapping: Record<string, string> = Object.fromEntries(
-  Object.entries(fieldMapping).map(([key, value]) => [value, key])
-);
+
+const reverseFieldMapping = Object.fromEntries(Object.entries(fieldMapping).map(([k, v]) => [v, k]));
 
 /**
  * 生成并下载包含标准表头和数据有效性提示的空 Excel 模板
- * @param tunnelType 当前隧道洞型 ('single' | 'double')
+ * 根据 Pydantic Schema 模型自动匹配对应的默认字段与占位数据
  */
-export const downloadTemplate = (tunnelType: 'single' | 'double'): void => {
-  const store = useParameterStore();
-  // 提取对应洞型的默认参数键值，过滤生成所需表头
-  const defaultParams = tunnelType === 'single' ? store.singleParams : store.doubleParams;
-  const englishKeys = Object.keys(defaultParams);
-  
-  // 构建中文表头行
-  const headers = englishKeys.map(key => reverseFieldMapping[key] || key);
-  
-  // 构建提示信息行（第二行通常作为填报说明）
-  const tipsRow = englishKeys.map(key => {
-    if (key === 'start_chainage' || key === 'end_chainage') return '填入数值(如: 1000)';
-    if (key === 'tunnel_type') return tunnelType;
-    if (key === 'water_level') return 'low 或 high';
-    return '请参阅规范填入标准值';
+export const downloadTemplate = () => {
+  const headers = Object.keys(fieldMapping);
+ // 建立参考值映射，对齐 schemas.py 定义与常规工程取值
+  const exampleRow = headers.map(h => {
+    const key = fieldMapping[h];
+    
+    // 标识与字符型参数
+    if (key === 'tunnel_type') return 'single'; // 可选值：'single' 或 'double'
+    if (key === 'cn_condition') return '灌溉良好';
+    if (key === 'land_use') return '林地';
+    if (key === 'concrete_grade') return 'C30';
+    if (key === 'rebar_type') return 'HRB400';
+    if (key === 'double_side') return true; // Schema布尔值
+    
+    // 里程与围岩
+    if (key === 'start_chainage') return 1000.0;
+    if (key === 'end_chainage') return 1200.0;
+    if (key === 'grades') return 4;
+    
+    // Schema 中硬编码的默认参数
+    if (key === 'aspect_ratio') return 0.7;
+    if (key === 'beta2') return 1.0;
+    if (key === 'I_long') return 0.02;
+    if (key === 'D_spacing') return  0.0;
+    if (key === 'ha') return 0.0;
+    
+    // 其它需要防呆的水文与几何参数占位符 (防止计算引擎因 0 溢出)
+    const placeholders: Record<string, number> = {
+      'K': 0.1, 'h': 30.0, 'p_mm': 1200.0, 
+      'Kg': 0.005, 'K1': 0.05, 'K2': 0.0001,
+      'r': 5.0, 'r1': 5.3, 'r2': 5.8, 'rg': 8.0, 
+      'c': 50.0, 'Ag': 0.002
+    };
+    
+    return placeholders[key] ?? 0.0;
   });
-
-  const ws = XLSX.utils.aoa_to_sheet([headers, tipsRow]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '导入模板');
-  
-  XLSX.writeFile(wb, `隧道排水参数导入模板_${tunnelType}.xlsx`);
+  XLSX.writeFile(wb, `隧道参数导入模板.xlsx`);
 };
 
 /**
@@ -86,71 +113,62 @@ export const exportCurrentData = (): void => {
 export const parseUploadFile = (file: File, sequenceName: string): Promise<void> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        
-        // 解析为二维数组，跳过第二行提示说明
-        const rawJson: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        if (rawJson.length <= 2) {
-          throw new Error('未检测到有效数据行');
-        }
-
-        const headers = rawJson[0];
-        const dataRows = rawJson.slice(2);
+        const workbook = XLSX.read(e.target?.result, { type: 'array' });
+        const data: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
         
         const snapshotStore = useSnapshotStore();
-        const parameterStore = useParameterStore();
-        const snapshots = [];
-
-        // 按里程区段自动进行数据切片，依次生成对应的状态字典
-        for (const row of dataRows) {
-          if (row.length === 0) continue;
-          
-          const paramsDict: Record<string, any> = {};
-          headers.forEach((header: string, index: number) => {
-            const engKey = fieldMapping[header] || header;
-            paramsDict[engKey] = row[index];
-          });
-
-          // 保留原始默认值，用 Excel 数据进行覆写
-          const tunnelType = paramsDict['tunnel_type'] || parameterStore.activeTunnelType;
-          const baseParams = tunnelType === 'single' 
-            ? parameterStore.singleParams 
-            : parameterStore.doubleParams;
-            
-          const mergedParams = { ...baseParams, ...paramsDict };
-
-          // 封装快照对象
-          snapshots.push({
-            id: `snap_imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        const snapshots = data.map(row => {
+          const params: any = {};
+          Object.keys(row).forEach(key => { if(fieldMapping[key]) params[fieldMapping[key]] = row[key]; });
+          return {
+            id: `snap_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
             timestamp: Date.now(),
-            remark: `Excel批量导入: ${mergedParams.start_chainage}-${mergedParams.end_chainage}`,
-            start_chainage: Number(mergedParams.start_chainage),
-            end_chainage: Number(mergedParams.end_chainage),
-            params: mergedParams,
-          });
-        }
+            remark: `Excel导入: ${params.start_chainage}-${params.end_chainage}`,
+            status: 'pending', // 🟢 初始状态：待计算
+            params: { ...useParameterStore().currentPayload, ...params },
+            results: null
+          };
+        });
 
-        // 批量封装为快照序列推送到 snapshotStore 存档，支撑 3D 组合拼装
-        if (snapshots.length > 0) {
-          snapshotStore.buildSequence(sequenceName, snapshots);
-          
-          // 默认将第一条数据应用到当前表单
-          parameterStore.overrideAll(snapshots[0].params, snapshots[0].params.tunnel_type);
-        }
-        
+        if (snapshots.length > 0) snapshotStore.buildSequence(sequenceName, snapshots);
         resolve();
-      } catch (error) {
-        reject(error);
-      }
+      } catch (err) { reject(err); }
     };
-    
-    reader.onerror = () => reject(new Error('文件读取异常'));
     reader.readAsArrayBuffer(file);
   });
+};
+/**
+ * 分段下载单个计算快照的结果为独立 Excel
+ * 支持由外部 UI (如 SnapshotSidebar.vue) 调用
+ * @param snapshot 单个快照对象，需包含 params 与 result
+ */
+export const exportSnapshotResult = (snapshot: any): void => {
+  if (!snapshot || !snapshot.result) {
+    throw new Error('该分段尚无计算结果，请先执行计算');
+  }
+  
+  // 展平快照数据结构，便于二维表格展示
+  const exportData = {
+    '快照ID': snapshot.id,
+    '起点里程': snapshot.start_chainage,
+    '终点里程': snapshot.end_chainage,
+    '记录备注': snapshot.remark,
+    ...snapshot.params, // 展开所有输入参数
+    ...snapshot.result  // 展开所有输出结果
+  };
+
+  // 映射回中文表头
+  const translatedData: Record<string, any> = {};
+  for (const [key, val] of Object.entries(exportData)) {
+    const zhKey = reverseFieldMapping[key] || key; // 若无映射则保持原样
+    translatedData[zhKey] = val;
+  }
+
+  const ws = XLSX.utils.json_to_sheet([translatedData]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `里程${snapshot.start_chainage}-${snapshot.end_chainage}`);
+  
+  XLSX.writeFile(wb, `分段计算结果_${snapshot.start_chainage}-${snapshot.end_chainage}.xlsx`);
 };

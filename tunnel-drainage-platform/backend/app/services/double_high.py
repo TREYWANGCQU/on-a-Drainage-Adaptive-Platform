@@ -29,6 +29,47 @@ import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+# 0) CN 查表
+# =========================================================
+CN_TABLE = {
+    "灌溉良好": {
+        "工业用地": 81,
+        "商业用地": 80,
+        "居住地": 61,
+        "农业用地": 65,
+        "牧草地": 39,
+        "林地": 25,
+    },
+    "灌溉较差": {
+        "工业用地": 93,
+        "商业用地": 95,
+        "居住地": 87,
+        "农业用地": 86,
+        "牧草地": 80,
+        "林地": 77,
+    }
+}
+
+def get_cn_value(cn_condition: str, land_use: str) -> float:
+    """
+    根据灌溉条件和用地类型查表获取 CN 值
+    """
+    if cn_condition not in CN_TABLE:
+        valid_conditions = list(CN_TABLE.keys())
+        raise ValueError(
+            f"cn_condition='{cn_condition}' 不在允许范围内。"
+            f"可选值为：{valid_conditions}"
+        )
+
+    if land_use not in CN_TABLE[cn_condition]:
+        valid_land_use = list(CN_TABLE[cn_condition].keys())
+        raise ValueError(
+            f"land_use='{land_use}' 不在允许范围内。"
+            f"在 cn_condition='{cn_condition}' 下可选值为：{valid_land_use}"
+        )
+
+    return CN_TABLE[cn_condition][land_use]
+
 
 # ---------- 1) SCS-CN：由 h 得 h0 ----------
 def h0_scs_cn(h_m: float, p_mm: float, CN: float) -> float:
@@ -319,22 +360,31 @@ class Params:
     h: float = 90.5
     gamma: float = 10.0
     p_mm: float = 1002.5
-    CN: float = 61.0
+    Kg: float = 0.00864
+    K1: float = 0.000864
+    K2: float = 0.00864
 
-    # 衬砌
+    # CN 查表输入
+    cn_condition: str = "灌溉良好"
+    land_use: str = "居住地"
+
+    # 衬砌几何
     r: float = 8.3
     r1: float = 8.8
     r2: float = 9.0
     rg: float = 9.0
+    c: float = 32.0
 
-    K1: float = 0.000864
-    K2: float = 0.00864
-    Kg: float = 0.00864
+    # 分区起终点里程
+    start_chainage: float = 0.0
+    end_chainage: float = 47.0
+    
+    
 
     # 隧道（双洞）
-    L: float = 405.0 - 310.0
-    D_spacing: float = 40.0
-    beta2: float = 0.5
+    D_spacing: float = 40.0 # 双洞间距，双洞特有参数，非单洞设计参数
+    
+    
 
     # 曼宁参数
     n_long: float = 0.012
@@ -345,6 +395,7 @@ class Params:
     I_lat: float = 0.01
 
     # 设计控制
+    beta2: float = 1.0
     double_side: bool = True
     S_code_max: Optional[float] = 10.0
     S_min: float = 3.0
@@ -356,6 +407,27 @@ class Params:
 
     # 临界压力输入值
     P_crit: float = 600
+    @property
+    def L(self) -> float:
+        """
+        分区长度 = 终点里程 - 起点里程
+        """
+        L_val = self.end_chainage - self.start_chainage
+        if L_val <= 0:
+            raise ValueError(
+                f"分区长度 L = {L_val:.6f} m，不合法。"
+                f"请检查 start_chainage={self.start_chainage} 和 "
+                f"end_chainage={self.end_chainage}，要求终点 > 起点。"
+            )
+        return L_val
+
+    @property
+    def CN(self) -> float:
+        """
+        由 cn_condition + land_use 查表得到 CN
+        """
+        return get_cn_value(self.cn_condition, self.land_use)
+    
 # ---------- 10) 主流程 ----------
 def main(p: Params):
     h0 = h0_scs_cn(p.h, p.p_mm, p.CN)

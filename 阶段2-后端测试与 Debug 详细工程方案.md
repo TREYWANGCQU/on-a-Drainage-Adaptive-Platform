@@ -11,7 +11,6 @@
 //单洞测试
 {
   "tunnel_type": "single",
-  "water_level": "low",
   "K": 0.15,
   "h": 29,
   "p_mm": 1025.2,
@@ -22,9 +21,9 @@
   "land_use": "工业用地",
   "grades": 5,
   "r": 7.95,
-  "R1": 8.35,
-  "R2": 8.57,
-  "Rg": 10.57,
+  "r1": 8.35,
+  "r2": 8.57,
+  "rg": 10.57,
   "c": 32,
   "start_chainage": 0,
   "end_chainage": 47,
@@ -32,7 +31,6 @@
   "rebar_type": "HRB400",
   "Ag": 1091,
   "beta2": 1,
-  "Pcrown_crit": 50,
   "P_crit": 500,
   "I_long": 0.02,
   "double_side": true,
@@ -55,7 +53,6 @@
 //双洞测试
 {
   "tunnel_type": "double",
-  "water_level": "high",
   "K": 0.15,
   "h": 90.5,
   "ha": 0.0,
@@ -79,7 +76,6 @@
   "Ag": 1091.0,
   "D_spacing": 40.0,
   "beta2": 1.0,
-  "Pcrown_crit": 100.0,
   "P_crit": 600.0,
   "I_long": 0.02,
   "double_side": true,

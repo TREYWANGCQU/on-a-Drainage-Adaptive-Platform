@@ -11,9 +11,9 @@
    long_diam_recommend, lateral_diam_recommend, lateral_spacing_recommend
 
 2）临界状态：
-   由输入 Pcrown_crit 反算 rg_crit，
+   由输入 P_crit 反算 rg_crit，
    再基于 rg_crit 重新计算
-   Pcrown_crit_input, rg_crit, tg_crit,
+   P_crit_input, rg_crit, tg_crit,
    q, Q, P_invert,
    ring_diam_recommend, ring_spacing_recommend,
    long_diam_recommend, lateral_diam_recommend, lateral_spacing_recommend
@@ -27,6 +27,52 @@
 import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
+
+
+
+# 0) CN 查表
+# =========================================================
+CN_TABLE = {
+    "灌溉良好": {
+        "工业用地": 81,
+        "商业用地": 80,
+        "居住地": 61,
+        "农业用地": 65,
+        "牧草地": 39,
+        "林地": 25,
+    },
+    "灌溉较差": {
+        "工业用地": 93,
+        "商业用地": 95,
+        "居住地": 87,
+        "农业用地": 86,
+        "牧草地": 80,
+        "林地": 77,
+    }
+}
+
+def get_cn_value(cn_condition: str, land_use: str) -> float:
+    """
+    根据灌溉条件和用地类型查表获取 CN 值
+    """
+    if cn_condition not in CN_TABLE:
+        valid_conditions = list(CN_TABLE.keys())
+        raise ValueError(
+            f"cn_condition='{cn_condition}' 不在允许范围内。"
+            f"可选值为：{valid_conditions}"
+        )
+
+    if land_use not in CN_TABLE[cn_condition]:
+        valid_land_use = list(CN_TABLE[cn_condition].keys())
+        raise ValueError(
+            f"land_use='{land_use}' 不在允许范围内。"
+            f"在 cn_condition='{cn_condition}' 下可选值为：{valid_land_use}"
+        )
+
+    return CN_TABLE[cn_condition][land_use]
+
+
+
 
 
 # ---------- 0) 工具 ----------
@@ -136,22 +182,22 @@ def compute_q2_P2_with_X(
 
 
 # ---------- 4) 由临界拱顶水压力数值反算临界 rg ----------
-def solve_rg_from_Pcrown_crit(
-    Pcrown_crit: float,
+def solve_rg_from_Pcrit(
+    P_crit: float,
     h0: float,
     p
 ) -> float:
     """
-    根据临界拱顶水压力 Pcrown_crit 数值反算临界 rg_crit
+    根据临界拱顶水压力 P_crit 数值反算临界 rg_crit
 
     说明：
     - 双洞低水位这套公式较复杂，这里采用数值二分法
-    - 当 Pcrown_crit >= 当前模型最大可实现拱顶压力时，直接取边界解 rg_crit = r2
+    - 当 P_crit >= 当前模型最大可实现拱顶压力时，直接取边界解 rg_crit = r2
     """
-    if Pcrown_crit is None:
-        raise ValueError("Pcrown_crit 未输入，无法反算临界 rg。")
-    if Pcrown_crit <= 0:
-        raise ValueError("Pcrown_crit 必须大于 0。")
+    if P_crit is None:
+        raise ValueError("P_crit 未输入，无法反算临界 rg。")
+    if P_crit <= 0:
+        raise ValueError("P_crit 必须大于 0。")
     if abs(p.Kg - p.K) < 1e-12:
         raise ValueError("当前参数满足 Kg = K，拱顶水压力对 rg 不敏感，无法唯一反算 rg_crit。")
 
@@ -180,19 +226,19 @@ def solve_rg_from_Pcrown_crit(
     rg_tol = 1e-6
 
     # 边界状态：临界压力达到或略超最大可实现值
-    if Pcrown_crit >= P_max - P_tol:
+    if P_crit >= P_max - P_tol:
         return p.r2
 
     # 若过小，则认为超出当前模型可实现范围
-    if Pcrown_crit < P_min - P_tol:
+    if P_crit < P_min - P_tol:
         raise ValueError(
-            f"Pcrown_crit = {Pcrown_crit:.6f} kPa 小于该模型可实现的最小极限拱顶压力 "
+            f"P_crit = {P_crit:.6f} kPa 小于该模型可实现的最小极限拱顶压力 "
             f"P_min = {P_min:.6f} kPa，因此不存在可行的 rg_crit。"
         )
 
     # 二分法
-    f_low = Pcrown_of_rg(rg_low) - Pcrown_crit
-    f_high = Pcrown_of_rg(rg_high) - Pcrown_crit
+    f_low = Pcrown_of_rg(rg_low) - P_crit
+    f_high = Pcrown_of_rg(rg_high) - P_crit
 
     if f_low * f_high > 0:
         raise ValueError("rg_crit 未能形成有效包络区间，请检查参数组合是否合理。")
@@ -200,7 +246,7 @@ def solve_rg_from_Pcrown_crit(
     lo, hi = rg_low, rg_high
     for _ in range(100):
         mid = 0.5 * (lo + hi)
-        f_mid = Pcrown_of_rg(mid) - Pcrown_crit
+        f_mid = Pcrown_of_rg(mid) - P_crit
 
         if abs(f_mid) < 1e-8 or abs(hi - lo) < rg_tol:
             rg_crit = mid
@@ -347,26 +393,33 @@ class Params:
     # 1) 水文地质
     K: float = 0.15
     h: float = 29.0
-    ha: float = 0.0
+    ha: float = 0.0 #双线低水位特有，表示水位面位置（相对于隧道轴线的高度，正值在上方，负值在下方）
     gamma: float = 10.0
     p_mm: float = 1025.2
-    CN: float = 61.0
+    K1: float = 0.000864
+    K2: float = 0.00864
+    Kg: float = 0.00864   # 为了能反算临界 rg，默认设为不等于 K
+
+    # CN 查表输入
+    cn_condition: str = "灌溉良好"
+    land_use: str = "居住地"
 
     # 2) 衬砌
     r: float = 7.95
     r1: float = 8.35
     r2: float = 8.57
     rg: float = 8.57
+    c: float = 32.0
 
-    K1: float = 0.000864
-    K2: float = 0.00864
-    Kg: float = 0.00864   # 为了能反算临界 rg，默认设为不等于 K
+    # 分区起终点里程
+    start_chainage: float = 0.0
+    end_chainage: float = 47.0
 
     # 3) 隧道（双洞）
-    L: float = 2076.0 - 2029.0
-    D_spacing: float = 43.0
-    beta2: float = 1.0
-    c: float = 32.0
+    
+    D_spacing: float = 43.0 # 双洞间距,双洞特有参数，非单洞设计参数
+    
+    
 
     # 4) 曼宁参数：纵 / 环 / 横
     n_long: float = 0.012
@@ -379,6 +432,7 @@ class Params:
     I_lat: float = 0.73
 
     # 5) 设计控制
+    beta2: float = 1.0
     double_side: bool = True
     S_code_max: Optional[float] = 10.0
     S_min: float = 5.0
@@ -389,8 +443,28 @@ class Params:
     d_lat_default: float = 0.080
 
     # 7) 临界拱顶压力输入值
-    Pcrown_crit: float = 100
+    P_crit: float = 100
+    @property
+    def L(self) -> float:
+        """
+        分区长度 = 终点里程 - 起点里程
+        """
+        L_val = self.end_chainage - self.start_chainage
+        if L_val <= 0:
+            raise ValueError(
+                f"分区长度 L = {L_val:.6f} m，不合法。"
+                f"请检查 start_chainage={self.start_chainage} 和 "
+                f"end_chainage={self.end_chainage}，要求终点 > 起点。"
+            )
+        return L_val
 
+    @property
+    def CN(self) -> float:
+        """
+        由 cn_condition + land_use 查表得到 CN
+        """
+        return get_cn_value(self.cn_condition, self.land_use)
+    
 
 # ---------- 9) 主流程 ----------
 def main(p: Params):
@@ -398,8 +472,8 @@ def main(p: Params):
 
     original = calc_state_by_rg(p.rg, p, h0)
 
-    rg_crit = solve_rg_from_Pcrown_crit(
-        Pcrown_crit=p.Pcrown_crit,
+    rg_crit = solve_rg_from_Pcrit(
+        P_crit=p.P_crit,
         h0=h0,
         p=p
     )
@@ -412,7 +486,7 @@ def main(p: Params):
     print("原始条件：")
     print(f"q = {original['q']:.5f} m^3/(d·m)")
     print(f"Q = {original['Q']:.5f} m^3/d")
-    print(f"P_crown = {original['P_crown']:.4f} kPa") 
+    print(f"P_crown = {original['P_crown']:.4f} kPa")
     print(f"P_invert = {original['P_invert']:.4f} kPa")
     print(f"ring_diam_recommend = {original['ring_diam_recommend']:.3f} m")
     print(f"ring_spacing_recommend = {original['ring_spacing_recommend']:.3f} m")
@@ -422,7 +496,7 @@ def main(p: Params):
     print(line)
 
     print("临界状态：")
-    print(f"Pcrown_crit_input = {p.Pcrown_crit:.4f} kPa")
+    print(f"P_crit_input = {p.P_crit:.4f} kPa")
     print(f"rg_crit = {rg_crit:.5f} m")
     print(f"tg_crit = {tg_crit:.5f} m")
     print(f"q = {critical['q']:.5f} m^3/(d·m)")

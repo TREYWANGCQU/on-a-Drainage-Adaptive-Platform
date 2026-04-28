@@ -219,20 +219,20 @@ if __name__ == "__main__":
         p=200000, lam=0.5, prw=50000, Ks=5e7
     )
 
-    # plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
-    # plt.rcParams['axes.unicode_minus'] = False 
+    #plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
+    #plt.rcParams['axes.unicode_minus'] = False 
 
     # x, y = res['x'], res['y']
     # x_plot = np.append(x, x[0]) 
     # y_plot = np.append(y, y[0])
     # N_nodes = len(x)
 
-    # fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+    # #fig, axs = plt.subplots(1, 3, figsize=(18, 6))
 
     # # ================= 图1：模型、荷载与约束 =================
-    # ax1 = axs[0]
-    # ax1.plot(x_plot, y_plot, 'k-', linewidth=2, label="衬砌中心线")
-    # ax1.scatter(x, y, c='black', s=10, zorder=5) 
+    # #ax1 = axs[0]
+    # #ax1.plot(x_plot, y_plot, 'k-', linewidth=2, label="衬砌中心线")
+    # #ax1.scatter(x, y, c='black', s=10, zorder=5) 
     
     # tn, bn = res['top_node'], res['bottom_node']
     # ax1.plot(x[tn], y[tn], 'bs', markersize=8, label="水平向约束 (滑动铰)")

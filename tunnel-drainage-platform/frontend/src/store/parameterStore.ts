@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
+import { S } from 'vue-router/dist/router-CWoNjPRp.mjs';
 
 // --- 类型定义 ---
-// 提取 12 个高级设置默认参数作为公共基础接口
+// 提取 13 个高级设置默认参数作为公共基础接口
 interface AdvancedParams {
   as_mm: number;
   gamma: number;
@@ -16,32 +17,29 @@ interface AdvancedParams {
   d_long_default: number;
   d_lat_default: number;
   tol_safety_factor: number;
-  aspect_ratio: number;
 }
 
-// 单洞参数结构 (38个参数)
+// 单洞参数结构 (25个参数)
 export interface SingleTubeParams extends AdvancedParams {
   tunnel_type: 'single';
-  water_level: 'low' | 'high';
   K: number; h: number; p_mm: number; Kg: number; K1: number; K2: number;
   cn_condition: string; land_use: string; grades: number;
-  r: number; R1: number; R2: number; Rg: number; c: number;
+  r: number; r1: number; r2: number; rg: number; c: number; aspect_ratio: number;
   start_chainage: number; end_chainage: number; // 分区里程
   concrete_grade: string; rebar_type: string; Ag: number;
-  beta2: number; Pcrown_crit: number; P_crit: number;
+  beta2: number;  P_crit: number;
   I_long: number; double_side: boolean;
 }
 
-// 双洞参数结构 (41个参数)
+// 双洞参数结构 (27个参数)
 export interface DoubleTubeParams extends AdvancedParams {
   tunnel_type: 'double';
-  water_level: 'low' | 'high';
   K: number; h: number; ha: number; p_mm: number; Kg: number; K1: number; K2: number;
-  cn_condition: string; land_use: string; grades: number; CN: number;
-  r: number; r1: number; r2: number; rg: number; c: number;
+  cn_condition: string; land_use: string; grades: number; 
+  r: number; r1: number; r2: number; rg: number; c: number; aspect_ratio:number;
   start_chainage: number; end_chainage: number; // 分区里程
   concrete_grade: string; rebar_type: string; Ag: number;
-  D_spacing: number; beta2: number; Pcrown_crit: number; P_crit: number;
+  D_spacing: number; beta2: number; P_crit: number;
   I_long: number; double_side: boolean;
 }
 
@@ -55,11 +53,11 @@ const defaultAdvancedSettings = {
   n_lat: 0.012,
   I_lat: 0.01,
   S_code_max: 10.0,
+  S_min: 3.0,
   d_ring_default: 0.050,
   d_long_default: 0.100,
   d_lat_default: 0.080,
-  tol_safety_factor: 2.0,
-  aspect_ratio: 0.7
+  tol_safety_factor: 2.0
 };
 
 export const useParameterStore = defineStore('parameter', {
@@ -70,30 +68,26 @@ export const useParameterStore = defineStore('parameter', {
     // 单洞状态机初始化
     singleParams: {
       tunnel_type: 'single',
-      water_level: 'low',
       K: 0, h: 0, p_mm: 0, Kg: 0, K1: 0, K2: 0,
       cn_condition: '灌溉良好', land_use: '林地', grades: 3,
-      r: 0, R1: 0, R2: 0, Rg: 0, c: 0,
+      r: 0, r1: 0, r2: 0, rg: 0, c: 0, aspect_ratio: 0.7,
       start_chainage: 0, end_chainage: 0,
       concrete_grade: 'C30', rebar_type: 'HRB400', Ag: 0,
-      beta2: 1.0, Pcrown_crit: 50.0, P_crit: 500.0,
+      beta2: 1.0, P_crit: 0.0,
       I_long: 0.02, double_side: true,
-      S_min: 3.0, // 单洞特有最小间距
       ...defaultAdvancedSettings
     } as SingleTubeParams,
 
     // 双洞状态机初始化
     doubleParams: {
       tunnel_type: 'double',
-      water_level: 'low',
       K: 0, h: 0, ha: 0, p_mm: 0, Kg: 0, K1: 0, K2: 0,
-      cn_condition: '灌溉良好', land_use: '林地', grades: 3, CN: 61.0,
+      cn_condition: '灌溉良好', land_use: '林地', grades: 3,
       r: 0, r1: 0, r2: 0, rg: 0, c: 0,
       start_chainage: 0, end_chainage: 0,
       concrete_grade: 'C30', rebar_type: 'HRB400', Ag: 0,
-      D_spacing: 0, beta2: 1.0, Pcrown_crit: 100.0, P_crit: 600.0,
+      D_spacing: 0, beta2: 1.0,  P_crit: 0.0,
       I_long: 0.02, double_side: true,
-      S_min: 5.0, // 双洞默认略大
       ...defaultAdvancedSettings
     } as DoubleTubeParams
   }),

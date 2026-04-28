@@ -78,7 +78,7 @@ def h0_scs_cn(h_m: float, p_mm: float, CN: float) -> float:
 
 # -------- 2) 低水位公式：q2、P2 --------
 def lowwater_qP(K, h0, gamma, Kg, K1, K2,
-                r, R1, R2, Rg, yc, c) -> Tuple[float, float]:
+                r, r1, r2, Rg, yc, c) -> Tuple[float, float]:
     """
     返回：
       q2 [m^3/(d·m)]：单位长度涌水量
@@ -93,19 +93,19 @@ def lowwater_qP(K, h0, gamma, Kg, K1, K2,
 
     denom_betap = (
         ln(h0 / Rg)
-        + (K / Kg) * ln(Rg / R2)
-        + (K / K2) * ln(R2 / R1)
-        + (K / K1) * ln(R1 / r)
+        + (K / Kg) * ln(Rg / r2)
+        + (K / K2) * ln(r2 / r1)
+        + (K / K1) * ln(r1 / r)
     )
     betap = ln(h0 / r) / denom_betap
 
     denom_beta = (
-        ln(R1 / r)
-        + (K1 / K2) * ln(R2 / R1)
-        + (K1 / Kg) * ln(Rg / R2)
+        ln(r1 / r)
+        + (K1 / K2) * ln(r2 / r1)
+        + (K1 / Kg) * ln(Rg / r2)
         + (K1 / K)  * ln(h0 / Rg)
     )
-    beta = ln(R1 / r) / denom_beta
+    beta = ln(r1 / r) / denom_beta
 
     q2 = q0 * betap
     P2 = gamma * (beta * h0 - yc)
@@ -113,28 +113,28 @@ def lowwater_qP(K, h0, gamma, Kg, K1, K2,
 
 
 # -------- 3) 由临界 Pcrown 解析反算临界 Rg --------
-def solve_Rg_from_Pcrown_crit(Pcrown_crit: float,
+def solve_rg_from_Pcrit(P_crit: float,
                               h0: float,
                               gamma: float,
                               K: float, Kg: float, K1: float, K2: float,
-                              r: float, R1: float, R2: float) -> float:
+                              r: float, r1: float, r2: float) -> float:
     """
-    根据拱顶位置临界外水压力 Pcrown_crit，按原解析关系反算临界注浆圈外半径 Rg_crit
+    根据拱顶位置临界外水压力 P_crit，按原解析关系反算临界注浆圈外半径 Rg_crit
     """
     ln = math.log
 
-    if Pcrown_crit is None:
-        raise ValueError("Pcrown_crit 未输入，无法反算临界 Rg。")
+    if P_crit is None:
+        raise ValueError("P_crit 未输入，无法反算临界 Rg。")
 
-    if h0 <= R2:
-        raise ValueError("h0 必须大于 R2，否则原公式中 ln(h0/Rg) 不成立。")
+    if h0 <= r2:
+        raise ValueError("h0 必须大于 r2，否则原公式中 ln(h0/Rg) 不成立。")
 
-    beta_target = (Pcrown_crit / gamma + R1) / h0
+    beta_target = (P_crit / gamma + r1) / h0
     if beta_target <= 0:
-        raise ValueError("输入的 Pcrown_crit 过小，导致 beta_target <= 0，无法反算。")
+        raise ValueError("输入的 P_crit 过小，导致 beta_target <= 0，无法反算。")
 
-    L1 = ln(R1 / r)
-    C0 = L1 + (K1 / K2) * ln(R2 / R1)
+    L1 = ln(r1 / r)
+    C0 = L1 + (K1 / K2) * ln(r2 / r1)
     A = K1 / Kg
     B = K1 / K
 
@@ -143,14 +143,14 @@ def solve_Rg_from_Pcrown_crit(Pcrown_crit: float,
 
     denom_target = L1 / beta_target
 
-    ln_Rg = (denom_target - C0 + A * ln(R2) - B * ln(h0)) / (A - B)
+    ln_Rg = (denom_target - C0 + A * ln(r2) - B * ln(h0)) / (A - B)
     Rg_crit = math.exp(ln_Rg)
 
     eps = 1e-7
-    if not (R2 + eps < Rg_crit < h0 - eps):
+    if not (r2 + eps < Rg_crit < h0 - eps):
         raise ValueError(
-            f"反算得到的 Rg_crit = {Rg_crit:.6f} m 不满足物理约束 R2 < Rg < h0，"
-            f"请检查输入的 Pcrown_crit 是否合理。"
+            f"反算得到的 Rg_crit = {Rg_crit:.6f} m 不满足物理约束 r2 < Rg < h0，"
+            f"请检查输入的 P_crit 是否合理。"
         )
 
     return Rg_crit
@@ -250,16 +250,16 @@ def calc_state_by_rg(Rg_use: float, p, h0: float):
     给定 Rg，统一计算该状态下的：
     q, Q, P_crown, P_invert, 排水管参数
     """
-    yc_crown = +p.R1
-    yc_invert = -p.R1
+    yc_crown = +p.r1
+    yc_invert = -p.r1
 
     q2, P_crown = lowwater_qP(
         p.K, h0, p.gamma, p.Kg, p.K1, p.K2,
-        p.r, p.R1, p.R2, Rg_use, yc_crown, p.c
+        p.r, p.r1, p.r2, Rg_use, yc_crown, p.c
     )
     _, P_invert = lowwater_qP(
         p.K, h0, p.gamma, p.Kg, p.K1, p.K2,
-        p.r, p.R1, p.R2, Rg_use, yc_invert, p.c
+        p.r, p.r1, p.r2, Rg_use, yc_invert, p.c
     )
 
     # 这里的 L 已经由起终点里程自动计算
@@ -298,9 +298,9 @@ class Params:
 
     # 衬砌/几何
     r: float = 7.95
-    R1: float = 8.35
-    R2: float = 8.57
-    Rg: float = 10.57
+    r1: float = 8.35
+    r2: float = 8.57
+    rg: float = 10.57
     c: float = 32.0
 
     # 分区起终点里程
@@ -316,6 +316,7 @@ class Params:
     I_lat: float = 0.01
 
     # 排水设计控制
+    beta2: float = 1.0
     double_side: bool = True
     S_code_max: Optional[float] = 10.0
     S_min: float = 3.0
@@ -326,7 +327,7 @@ class Params:
     d_lat_default: float = 0.080
 
     # 临界拱顶水压力输入值
-    Pcrown_crit: float = 50
+    P_crit: float = 50
     @property
     def L(self) -> float:
         """
@@ -358,17 +359,17 @@ def main(p: Params):
     h0 = h0_scs_cn(p.h, p.p_mm, cn_value)
 
     # -------- 原始条件 --------
-    original = calc_state_by_rg(p.Rg, p, h0)
+    original = calc_state_by_rg(p.rg, p, h0)
 
     # -------- 临界状态 --------
-    Rg_crit = solve_Rg_from_Pcrown_crit(
-        Pcrown_crit=p.Pcrown_crit,
+    Rg_crit = solve_rg_from_Pcrit(
+        P_crit=p.P_crit,
         h0=h0,
         gamma=p.gamma,
         K=p.K, Kg=p.Kg, K1=p.K1, K2=p.K2,
-        r=p.r, R1=p.R1, R2=p.R2
+        r=p.r, r1=p.r1, r2=p.r2
     )
-    tg_crit = Rg_crit - p.R2
+    tg_crit = Rg_crit - p.r2
 
     critical = calc_state_by_rg(Rg_crit, p, h0)
 
@@ -397,7 +398,7 @@ def main(p: Params):
     print(line)
 
     print("临界状态：")
-    print(f"Pcrown_crit_input = {p.Pcrown_crit:.4f} kPa")
+    print(f"P_crit_input = {p.P_crit:.4f} kPa")
     print(f"Rg_crit = {Rg_crit:.5f} m")
     print(f"tg_crit = {tg_crit:.5f} m")
     print(f"q = {critical['q']:.5f} m^3/(d·m)")
