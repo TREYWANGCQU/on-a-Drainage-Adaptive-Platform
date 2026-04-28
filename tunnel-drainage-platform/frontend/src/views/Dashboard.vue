@@ -19,17 +19,20 @@
       </aside>
 
       <section class="center-panel" ref="centerPanelRef">
-        <el-button class="collapse-btn left" @click="isLeftCollapsed = !isLeftCollapsed">
-         
+        <el-button 
+          class="collapse-btn left" 
+          :icon="isLeftCollapsed ? 'ArrowRight' : 'ArrowLeft'"
+          @click="isLeftCollapsed = !isLeftCollapsed">
         </el-button>
         
         <el-button type="primary" class="fullscreen-btn" icon="FullScreen" @click="toggleFullscreen">
-         
           全局放大
         </el-button>
 
-        <el-button class="collapse-btn right" @click="isRightCollapsed = !isRightCollapsed">
-         
+        <el-button 
+          class="collapse-btn right" 
+          :icon="isRightCollapsed ? 'ArrowLeft' : 'ArrowRight'"
+          @click="isRightCollapsed = !isRightCollapsed">
         </el-button>
 
         <div class="placeholder-3d">
@@ -201,17 +204,38 @@ const executeCalculation = async () => {
   top: 50%;
   transform: translateY(-50%);
   z-index: 10;
-  padding: 8px;
+  height: 60px;          /* 增加纵向触控面积 */
+  width: 18px;           /* 压缩横向宽度 */
+  padding: 0;            /* 清除默认内边距 */
+  background-color: rgba(255, 255, 255, 0.85); /* 半透明背景融入3D区域 */
+  border: 1px solid #dcdfe6;
+  color: #606266;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease-in-out;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px); /* 背景模糊提升质感 */
+}
+
+.collapse-btn:hover {
+  background-color: #ffffff;
+  color: #409eff;
+  border-color: #c6e2ff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  width: 22px;           /* 悬停时略微展宽增加互动反馈 */
 }
 
 .collapse-btn.left {
   left: 0;
-  border-radius: 0 4px 4px 0;
+  border-left: none;
+  border-radius: 0 6px 6px 0;
 }
 
 .collapse-btn.right {
   right: 0;
-  border-radius: 4px 0 0 4px;
+  border-right: none;
+  border-radius: 6px 0 0 6px;
 }
 
 .fullscreen-btn {

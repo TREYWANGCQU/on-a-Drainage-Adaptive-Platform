@@ -2,19 +2,27 @@
   <div class="snapshot-sidebar">
     <div class="header">
       <h4>工况快照与序列库</h4>
-      <el-button type="primary" size="small" @click="handleSaveSnapshot">保存当前快照</el-button>
+      <div class="header-actions">
+        <el-button type="success" size="small" plain @click="quickCalculatePending">⚡ 一键计算</el-button>
+        <el-button type="primary" size="small" @click="handleSaveSnapshot">保存当前快照</el-button>
+      </div>
     </div>
 
-    <el-divider>散列快照 (单体区间)</el-divider>
+    <el-divider>散列快照</el-divider>
     <div class="snapshot-list">
       <template v-if="snapshots.length > 0">
         <el-card v-for="snap in snapshots" :key="snap.id" class="snapshot-item" shadow="hover">
-          <!-- 可点击区域：仅信息和摘要部分 -->
+          
           <div @click="restoreSnapshot(snap.id)" style="cursor:pointer">
             <div class="snap-info">
-              <span class="snap-remark">
-                {{ (snap.remark && typeof snap.remark === 'string') ? snap.remark : '系统计算生成快照' }}
-              </span>
+              <div class="title-with-status">
+                <span class="snap-remark">
+                  {{ (snap.remark && typeof snap.remark === 'string') ? snap.remark : '系统计算生成快照' }}
+                </span>
+                <el-tag :type="getStatusTag(snap)" size="small" effect="light">
+                  {{ snap.status === 'done' || snap.results ? '🟢 已计算' : snap.status === 'error' ? '🔴 失败' : '🟡 待计算' }}
+                </el-tag>
+              </div>
               <span class="snap-chainage">
                 K{{ getChainage(snap, 'start') }} ~ K{{ getChainage(snap, 'end') }}
               </span>
@@ -46,9 +54,8 @@
               </div>
                <div class="main-metric critical-metrics" v-if="snap.results.critical_state">
                   <span class="metric-item">临界状态最终水头: <b class="text-danger">{{ snap.results.critical_state?.final_waterHead?.toFixed(2) }}m</b></span>
-  <span class="metric-item">临界状态安全系数: <b :class="getFsClass(snap.results.critical_state?.final_safety_factor)">{{
-    snap.results.critical_state?.final_safety_factor?.toFixed(2) }}</b></span>
-               
+                  <span class="metric-item">临界状态安全系数: <b :class="getFsClass(snap.results.critical_state?.final_safety_factor)">{{
+                    snap.results.critical_state?.final_safety_factor?.toFixed(2) }}</b></span>
               </div>
               <div class="res-grid critical-rec-grid" v-if="snap.results.critical_state">
                 <div class="res-cell">
@@ -63,12 +70,15 @@
                   <span class="lbl">临界渗漏量 Q</span>
                   <span class="val">{{ getRec(snap, 'Q')?.toFixed(2) || '-' }} m³/d</span>
                 </div>
-                
               </div>
             </div>
+            
+            <div class="results-summary pending-box" v-else>
+              <span style="color: #909399; font-size: 12px;">待接入引擎计算...</span>
+            </div>
+
           </div>
 
-          <!-- 底栏：独立于点击区域之外，按钮事件不再有冒泡竞争 -->
           <div class="snap-meta">
             <span class="time">{{ formatTime(snap.timestamp) }}</span>
             <div class="actions-btn">
@@ -79,22 +89,7 @@
           </div>
         </el-card>
       </template>
-      <el-empty v-else description="暂无散列快照" :image-size="60" />
-    </div>
-
-    <el-divider>批量导入序列 (全段组装)</el-divider>
-    <div class="sequence-list">
-      <template v-if="sequences.length > 0">
-        <el-collapse accordion>
-          <el-collapse-item v-for="seq in sequences" :key="seq.sequenceId"
-            :title="`${seq.sequenceName} (${seq.snapshots.length} 个分段)`">
-            <el-button size="small" type="success" plain class="w-100">
-              载入3D全段模型
-            </el-button>
-          </el-collapse-item>
-        </el-collapse>
-      </template>
-      <el-empty v-else description="暂无批量导入序列" :image-size="60" />
+      <el-empty v-else description="暂无记录，请计算或导入" :image-size="60" />
     </div>
   </div>
 </template>
@@ -102,35 +97,66 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useSnapshotStore } from '@/store/snapshotStore';
+import { calculateDrainage } from '@/api/index'; // 引入计算接口
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Download } from '@element-plus/icons-vue'; // 新增引入 Download 图标
+import { Download } from '@element-plus/icons-vue';
 
 const snapshotStore = useSnapshotStore();
 const snapshots = computed(() => snapshotStore.snapshots);
-const sequences = computed(() => snapshotStore.sequences);
 
-// 辅助函数：安全获取里程
+// 安全获取里程：增加对 snap.params 的向下兼容读取，修复导入无显示的 Bug
 const getChainage = (snap: any, type: 'start' | 'end') => {
   const key = type === 'start' ? 'start_chainage' : 'end_chainage';
-  // 修正：从根节点读取基础快照记录，防回退失败
-  return snap.results?.input_parameter?.[key] ?? snap[key] ?? '0';
+  return snap.results?.input_parameter?.[key] ?? snap.params?.[key] ?? snap[key] ?? '0';
 };
 
-// 辅助函数：获取推荐值（在临界状态和原始状态间切换）
 const getRec = (snap: any, key: string) => {
   if (!snap.results) return null;
   return snap.results.critical_state?.[key] ?? snap.results.original_state?.[key];
 };
 
-// 辅助函数：根据安全系数返回颜色类名
 const getFsClass = (fs: number) => {
-  return fs < 2.0 ? 'text-danger' : 'text-success'; // 假设 2.0 为容许值
+  return fs < 2.0 ? 'text-danger' : 'text-success';
 };
 
+// 状态标签色彩映射
+const getStatusTag = (snap: any) => {
+  if (snap.status === 'done' || snap.results) return 'success';
+  if (snap.status === 'error') return 'danger';
+  return 'warning';
+};
 
-// 下载原始计算结果为 JSON
+// 全局一键调度：遍历提取未计算的快照执行请求
+const quickCalculatePending = async () => {
+  const pendingSnaps = snapshots.value.filter((s: any) => !s.results || s.status === 'pending');
+  if (pendingSnaps.length === 0) {
+    ElMessage.success('序列库中暂无需要计算的工况');
+    return;
+  }
+
+  ElMessage.info(`开始执行并发计算，共调度 ${pendingSnaps.length} 个区间...`);
+  
+  for (const snap of pendingSnaps) {
+    try {
+      // 提取被封装在 params 字典中的计算荷载
+      const payload = snap.params || {}; 
+      const res = await calculateDrainage(payload);
+      
+      // 更新状态机与结果映射，直接驱动视图更新
+      snap.results = res;
+      snap.status = 'done';
+    } catch (error) {
+      console.error(`区间 ${snap.remark} 计算中断:`, error);
+      snap.status = 'error';
+    }
+  }
+  
+  // 批量计算结束后执行一次持久化落盘
+  snapshotStore.saveToLocal();
+  ElMessage.success('全序列调度执行完毕');
+};
+
 const handleDownloadRaw = (snap: any) => {
-  // 修正：增加数据空层级拦截，防止点击穿透
   if (!snap.results || !snap.results.original_state) {
     ElMessage.warning('无有效计算数据可供下载');
     return;
@@ -141,18 +167,18 @@ const handleDownloadRaw = (snap: any) => {
   const link = document.createElement('a');
   link.href = url;
   link.download = `Result_${snap.remark || 'Export'}_${snap.id.slice(0, 5)}.json`;
-  document.body.appendChild(link);  // ✅ 挂载到 DOM 以支持 Firefox 等浏览器，不然无法触发下载
+  document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);  // ✅ 立即清理 URL 对象，释放内存
+  document.body.removeChild(link);
   URL.revokeObjectURL(url);
   ElMessage.success('原始计算数据已准备下载');
 };
+
 const handleSaveSnapshot = () => {
   ElMessageBox.prompt('请输入该工况快照的备注说明', '保存快照', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
   }).then(({ value }) => {
-    // 调用 Store 行动，当前设计已在 Store 内部封装了深拷贝逻辑与结果绑定
     snapshotStore.createSnapshot(value);
     ElMessage.success('工况参数快照保存成功');
   }).catch(() => { });
@@ -179,8 +205,6 @@ const handleDeleteSnapshot = (id: string) => {
 };
 </script>
 
-
-
 <style scoped>
 .snapshot-sidebar {
   padding: 16px;
@@ -197,8 +221,12 @@ const handleDeleteSnapshot = (id: string) => {
   margin-bottom: 12px;
 }
 
-.snapshot-list,
-.sequence-list {
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.snapshot-list {
   min-height: 140px;
   margin-bottom: 24px;
 }
@@ -207,15 +235,10 @@ const handleDeleteSnapshot = (id: string) => {
   color: #606266;
   font-weight: bold;
   background-color: #f5f7fa;
-  /* 与侧边栏背景色保持一致，避免文字背景突兀 */
   text-align: center;
-  /* 确保多行文本居中对齐 */
   line-height: 1.4;
-  /* 调整多行间距 */
   white-space: normal;
-  /* 覆盖默认的 nowrap，允许优雅换行 */
   max-width: 85%;
-  /* 预留两侧横线空间，防止文字顶满 */
 }
 
 .snapshot-item {
@@ -230,19 +253,38 @@ const handleDeleteSnapshot = (id: string) => {
 
 .snap-info {
   display: flex;
-  justify-content: space-between;
-  font-size: 13px;
+  flex-direction: column;
+  gap: 6px;
   margin-bottom: 8px;
   font-weight: bold;
 }
 
-/* 新增：结果摘要网格样式 */
+.title-with-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.snap-chainage {
+  font-size: 12px;
+  color: #606266;
+}
+
 .results-summary {
   background: #fdfdfd;
   border: 1px solid #ebeef5;
   border-radius: 4px;
   padding: 8px;
   margin-bottom: 10px;
+}
+
+.pending-box {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px;
+  background: #f4f4f5;
+  border-style: dashed;
 }
 
 .res-grid {
@@ -281,21 +323,6 @@ const handleDeleteSnapshot = (id: string) => {
   gap: 4px;
 }
 
-:deep(.el-divider__text) {
-  color: #606266;
-  font-weight: bold;
-  background-color: #f5f7fa;
-  text-align: center;
-  line-height: 1.4;
-  white-space: normal;
-  max-width: 85%;
-}
-
-.w-100 {
-  width: 100%;
-  margin-top: 8px;
-}
-
 .main-metrics {
   display: flex;
   justify-content: space-between;
@@ -316,11 +343,16 @@ const handleDeleteSnapshot = (id: string) => {
   color: #f56c6c;
 }
 
+.text-success {
+  color: #67c23a;
+}
+
 .critical-rec-grid {
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px dashed #fde2e2;
 }
+
 .critical-metrics {
   display: flex;
   justify-content: space-between;
@@ -329,11 +361,8 @@ const handleDeleteSnapshot = (id: string) => {
   padding-top: 4px;
   border-top: 1px dashed #fde2e2;
 }
+
 .critical-rec-grid .val {
   color: #f56c6c;
-}
-
-.text-success {
-  color: #67c23a;
 }
 </style>

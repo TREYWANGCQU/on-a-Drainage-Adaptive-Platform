@@ -97,7 +97,7 @@ const handleCaseChange = (val: string) => {
 .case-selector {
   display: flex;
   align-items: center;
-  margin-bottom: 16px;
+  
 }
 .label {
   font-size: 14px;
