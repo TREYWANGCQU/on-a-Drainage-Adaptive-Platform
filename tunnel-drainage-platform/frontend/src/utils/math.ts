@@ -1,5 +1,6 @@
 // 文件路径: tunnel-drainage-platform\frontend\src\utils\math.ts
 
+import * as THREE from 'three';
 /**
  * 前端辅助计算工具类。
  * 提供用于 3D 几何生成、参数化排布以及空间数据处理的数学方法。
@@ -87,4 +88,30 @@ export const calculatePartitionLength = (startChainage: number, endChainage: num
  */
 export const clamp = (val: number, min: number, max: number): number => {
   return Math.max(min, Math.min(max, val));
+};
+
+/**
+ * 计算曲面法向量并转换为旋转四元数。
+ * 利用目标点和参考中心推算表面法线方向，并转换为四元数以规避万向节死锁。
+ * @param pointOnSurface 表面点三维坐标
+ * @param center 参考中心点三维坐标
+ * @param defaultDirection 几何体的默认朝向（默认 Y 轴向上）
+ * @returns THREE.Quaternion 旋转四元数
+ */
+export const calculateNormalQuaternion = (
+  pointOnSurface: { x: number; y: number; z: number },
+  center: { x: number; y: number; z: number },
+  defaultDirection: THREE.Vector3 = new THREE.Vector3(0, 1, 0)
+): THREE.Quaternion => {
+  // 计算法线向量并归一化
+  const normal = new THREE.Vector3(
+    pointOnSurface.x - center.x,
+    pointOnSurface.y - center.y,
+    pointOnSurface.z - center.z
+  ).normalize();
+
+  // 从默认方向旋转至法线方向
+  const quaternion = new THREE.Quaternion();
+  quaternion.setFromUnitVectors(defaultDirection, normal);
+  return quaternion;
 };

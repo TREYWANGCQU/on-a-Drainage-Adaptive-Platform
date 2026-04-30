@@ -19,26 +19,28 @@
       </aside>
 
       <section class="center-panel" ref="centerPanelRef">
-        <el-button 
-          class="collapse-btn left" 
-          :icon="isLeftCollapsed ? 'ArrowRight' : 'ArrowLeft'"
+        <el-button class="collapse-btn left" :icon="isLeftCollapsed ? 'ArrowRight' : 'ArrowLeft'"
           @click="isLeftCollapsed = !isLeftCollapsed">
         </el-button>
-        
+
         <el-button type="primary" class="fullscreen-btn" icon="FullScreen" @click="toggleFullscreen">
           全局放大
         </el-button>
 
-        <el-button 
-          class="collapse-btn right" 
-          :icon="isRightCollapsed ? 'ArrowLeft' : 'ArrowRight'"
+        <el-button class="collapse-btn right" :icon="isRightCollapsed ? 'ArrowLeft' : 'ArrowRight'"
           @click="isRightCollapsed = !isRightCollapsed">
         </el-button>
 
-        <div class="placeholder-3d">
+        
+        <!-- 移除原 placeholder-3d 标签块，挂载真实的三维画布组件 -->
+        <!-- <div class="placeholder-3d">
           <p>WebGL 3D 渲染画布区</p>
-          <small>依赖 parameterStore.currentPayload 实时驱动</small>
-        </div>
+          <small>依赖 parameterStore.currentPayload 实时驱动</small> 
+          </div> -->
+          
+        <Viewer3D />
+
+
       </section>
 
       <aside class="right-panel" :class="{ 'is-collapsed': isRightCollapsed }">
@@ -49,7 +51,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref} from 'vue';
+import { onMounted, ref } from 'vue';
+
+// 新增引入 Viewer3D
+import Viewer3D from '@/components/three/Viewer3D.vue';
 
 import CaseSelector from '@/components/ui/CaseSelector.vue';
 import ParameterForm from '@/components/ui/ParameterForm.vue';
@@ -72,7 +77,7 @@ const triggerUpload = () => fileInput.value?.click();
 const handleFileChange = async (e: Event) => {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
-  
+
   const { value: name } = await ElMessageBox.prompt('请输入导入序列名称', '批量导入', { defaultValue: '新导入序列' });
   try {
     await parseUploadFile(file, name);
@@ -111,22 +116,22 @@ onMounted(() => {
 const executeCalculation = async () => {
   // TODO: 对接 api/index.ts 封装的 Axios Axios 实例发起 POST 请求
   try {
-    ElMessage.info('计算指令已发送，等待计算引擎回传数据...');
-    
-    // 提取当前表单参数
-    const payload = parameterStore.currentPayload;
-    
-    // 发起 POST 请求对接 uvicorn
-    const result = await calculateDrainage(payload);
-    //console.log('API result:', JSON.stringify(result, null, 2));  // debug输出内容
-    // 收到返回值后存档并驱动 3D 渲染
-    //snapshotStore.createSnapshot(result);
+    ElMessage.info('计算指令已发送，等待计算引擎回传数据...');
+
+    // 提取当前表单参数
+    const payload = parameterStore.currentPayload;
+
+    // 发起 POST 请求对接 uvicorn
+    const result = await calculateDrainage(payload);
+    //console.log('API result:', JSON.stringify(result, null, 2));  // debug输出内容
+    // 收到返回值后存档并驱动 3D 渲染
+    //snapshotStore.createSnapshot(result);
     snapshotStore.createSnapshot('执行云计算生成节点', result);
-    ElMessage.success('计算完成，空间坐标已更新');
-  } catch (error) {
-    // 网络或业务异常已在 axios 拦截器中抛出 UI 提示，此处捕获以防止 Promise 报错漏报
-    console.error('引擎调度异常:', error);
-  }
+    ElMessage.success('计算完成，空间坐标已更新');
+  } catch (error) {
+    // 网络或业务异常已在 axios 拦截器中抛出 UI 提示，此处捕获以防止 Promise 报错漏报
+    console.error('引擎调度异常:', error);
+  }
 };
 
 
@@ -140,6 +145,7 @@ const executeCalculation = async () => {
   width: 100vw;
   overflow: hidden;
 }
+
 .toolbar {
   height: 60px;
   background-color: #ffffff;
@@ -148,23 +154,27 @@ const executeCalculation = async () => {
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
+
 .toolbar .title {
   font-size: 18px;
   font-weight: 600;
   color: #303133;
 }
+
 .toolbar .actions {
   display: flex;
   gap: 12px;
   align-items: center;
 }
+
 .main-content {
   flex: 1;
   display: flex;
   overflow: hidden;
 }
+
 .left-panel {
   width: 550px;
   padding: 20px;
@@ -172,24 +182,31 @@ const executeCalculation = async () => {
   border-right: 1px solid #dcdfe6;
   background: #ffffff;
 }
+
 .center-panel {
   flex: 1;
   position: relative;
-  background: #2a2a2a; /* 模拟深色 3D 背景 */
+  background: #2a2a2a;
+  /* 模拟深色 3D 背景 */
 }
-.placeholder-3d {
+
+/* 移除原 placeholder-3d 标签块 */
+/* .placeholder-3d {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   color: #909399;
   text-align: center;
-}
+} */
+
 .right-panel {
   width: 420px;
   overflow-y: hidden;
 }
-.left-panel, .right-panel {
+
+.left-panel,
+.right-panel {
   transition: width 0.3s ease, padding 0.3s ease;
 }
 
@@ -204,10 +221,14 @@ const executeCalculation = async () => {
   top: 50%;
   transform: translateY(-50%);
   z-index: 10;
-  height: 60px;          /* 增加纵向触控面积 */
-  width: 18px;           /* 压缩横向宽度 */
-  padding: 0;            /* 清除默认内边距 */
-  background-color: rgba(255, 255, 255, 0.85); /* 半透明背景融入3D区域 */
+  height: 60px;
+  /* 增加纵向触控面积 */
+  width: 18px;
+  /* 压缩横向宽度 */
+  padding: 0;
+  /* 清除默认内边距 */
+  background-color: rgba(255, 255, 255, 0.85);
+  /* 半透明背景融入3D区域 */
   border: 1px solid #dcdfe6;
   color: #606266;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
@@ -215,7 +236,8 @@ const executeCalculation = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(4px); /* 背景模糊提升质感 */
+  backdrop-filter: blur(4px);
+  /* 背景模糊提升质感 */
 }
 
 .collapse-btn:hover {
@@ -223,7 +245,8 @@ const executeCalculation = async () => {
   color: #409eff;
   border-color: #c6e2ff;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  width: 22px;           /* 悬停时略微展宽增加互动反馈 */
+  width: 22px;
+  /* 悬停时略微展宽增加互动反馈 */
 }
 
 .collapse-btn.left {
