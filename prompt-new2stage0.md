@@ -217,13 +217,13 @@ tunnel-drainage-platform/
 3. **路由绑定与 API 暴露：**
    在 `backend/app/api/endpoints/calculate.py` 中编写 POST 接口，接收前端传入的 JSON 数据，调用 `services` 中的计算函数`drainage_engine.py`，并组装包含“间距”、“孔径”等优化布置参数的返回体。
 4. **单元测试与文档验证：**
-   本地启动后端 `uvicorn main:app --reload`，访问 `/docs` (Swagger UI)，验证 API 是否能成功接收 38/41 个参数并正确返回计算结果。
+   本地启动后端 `uvicorn main:app --reload`，访问 `/docs` (Swagger UI)，验证 API 是否能成功接收 38/40 个参数并正确返回计算结果。
 
 ### 阶段三：前端台账式表单与数据流转 (第 2-3 周)
 此阶段重点解决重度输入参数的交互体验。
 
 1. **状态机搭建 (Store)：**
-   配置 Pinia，建立 `parameterStore`，集中存储表单的 38/41 个参数状态。
+   配置 Pinia，建立 `parameterStore`，集中存储表单的 38/40 个参数状态。
 2. **分区分级 UI 构建：**
    * 使用 Element Plus 的折叠面板组件 (`el-collapse`) 将表单分为：基础输入区、复选区和高级默认区。
    * 预设典型案例数据，实现下拉框一键覆盖 `parameterStore` 中的数值。
