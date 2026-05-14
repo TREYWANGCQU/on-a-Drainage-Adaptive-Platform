@@ -12,7 +12,7 @@ import { useSnapshotStore } from '@/store/snapshotStore';
 
 // 引入底层实例生成器（依据文件路径结构推断）
 import { TunnelGenerator } from './TunnelGenerator';
-import { Reinforcement } from './Reinforcement';
+//import { Reinforcement } from './Reinforcement';
 
 // DOM 引用
 const containerRef = ref<HTMLElement | null>(null);
@@ -25,7 +25,7 @@ let camera: THREE.PerspectiveCamera;
 
 // 几何构建管线实例
 let tunnelGen: TunnelGenerator | null = null;
-let reinforcementGen: Reinforcement | null = null;
+//let reinforcementGen: Reinforcement | null = null;
 
 // 状态库绑定
 const snapshotStore = useSnapshotStore();
@@ -67,7 +67,7 @@ const initWebGL = () => {
 
   // 实例化底层几何拼装器
   tunnelGen = new TunnelGenerator(scene);
-  reinforcementGen = new Reinforcement(scene);
+  //reinforcementGen = new Reinforcement(scene);
 
   scheduleRender();
 };
@@ -93,11 +93,11 @@ const scheduleRender = () => {
 };
 
 const dispatchToPipeline = (rawData: any) => {
-  if (!rawData || !tunnelGen || !reinforcementGen) return;
+  //if (!rawData || !tunnelGen || !reinforcementGen) return;
   
   // 将裸数据打包下发至底层网格生成器
-  tunnelGen.update(rawData.params, rawData.results);
-  reinforcementGen.update(rawData.params, rawData.results);
+  //tunnelGen.update(rawData.params, rawData.results);
+  //reinforcementGen.update(rawData.params, rawData.results);
   
   // 触发脏标记后调度渲染
   scheduleRender();
