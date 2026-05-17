@@ -2,3 +2,6 @@
 *.pdf
 /tools/
 *.db
+
+/tunnel-drainage-platform/backend/*.pyc
+__pycache__/
