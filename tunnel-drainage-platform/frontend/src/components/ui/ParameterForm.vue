@@ -1,4 +1,5 @@
 <template>
+  <div class="form-container">
   <el-form :model="formData" :rules="formRules" ref="formRef" label-width="140px" size="small">
     <el-collapse v-model="activeNames">
 
@@ -7,8 +8,8 @@
           <el-col :span="24">
             <el-form-item label="隧道类型">
               <el-radio-group v-model="paramStore.activeTunnelType" @change="paramStore.switchTunnelType">
-                <el-radio label="single">单洞隧道</el-radio>
-                <el-radio label="double">双洞隧道</el-radio>
+                <el-radio value="single">单洞隧道</el-radio>
+                <el-radio value="double">双洞隧道</el-radio>
               </el-radio-group>
             </el-form-item>
           </el-col>
@@ -306,13 +307,48 @@
       </el-collapse-item>
 
     </el-collapse>
+
+
+    <!-- [新增] 表单底部操作区 -->
+      <div class="form-actions">
+        <el-button type="success" plain icon="UploadCloud" @click="saveDialogVisible = true">
+          另存为至参数库 (数据沉淀)
+        </el-button>
+      </div>
   </el-form>
+<!-- [新增] 入库参数配置弹窗 -->
+    <el-dialog v-model="saveDialogVisible" title="固化工程参数" width="400px" destroy-on-close>
+      <el-form :model="saveForm" label-width="100px" size="default">
+        <el-form-item label="工程命名" required>
+          <el-input v-model="saveForm.projectName" placeholder="如: 晏家隧道-K20+100段" />
+        </el-form-item>
+        <el-form-item label="工程分类" required>
+          <el-select v-model="saveForm.tunnelClass" placeholder="选择隧道交通属性" style="width: 100%">
+            <el-option label="城市道路" value="城市道路" />
+            <el-option label="城市轨道" value="城市轨道" />
+            <el-option label="公路" value="公路" />
+            <el-option label="铁路" value="铁路" />
+            <el-option label="水工" value="水工" />
+            <el-option label="综合管廊" value="综合管廊" />
+            <el-option label="其他" value="其他" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="saveDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitToDatabase" :loading="isSaving">确认入库</el-button>
+      </template>
+    </el-dialog>
+  </div>
+
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useParameterStore } from '@/store/parameterStore';
+import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
+import apiClient from '@/api/index'; // [修改] 使用已封装好端口与拦截器的 Axios 实例
 
 const paramStore = useParameterStore();
 const formRef = ref<FormInstance>();
@@ -337,4 +373,65 @@ const formRules = ref<FormRules>({
     { validator: validateChainage, trigger: 'blur' }
   ]
 });
+
+// ==========================================
+// [新增逻辑] 脏数据拦截机制与数据库写入
+// ==========================================
+
+// 1. 深度监听双向绑定：由于 v-model 会直接修改 Store 对象，需利用订阅器主动触发脏标记
+paramStore.$subscribe((mutation, state) => {
+  if (!state.isDirty && state.currentResults) {
+    state.isDirty = true;
+    state.currentResults = null;
+  }
+}, { detached: true });
+
+// 2. 数据库写入交互状态
+const saveDialogVisible = ref(false);
+const isSaving = ref(false);
+const saveForm = ref({
+  projectName: '',
+  tunnelClass: '公路'
+});
+
+const submitToDatabase = async () => {
+  if (!saveForm.value.projectName) {
+    ElMessage.warning('工程命名不能为空');
+    return;
+  }
+  isSaving.value = true;
+  try {
+    const payload = {
+      project_name: saveForm.value.projectName,
+      tunnel_type: saveForm.value.tunnelClass,
+      parameters_json: paramStore.currentPayload,
+      results_json: paramStore.currentResults || null
+    };
+
+    // 原代码：await axios.post('/api/v1/database/parameters', payload);
+    // [修改] 使用 apiClient，剥离重复的前缀
+    await apiClient.post('/database/parameters', payload);
+    
+    ElMessage.success('工程参数已成功固化至数据库');
+    saveDialogVisible.value = false;
+    saveForm.value.projectName = ''; // 重置表单
+  } catch (error) {
+    ElMessage.error('入库失败: ' + (error as any).message);
+  } finally {
+    isSaving.value = false;
+  }
+};
 </script>
+
+<style scoped>
+.form-container {
+  padding-bottom: 20px;
+}
+.form-actions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+  border-top: 1px dashed var(--sys-border);
+  padding-top: 15px;
+}
+</style>

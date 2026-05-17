@@ -11,6 +11,8 @@
 
 ```bash
 pip install fastapi uvicorn pydantic pandas numpy
+# 数据库依赖
+pip install sqlalchemy aiosqlite 
 ```
 *(注：保留 `pandas` 是因为它可以与前端批量导出的 Excel 或后端的 JSON 序列化进行高效的数据转换。)*
 

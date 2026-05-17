@@ -64,7 +64,11 @@ export const useParameterStore = defineStore('parameter', {
   state: () => ({
     // 当前激活的隧道类型
     activeTunnelType: 'single' as 'single' | 'double',
-    
+   
+    // [新增] 脏数据标记与结果容器
+    isDirty: false,
+    currentResults: null as any | null,
+
     // 单洞状态机初始化
     singleParams: {
       tunnel_type: 'single',
@@ -107,21 +111,38 @@ export const useParameterStore = defineStore('parameter', {
       } else {
         (this.doubleParams as any)[key] = value;
       }
+      // [新增逻辑] 拦截器：只要发生人为修改，立即标记脏数据并销毁当前缓存结果
+      if (!this.isDirty) {
+        this.isDirty = true;
+        this.currentResults = null;
+      }
     },
 
-    // 全量覆写，适用于案例库加载、快照回溯与 Excel 批量导入映射
-    overrideAll(data: any, type: 'single' | 'double' = 'single') {
+    // [修改逻辑] 扩展第三个参数 results，用于快照回溯时同步恢复计算结果
+    overrideAll(data: any, type: 'single' | 'double' = 'single', results: any = null) {
       this.activeTunnelType = type;
       if (type === 'single') {
         this.singleParams = { ...this.singleParams, ...data };
       } else {
         this.doubleParams = { ...this.doubleParams, ...data };
       }
+      
+      // [新增逻辑] 全量覆写视作加载干净的历史状态
+      this.currentResults = results;
+      this.isDirty = false;
     },
 
-    // 切换当前洞型
     switchTunnelType(type: 'single' | 'double') {
       this.activeTunnelType = type;
+      // [新增逻辑] 切换洞型同样导致底层逻辑变更，触发脏数据拦截
+      this.isDirty = true;
+      this.currentResults = null;
+    },
+    
+    // [新增 Action] 接收后端最新计算结果，清除脏标记
+    setCalculatedResults(results: any) {
+      this.currentResults = results;
+      this.isDirty = false;
     }
   }
 });

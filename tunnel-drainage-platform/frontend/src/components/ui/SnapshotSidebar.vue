@@ -100,8 +100,11 @@ import { useSnapshotStore } from '@/store/snapshotStore';
 import { calculateDrainage } from '@/api/index'; // 引入计算接口
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Download } from '@element-plus/icons-vue';
+import { useParameterStore } from '@/store/parameterStore'; // [新增引入]
+
 
 const snapshotStore = useSnapshotStore();
+const parameterStore = useParameterStore(); // [新增实例化]
 const snapshots = computed(() => snapshotStore.snapshots);
 
 // 安全获取里程：增加对 snap.params 的向下兼容读取，修复导入无显示的 Bug
@@ -109,6 +112,8 @@ const getChainage = (snap: any, type: 'start' | 'end') => {
   const key = type === 'start' ? 'start_chainage' : 'end_chainage';
   return snap.results?.input_parameter?.[key] ?? snap.params?.[key] ?? snap[key] ?? '0';
 };
+
+
 
 const getRec = (snap: any, key: string) => {
   if (!snap.results) return null;
@@ -185,8 +190,17 @@ const handleSaveSnapshot = () => {
 };
 
 const restoreSnapshot = (id: string) => {
+  // 调用快照库恢复逻辑
   snapshotStore.applySnapshot(id);
-  ElMessage.info('已回溯至选定快照工况，参数已覆盖');
+  
+  // [防御性补充] 确保当前被加载的快照如果没有计算结果（比如是刚导入的），依然触发脏标记要求计算
+  const snap = snapshots.value.find((s: any) => s.id === id);
+  if (!snap || !snap.results) {
+     parameterStore.isDirty = true;
+     ElMessage.warning('已加载历史参数，但该参数缺乏计算成果，请执行云计算');
+  } else {
+     ElMessage.info('已回溯至选定快照工况，参数与空间结果已同步覆盖');
+  }
 };
 
 const formatTime = (ts: number) => {
@@ -209,8 +223,8 @@ const handleDeleteSnapshot = (id: string) => {
 .snapshot-sidebar {
   padding: 16px;
   height: 100%;
-  border-left: 1px solid #dcdfe6;
-  background: #f5f7fa;
+  border-left: 1px solid var(--sys-border); /* [修改] */
+  background: var(--sys-bg-panel); /* [修改] */
   overflow-y: auto;
 }
 
@@ -232,9 +246,9 @@ const handleDeleteSnapshot = (id: string) => {
 }
 
 :deep(.el-divider__text) {
-  color: #606266;
+  color:var(--el-text-color-regular);
   font-weight: bold;
-  background-color: #f5f7fa;
+  background-color: var(--sys-bg-panel);
   text-align: center;
   line-height: 1.4;
   white-space: normal;
@@ -267,12 +281,12 @@ const handleDeleteSnapshot = (id: string) => {
 
 .snap-chainage {
   font-size: 12px;
-  color: #606266;
+  color: var(--el-text-color-secondary);
 }
 
 .results-summary {
-  background: #fdfdfd;
-  border: 1px solid #ebeef5;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--sys-border);
   border-radius: 4px;
   padding: 8px;
   margin-bottom: 10px;
@@ -283,8 +297,9 @@ const handleDeleteSnapshot = (id: string) => {
   justify-content: center;
   align-items: center;
   padding: 12px;
-  background: #f4f4f5;
+  background: var(--el-fill-color-blank);
   border-style: dashed;
+  border-color: var(--sys-border);
 }
 
 .res-grid {
@@ -300,7 +315,7 @@ const handleDeleteSnapshot = (id: string) => {
 
 .res-cell .lbl {
   font-size: 10px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .res-cell .val {
@@ -314,7 +329,7 @@ const handleDeleteSnapshot = (id: string) => {
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .actions-btn {
@@ -328,14 +343,14 @@ const handleDeleteSnapshot = (id: string) => {
   justify-content: space-between;
   padding-bottom: 8px;
   margin-bottom: 8px;
-  border-bottom: 1px dashed #ebeef5;
+  border-bottom: 1px dashed var(--sys-border);
   font-size: 11px;
-  color: #606266;
+  color: var(--el-text-color-regular);
 }
 
 .val-tag {
   font-size: 11px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   font-style: italic;
 }
 
@@ -350,7 +365,7 @@ const handleDeleteSnapshot = (id: string) => {
 .critical-rec-grid {
   margin-top: 6px;
   padding-top: 6px;
-  border-top: 1px dashed #fde2e2;
+  border-top: 1px dashed var(--el-border-color-light);
 }
 
 .critical-metrics {
@@ -359,7 +374,7 @@ const handleDeleteSnapshot = (id: string) => {
   font-size: 11px;
   margin-top: 4px;
   padding-top: 4px;
-  border-top: 1px dashed #fde2e2;
+  border-top: 1px dashed var(--el-border-color-light);
 }
 
 .critical-rec-grid .val {

@@ -6,13 +6,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 # 引入 API 路由模块
 from app.api.v1.endpoints.calculate import router as calculate_drainage
+from app.api.v1.endpoints.database import router as database_router
 
+# [新增] 引入数据库初始化生命周期事件
+from app.db.init_db import lifespan
 # 初始化 FastAPI 应用
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="支持单/双洞隧道、高/低水位模型的智能排水计算后端",
     version="1.0.0",
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan
 )
 
 # 注入 CORS 中间件，解决前后端分离部署的跨域问题
@@ -32,6 +36,14 @@ app.include_router(
     prefix=f"{settings.API_V1_STR}/calculate", 
     tags=["计算引擎"]
 )
+
+# [新增] 注册参数数据库路由
+app.include_router(
+    database_router, 
+    prefix=f"{settings.API_V1_STR}/database", 
+    tags=["参数数据库台账"]
+)
+
 
 @app.get("/", tags=["系统管理"])
 def health_check():

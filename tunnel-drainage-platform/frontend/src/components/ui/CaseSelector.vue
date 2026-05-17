@@ -101,7 +101,7 @@ const handleCaseChange = (val: string) => {
 }
 .label {
   font-size: 14px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-weight: bold;
 }
 </style>

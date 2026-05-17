@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+/tunnel-drainage-platform/frontend/.cache
+/tunnel-drainage-platform/frontend/.temp
+/tunnel-drainage-platform/backend/venv
+/tunnel-drainage-platform/backend/__pycache__
+.db
