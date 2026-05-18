@@ -13,6 +13,15 @@ export interface Snapshot {
   results?: any;          // 保存计算返回结果（如间距、孔径、安全系数）
 }
 
+// 下游几何构建管线标准接口规范
+export interface ITunnelParams {
+  id: string;
+  start_chainage: number;
+  end_chainage: number;
+  params: any;
+  results?: any;
+}
+
 // 多分区快照序列结构（支撑 3D 组合拼装）
 export interface SnapshotSequence {
   sequenceId: string;

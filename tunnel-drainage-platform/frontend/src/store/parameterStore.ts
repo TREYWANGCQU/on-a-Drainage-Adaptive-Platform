@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { S } from 'vue-router/dist/router-CWoNjPRp.mjs';
+
 
 // --- 类型定义 ---
 // 提取 13 个高级设置默认参数作为公共基础接口

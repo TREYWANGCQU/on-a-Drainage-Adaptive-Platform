@@ -8,11 +8,14 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, toRaw, computed } from 'vue';
 import * as THREE from 'three';
-import { useSnapshotStore } from '@/store/snapshotStore';
+import { useSnapshotStore, ITunnelParams } from '@/store/snapshotStore';
 
-// 引入底层实例生成器（依据文件路径结构推断）
-import { TunnelGenerator } from './TunnelGenerator';
-//import { Reinforcement } from './Reinforcement';
+// 引入轨道控制器以支持场景旋转、缩放、平移
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+// 引入底层实例生成器
+import { TunnelGenerator, TunnelType } from './TunnelGenerator';
+import { ReinforcementManager, RockBoltGenerator } from './Reinforcement';
 
 // DOM 引用
 const containerRef = ref<HTMLElement | null>(null);
@@ -22,10 +25,12 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 let renderer: THREE.WebGLRenderer;
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
+let controls: OrbitControls; // 控制器实例句柄
 
 // 几何构建管线实例
 let tunnelGen: TunnelGenerator | null = null;
-//let reinforcementGen: Reinforcement | null = null;
+let reinforcementManager: ReinforcementManager | null = null;
+let rockBoltGen: RockBoltGenerator | null = null;
 
 // 状态库绑定
 const snapshotStore = useSnapshotStore();
@@ -60,14 +65,26 @@ const initWebGL = () => {
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(width, height);
 
+ 
+
   // 场景与相机基础分配
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
-  camera.position.set(0, 10, 50);
+  camera.position.set(0, 30, 80);
 
-  // 实例化底层几何拼装器
-  tunnelGen = new TunnelGenerator(scene);
-  //reinforcementGen = new Reinforcement(scene);
+   // --- 解决问题：挂载交互控制键 ---
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 0, -50); 
+  // 核心约束：监听操纵变更按需触发重绘，规避高功耗死循环渲染
+  controls.addEventListener('change', scheduleRender);
+
+  // 补充基础光源配置 (支持 MeshStandardMaterial 光照模型)
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambientLight);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(20, 40, 20);
+  scene.add(dirLight);
+  // 注：几何体实例推迟至具有实际数据参数时懒加载
 
   scheduleRender();
 };
@@ -83,7 +100,9 @@ const scheduleRender = () => {
     cancelAnimationFrame(renderFrameId);
   }
 
-  // 采用 requestAnimationFrame 将高频状态变更收束为单次渲染调用
+
+  // rAF微秒级节流：合并滑块拖拽等高频状态变更，限制底层渲染器调用频次
+
   renderFrameId = requestAnimationFrame(() => {
     if (renderer && scene && camera) {
       renderer.render(scene, camera);
@@ -92,14 +111,37 @@ const scheduleRender = () => {
   });
 };
 
-const dispatchToPipeline = (rawData: any) => {
-  //if (!rawData || !tunnelGen || !reinforcementGen) return;
-  
-  // 将裸数据打包下发至底层网格生成器
-  //tunnelGen.update(rawData.params, rawData.results);
-  //reinforcementGen.update(rawData.params, rawData.results);
-  
-  // 触发脏标记后调度渲染
+const dispatchToPipeline = (rawData: ITunnelParams) => {
+  if (!rawData || !scene) return;
+
+  const { start_chainage, end_chainage, params } = rawData;
+  // 修改后：补充解包双洞间距参数 D_spacing，设定缺省安全值
+  const { r, tunnel_type, D_spacing = 30.0 } = params;
+
+  // 懒加载实例化与场景挂载：确保一次性传入所需的空间里程极值参数
+  if (!tunnelGen) {
+    // 修改后：严格匹配新版状态映射，并透传间距参数
+    const tType = tunnel_type === 'double' ? TunnelType.DOUBLE : TunnelType.SINGLE;
+    tunnelGen = new TunnelGenerator(tType, start_chainage, end_chainage, r, D_spacing);
+    
+    reinforcementManager = new ReinforcementManager(start_chainage, end_chainage, 1.0, 1);
+    rockBoltGen = new RockBoltGenerator(start_chainage, end_chainage, 1.0, 1);
+
+    // 将生成的 InstancedMesh 挂载至渲染管线
+    scene.add(tunnelGen.mesh);
+    scene.add(reinforcementManager.advancePipeMesh);
+    scene.add(reinforcementManager.groutingMesh);
+    scene.add(rockBoltGen.mesh);
+  }
+
+  // 映射解算参数下发动态更新指令
+  if (tunnelGen) {
+    const spacingZ = 1.0;
+    const nCurrent = Math.ceil((end_chainage - start_chainage) / spacingZ);
+    // 按实际工程参数映射调度底层位置推演
+    tunnelGen.updateInstanceData(nCurrent, spacingZ, 1.0, r, 0);
+  }
+
   scheduleRender();
 };
 
@@ -110,8 +152,8 @@ watch(
   activeSnapshot,
   (newSnap) => {
     if (newSnap) {
-      // 阻断 Vue Proxy 响应式系统对 Three.js 大体量对象的性能干涉，提取纯 JS 对象
-      const rawSnapshot = toRaw(newSnap);
+      // toRaw剥离：解除 Vue Proxy 响应式代理，规避大体量数据高频深度监听引发的性能损耗
+      const rawSnapshot = toRaw(newSnap) as ITunnelParams;
       dispatchToPipeline(rawSnapshot);
     }
   },
