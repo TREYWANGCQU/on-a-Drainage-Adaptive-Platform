@@ -193,10 +193,11 @@ const restoreSnapshot = (id: string) => {
   // 调用快照库恢复逻辑
   snapshotStore.applySnapshot(id);
   
-  // [防御性补充] 确保当前被加载的快照如果没有计算结果（比如是刚导入的），依然触发脏标记要求计算
+  // 调整脏数据判别：加载历史参数或导入未计算快照时不触发脏数据拦截，将状态重置为干净(false)
   const snap = snapshots.value.find((s: any) => s.id === id);
+  parameterStore.isDirty = false; 
   if (!snap || !snap.results) {
-     parameterStore.isDirty = true;
+     
      ElMessage.warning('已加载历史参数，但该参数缺乏计算成果，请执行云计算');
   } else {
      ElMessage.info('已回溯至选定快照工况，参数与空间结果已同步覆盖');

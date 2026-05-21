@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { polarToCartesian, calculateNormalQuaternion } from '@/utils/math'; // 新增依赖
+import { polarToCartesian, calculateNormalQuaternion } from '@/utils/math'; 
 
 export class ReinforcementManager {
   public advancePipeMesh: THREE.InstancedMesh;
