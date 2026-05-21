@@ -33,8 +33,8 @@ class SingleTubeSchema(BaseModel):
 
     r: float = Field(..., description="隧道等效内半径 (m)")
     aspect_ratio: float = Field(0.7, description="隧道高宽比 (h/w)")
-    r1: float = Field(..., description="初支外半径 (m)")
-    r2: float = Field(..., description="二衬外半径 (m)")
+    r1: float = Field(..., description="二衬外半径 (m)")
+    r2: float = Field(..., description="初支外半径 (m)")
     rg: float = Field(..., description="注浆圈外半径 (m)")
     c: float = Field(..., description="隧道埋深 (m)")
     
@@ -92,8 +92,8 @@ class DoubleTubeSchema(BaseModel):
 
     r: float = Field(..., description="隧道等效内半径 (m)")
     aspect_ratio: float = Field(0.7, description="隧道高宽比 (h/w)")
-    r1: float = Field(..., description="初支外半径 (m)")
-    r2: float = Field(..., description="二衬外半径 (m)")
+    r1: float = Field(..., description="二衬外半径 (m)")
+    r2: float = Field(..., description="初支外半径 (m)")
     rg: float = Field(..., description="注浆圈外半径 (m)")
     c: float = Field(..., description="隧道埋深 (m)")
     

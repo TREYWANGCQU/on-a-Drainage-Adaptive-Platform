@@ -103,13 +103,15 @@ export const calculateNormalQuaternion = (
   center: { x: number; y: number; z: number },
   defaultDirection: THREE.Vector3 = new THREE.Vector3(0, 1, 0)
 ): THREE.Quaternion => {
-  // 计算法线向量并归一化
-  const normal = new THREE.Vector3(
+  // 计算方向向量
+  const dir = new THREE.Vector3(
     pointOnSurface.x - center.x,
     pointOnSurface.y - center.y,
     pointOnSurface.z - center.z
-  ).normalize();
-
+  );
+// 规避零向量坍缩，发生重合时维持初始朝向
+  if (dir.lengthSq() === 0) return new THREE.Quaternion();
+  const normal = dir.normalize();
   // 从默认方向旋转至法线方向
   const quaternion = new THREE.Quaternion();
   quaternion.setFromUnitVectors(defaultDirection, normal);

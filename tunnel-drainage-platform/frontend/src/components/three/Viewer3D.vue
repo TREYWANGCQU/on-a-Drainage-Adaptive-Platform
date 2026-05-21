@@ -116,13 +116,13 @@ const dispatchToPipeline = (rawData: ITunnelParams) => {
 
   const { start_chainage, end_chainage, params } = rawData;
   // 修改后：补充解包双洞间距参数 D_spacing，设定缺省安全值
-  const { r, tunnel_type, D_spacing = 30.0 } = params;
+  const { r, r1, r2, rg,c,tunnel_type,aspect_ratio = 1.0, D_spacing = 30.0 } = params;
 
   // 懒加载实例化与场景挂载：确保一次性传入所需的空间里程极值参数
   if (!tunnelGen) {
     // 修改后：严格匹配新版状态映射，并透传间距参数
     const tType = tunnel_type === 'double' ? TunnelType.DOUBLE : TunnelType.SINGLE;
-    tunnelGen = new TunnelGenerator(tType, start_chainage, end_chainage, r, D_spacing);
+    tunnelGen = new TunnelGenerator(tType, start_chainage, end_chainage, r, aspect_ratio, D_spacing, r1, r2, rg,c);
     
     reinforcementManager = new ReinforcementManager(start_chainage, end_chainage, 1.0, 1);
     rockBoltGen = new RockBoltGenerator(start_chainage, end_chainage, 1.0, 1);
@@ -130,7 +130,6 @@ const dispatchToPipeline = (rawData: ITunnelParams) => {
     // 将生成的 InstancedMesh 挂载至渲染管线
     scene.add(tunnelGen.mesh);
     scene.add(reinforcementManager.advancePipeMesh);
-    scene.add(reinforcementManager.groutingMesh);
     scene.add(rockBoltGen.mesh);
   }
 

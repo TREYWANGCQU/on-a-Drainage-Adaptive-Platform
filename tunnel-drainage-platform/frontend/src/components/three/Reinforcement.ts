@@ -26,14 +26,7 @@ export class ReinforcementManager {
     this.advancePipeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.advancePipeMesh.count = 0; // 调度起始量置零
 
-    // 2. 初始化注浆圈
-    const groutingGeom = new THREE.CylinderGeometry(0.6, 0.6, 1.0, 16); 
-    groutingGeom.translate(0, 0.5, 0);
-    groutingGeom.rotateX(Math.PI / 2);
-    const groutingMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff88, transparent: true, opacity: 0.3 });
-    this.groutingMesh = new THREE.InstancedMesh(groutingGeom, groutingMaterial, this.nMax);
-    this.groutingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.groutingMesh.count = 0; // 调度起始量置零
+   
   }
 
   /**

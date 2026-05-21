@@ -1,3 +1,4 @@
+// frontend/src/store/snapshotStore.ts
 import { defineStore } from 'pinia';
 import { useParameterStore } from './parameterStore';
 
@@ -88,7 +89,7 @@ export const useSnapshotStore = defineStore('snapshot', {
       const target = this.snapshots.find(s => s.id === id);
       if (target) {
         const paramStore = useParameterStore();
-        paramStore.overrideAll(target.params, target.params.tunnel_type);
+        paramStore.overrideAll(target.params, target.params.tunnel_type, target.results);
       }
     },
 
@@ -124,14 +125,16 @@ export const useSnapshotStore = defineStore('snapshot', {
       const targetSequence = this.sequences.find(seq => seq.sequenceId === sequenceId);
       if (!targetSequence) return null;
       
-      // 返回有序的几何拼装数据指令集
-      return targetSequence.snapshots.map(snap => ({
-        start: snap.start_chainage,
-        end: snap.end_chainage,
-        tunnel_type: snap.params.tunnel_type,
-        params: snap.params,
-        results: snap.results
-      }));
+      // 影响范围：提供空间连续性拼装
+      return [...targetSequence.snapshots]
+        .sort((a, b) => a.start_chainage - b.start_chainage)
+        .map(snap => ({
+          id: snap.id,
+          start_chainage: snap.start_chainage,
+          end_chainage: snap.end_chainage,
+          params: snap.params,
+          results: snap.results
+        }));
     }
   }
 });

@@ -1,5 +1,5 @@
+// frontend/src/store/parameterStore.ts
 import { defineStore } from 'pinia';
-
 
 // --- 类型定义 ---
 // 提取 13 个高级设置默认参数作为公共基础接口
@@ -36,7 +36,7 @@ export interface DoubleTubeParams extends AdvancedParams {
   tunnel_type: 'double';
   K: number; h: number; ha: number; p_mm: number; Kg: number; K1: number; K2: number;
   cn_condition: string; land_use: string; grades: number; 
-  r: number; r1: number; r2: number; rg: number; c: number; aspect_ratio:number;
+  r: number; r1: number; r2: number; rg: number; c: number; aspect_ratio: number;
   start_chainage: number; end_chainage: number; // 分区里程
   concrete_grade: string; rebar_type: string; Ag: number;
   D_spacing: number; beta2: number; P_crit: number;
@@ -64,8 +64,8 @@ export const useParameterStore = defineStore('parameter', {
   state: () => ({
     // 当前激活的隧道类型
     activeTunnelType: 'single' as 'single' | 'double',
-   
-    // [新增] 脏数据标记与结果容器
+    
+    // 脏数据标记与结果容器
     isDirty: false,
     currentResults: null as any | null,
 
@@ -111,14 +111,13 @@ export const useParameterStore = defineStore('parameter', {
       } else {
         (this.doubleParams as any)[key] = value;
       }
-      // [新增逻辑] 拦截器：只要发生人为修改，立即标记脏数据并销毁当前缓存结果
-      if (!this.isDirty) {
-        this.isDirty = true;
-        this.currentResults = null;
-      }
+      
+      // 影响范围：切断三维视觉映射链路
+      this.isDirty = true;
+      this.currentResults = null;
     },
 
-    // [修改逻辑] 扩展第三个参数 results，用于快照回溯时同步恢复计算结果
+    // 扩展第三个参数 results，用于快照回溯时同步恢复计算结果
     overrideAll(data: any, type: 'single' | 'double' = 'single', results: any = null) {
       this.activeTunnelType = type;
       if (type === 'single') {
@@ -127,19 +126,20 @@ export const useParameterStore = defineStore('parameter', {
         this.doubleParams = { ...this.doubleParams, ...data };
       }
       
-      // [新增逻辑] 全量覆写视作加载干净的历史状态
+      // 全量覆写视作加载干净的历史状态
       this.currentResults = results;
       this.isDirty = false;
     },
 
     switchTunnelType(type: 'single' | 'double') {
       this.activeTunnelType = type;
-      // [新增逻辑] 切换洞型同样导致底层逻辑变更，触发脏数据拦截
+      
+      // 影响范围：切断三维视觉映射链路
       this.isDirty = true;
       this.currentResults = null;
     },
     
-    // [新增 Action] 接收后端最新计算结果，清除脏标记
+    // 接收后端最新计算结果，清除脏标记
     setCalculatedResults(results: any) {
       this.currentResults = results;
       this.isDirty = false;
