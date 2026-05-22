@@ -3,6 +3,7 @@
     <div class="header">
       <h4>工况快照与序列库</h4>
       <div class="header-actions">
+        <el-button type="warning" size="small" plain @click="handleRefresh3D">🔄 刷新3D区</el-button>
         <el-button type="success" size="small" plain @click="quickCalculatePending">⚡ 一键计算</el-button>
         <el-button type="primary" size="small" @click="handleSaveSnapshot">保存当前快照</el-button>
       </div>
@@ -16,9 +17,12 @@
           <div @click="restoreSnapshot(snap.id)" style="cursor:pointer">
             <div class="snap-info">
               <div class="title-with-status">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <el-checkbox v-model="snap.selectedFor3D" @click.stop />
                 <span class="snap-remark">
                   {{ (snap.remark && typeof snap.remark === 'string') ? snap.remark : '系统计算生成快照' }}
                 </span>
+                </div>
                 <el-tag :type="getStatusTag(snap)" size="small" effect="light">
                   {{ snap.status === 'done' || snap.results ? '🟢 已计算' : snap.status === 'error' ? '🔴 失败' : '🟡 待计算' }}
                 </el-tag>
@@ -161,6 +165,7 @@ const quickCalculatePending = async () => {
   ElMessage.success('全序列调度执行完毕');
 };
 
+
 const handleDownloadRaw = (snap: any) => {
   if (!snap.results || !snap.results.original_state) {
     ElMessage.warning('无有效计算数据可供下载');
@@ -187,6 +192,13 @@ const handleSaveSnapshot = () => {
     snapshotStore.createSnapshot(value);
     ElMessage.success('工况参数快照保存成功');
   }).catch(() => { });
+};
+
+// 下发3D区状态重组及刷新变动通知
+const handleRefresh3D = () => {
+  parameterStore.isDirty = false;
+  snapshotStore.refresh3DTrigger = (snapshotStore.refresh3DTrigger || 0) + 1;
+  ElMessage.success('3D 空间隧道计算结果已重新装配');
 };
 
 const restoreSnapshot = (id: string) => {
@@ -231,21 +243,36 @@ const handleDeleteSnapshot = (id: string) => {
 
 .header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.header h4 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--el-text-color-primary);
 }
 
 .header-actions {
   display: flex;
-  gap: 8px;
+  width: 100%;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+.header-actions .el-button {
+  flex: 1;
+  margin-left: 0 !important;
+  padding: 8px 4px;
+  font-size: 11px;
 }
 
 .snapshot-list {
   min-height: 140px;
   margin-bottom: 24px;
 }
-
 :deep(.el-divider__text) {
   color:var(--el-text-color-regular);
   font-weight: bold;

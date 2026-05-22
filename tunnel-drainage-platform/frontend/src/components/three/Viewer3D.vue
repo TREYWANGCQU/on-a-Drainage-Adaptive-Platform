@@ -27,19 +27,12 @@ let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
 let controls: OrbitControls; // 控制器实例句柄
 
-// 几何构建管线实例
-let tunnelGen: TunnelGenerator | null = null;
-let reinforcementManager: ReinforcementManager | null = null;
-let rockBoltGen: RockBoltGenerator | null = null;
+// 追踪当前场景中已挂载的流水分段网格实例，便于刷新时统一清理
+let activeMeshes: THREE.Object3D[] = [];
 
 // 状态库绑定
 const snapshotStore = useSnapshotStore();
 
-// 提取当前激活的计算快照（此处以散列快照池中最新的计算节点作为 activeSnapshot）
-const activeSnapshot = computed(() => {
-  const length = snapshotStore.snapshots.length;
-  return length > 0 ? snapshotStore.snapshots[length - 1] : null;
-});
 
 // 节流阀控制状态
 let renderFrameId: number | null = null;
@@ -110,36 +103,48 @@ const scheduleRender = () => {
     isRendering = false;
   });
 };
+// 核心重构：遍历所有勾选的快照节点，提取各自的起止里程和断面参数进行纵向拼装
+const renderSelectedSnapshots = () => {
+  if (!scene) return;
 
-const dispatchToPipeline = (rawData: ITunnelParams) => {
-  if (!rawData || !scene) return;
+  // 1. 卸载并清理历史渲染管道实例
+  activeMeshes.forEach(mesh => scene.remove(mesh));
+  activeMeshes = [];
 
-  const { start_chainage, end_chainage, params } = rawData;
-  // 修改后：补充解包双洞间距参数 D_spacing，设定缺省安全值
-  const { r, r1, r2, rg,c,tunnel_type,aspect_ratio = 1.0, D_spacing = 30.0 } = params;
+  // 2. 筛选勾选状态的工况进行空间组装出图
+  const selected = snapshotStore.snapshots.filter((s: any) => s.selectedFor3D);
+  
 
-  // 懒加载实例化与场景挂载：确保一次性传入所需的空间里程极值参数
-  if (!tunnelGen) {
-    // 修改后：严格匹配新版状态映射，并透传间距参数
+  selected.forEach((snap: any) => {
+    const rawData = toRaw(snap);
+    if (!rawData) return;
+    // 兼容性降级提取：优先匹配快照根节点里程，其次提取内部参数副本
+    const start_chainage = Number(rawData.start_chainage ?? rawData.params?.start_chainage ?? 0);
+    const end_chainage = Number(rawData.end_chainage ?? rawData.params?.end_chainage ?? 0);
+    const params = rawData.params;
+    if (!params) return;
+    const { r, r1, r2, rg, c, tunnel_type, aspect_ratio = 1.0, D_spacing = 30.0 } = params;
     const tType = tunnel_type === 'double' ? TunnelType.DOUBLE : TunnelType.SINGLE;
-    tunnelGen = new TunnelGenerator(tType, start_chainage, end_chainage, r, aspect_ratio, D_spacing, r1, r2, rg,c);
-    
-    reinforcementManager = new ReinforcementManager(start_chainage, end_chainage, 1.0, 1);
-    rockBoltGen = new RockBoltGenerator(start_chainage, end_chainage, 1.0, 1);
 
-    // 将生成的 InstancedMesh 挂载至渲染管线
-    scene.add(tunnelGen.mesh);
-    scene.add(reinforcementManager.advancePipeMesh);
-    scene.add(rockBoltGen.mesh);
-  }
+    // 分段建立独立的几何构建管线
+    const tGen = new TunnelGenerator(tType, start_chainage, end_chainage, r, aspect_ratio, D_spacing, r1, r2, rg, c);
+    const rManager = new ReinforcementManager(start_chainage, end_chainage, 1.0, 1);
+    const rBoltGen = new RockBoltGenerator(start_chainage, end_chainage, 1.0, 1);
 
-  // 映射解算参数下发动态更新指令
-  if (tunnelGen) {
     const spacingZ = 1.0;
     const nCurrent = Math.ceil((end_chainage - start_chainage) / spacingZ);
-    // 按实际工程参数映射调度底层位置推演
-    tunnelGen.updateInstanceData(nCurrent, spacingZ, 1.0, r, 0);
-  }
+    if (nCurrent > 0) {
+      tGen.updateInstanceData(nCurrent, spacingZ, 1.0, r, 0);
+    }
+    // 依据实际起点里程，沿 Z 轴负方向进行轴向空间定位偏置，实现全线多区间纵向顺序组装
+    tGen.mesh.position.z = -start_chainage;
+    rManager.advancePipeMesh.position.z = -start_chainage;
+    rBoltGen.mesh.position.z = -start_chainage;
+
+    scene.add(tGen.mesh, rManager.advancePipeMesh, rBoltGen.mesh);
+    activeMeshes.push(tGen.mesh, rManager.advancePipeMesh, rBoltGen.mesh);
+  });
+
 
   scheduleRender();
 };
@@ -148,15 +153,10 @@ const dispatchToPipeline = (rawData: ITunnelParams) => {
 // 2. 数据单向监听与解包
 // ==========================================
 watch(
-  activeSnapshot,
-  (newSnap) => {
-    if (newSnap) {
-      // toRaw剥离：解除 Vue Proxy 响应式代理，规避大体量数据高频深度监听引发的性能损耗
-      const rawSnapshot = toRaw(newSnap) as ITunnelParams;
-      dispatchToPipeline(rawSnapshot);
-    }
-  },
-  { deep: true }
+ () => snapshotStore.refresh3DTrigger, // 侦听手动刷新触发信号
+ () => {
+   renderSelectedSnapshots();
+ }
 );
 
 // 窗口尺寸动态自适应
@@ -173,6 +173,7 @@ const handleResize = () => {
 
 onMounted(() => {
   initWebGL();
+  renderSelectedSnapshots(); // 初始挂载时自动装配一次
   window.addEventListener('resize', handleResize);
 });
 
