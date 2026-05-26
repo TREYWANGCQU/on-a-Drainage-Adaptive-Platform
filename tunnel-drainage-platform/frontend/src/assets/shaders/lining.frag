@@ -89,79 +89,103 @@ void main() {
             float tex = sin(vLocalPosition.x * 20.0) * sin(vLocalPosition.y * 20.0);
             finalColor += vec3(tex * 0.02);
         } 
-        else if (reff >= r1 && reff < r2) {
+        else if (reff >= r1 && reff <=r2) {
             finalColor = colorPrimary;
             roughness = 0.8;
-            float grid = step(0.92, sin(reff * 40.0));
+            float wave = sin(reff * 40.0);
+            float delta = fwidth(wave) * 1.5; 
+            float grid = smoothstep(0.92 - delta, 0.92 + delta, wave);
+            
             finalColor = mix(finalColor, vec3(0.22, 0.24, 0.26), grid * 0.4);
         } 
-        else if (reff >= r2 && reff <= rg) {
-            finalColor = colorGrout;
-            roughness = 0.6;
-            metallic = 0.4;
-            float lattice = step(0.96, sin(vLocalPosition.x * 15.0) * sin(vLocalPosition.y * 15.0));
-            finalColor = mix(finalColor, vec3(0.4, 0.8, 1.0), lattice * 0.6);
-            emit = lattice * 0.5 + 0.1; 
-        } 
+        
         else {
             discard;
         }
         
         float edgeStroke = 0.03;
-        if (abs(reff - r1) < edgeStroke || abs(reff - r2) < edgeStroke || abs(reff - rg) < edgeStroke) {
+        if (abs(reff - r1) < edgeStroke || abs(reff - r2) < edgeStroke ) {
             finalColor = mix(finalColor, colorEdge, 0.7);
         }
     } 
     else {
        
-        
         // ==================== 2. 隧道侧壁与内表面渲染 ====================
-        float x_orig = vLocalPosition.x;
-        float center_x = 0.0;
-        if (spacing > 0.1) { center_x = sign(x_orig) * (spacing * 0.5); }
-        float xl = x_orig - center_x;
+    float x_orig = vLocalPosition.x;
+    float center_x = 0.0;
+    if (spacing > 0.1) { center_x = sign(x_orig) * (spacing * 0.5); }
+    float xl = x_orig - center_x;
 
-        // 补充细节：根据同心拓扑推算仰拱最低处的绝对高度边界
-        float dy_u = sqrt(max(0.01, (1.80 - 0.65) * (1.80 - 0.65) - (1.05 - 0.65) * (1.05 - 0.65))) * r;
-        float H_side_u = max(0.0, 2.1 * r * aspect - 1.05 * r + dy_u - 1.80 * r);
-        float arc_y_bottom = -H_side_u + dy_u - 1.80 * r;
+    // 补充细节：根据同心拓扑推算仰拱最低处的绝对高度边界与路面绝对高度
+    float dy_u = sqrt(max(0.01, (1.80 - 0.65) * (1.80 - 0.65) - (1.05 - 0.65) * (1.05 - 0.65))) * r;
+    float H_side_u = max(0.0, 2.1 * r * aspect - 1.05 * r + dy_u - 1.80 * r);
+    float arc_y_bottom = -H_side_u + dy_u - 1.80 * r;
+    
+    float dy_road = 1.80 * r - 0.8;
+    float halfRoadW = sqrt(max(0.0, 1.80 * r * 1.80 * r - dy_road * dy_road));
+    float roadY = arc_y_bottom + 0.8;
 
-        // 修改点：合理补充演示细节。对排水沟内侧壁及底部表面涂装“深色防渗涂层”，并利用正弦波模拟纵向流动的智能化“蓝色排水水线”效果
-        if (r > 5.0 && abs(xl) <= 0.305 && vLocalPosition.y < (arc_y_bottom + 0.15)) {
-            finalColor = vec3(0.14, 0.16, 0.18); // 水泥防腐深色涂装
-            roughness = 0.3;
-            float waterGlow = step(0.96, sin(vLocalPosition.z * 5.0)); // 纵向流动水迹模拟
-            finalColor = mix(finalColor, vec3(0.0, 0.6, 0.95), waterGlow * 0.5);
-            emit = waterGlow * 0.4;
+    // 空间区域严格分类判定
+    bool isCenterDitch = (r > 5.0 && abs(xl) <= 0.305 && vLocalPosition.y < roadY);
+    bool isSideDitch = (abs(xl) >= (halfRoadW - 0.305) && abs(xl) <= (halfRoadW + 0.01) && vLocalPosition.y < roadY);
+    bool isRoadSurface = (vLocalNormal.y > 0.9 && abs(vLocalPosition.y - roadY)<0.05);
+
+    if (isCenterDitch) {
+        // 对于 r > r_threshold(5.0)，中心水沟严格保留并涂装
+        finalColor = vec3(0.12, 0.14, 0.16); 
+        roughness = 0.2;
+        emit = 0.0;
+    }
+    else if (isSideDitch) {
+        // 增加两侧边沟的演示效果设置
+        // 两侧边沟取消流动条纹，改用均匀深色防渗涂装
+        finalColor = vec3(0.12, 0.15, 0.18); 
+        roughness = 0.3;
+        //float waterFlow = step(0.95, sin(vLocalPosition.z * 4.0 + 1.0)); 
+        //finalColor = mix(finalColor, vec3(0.0, 0.8, 0.7), waterFlow * 0.4);
+        emit = 0.0;
+    }
+    else if (isRoadSurface) {
+        // 回填层路面设置为半透明材质，以便查看后期隐藏的排水管线
+        roughness = 0.2;
+        metallic = 0.4;
+        
+        // 计算当前点到路面中心的相对距离比例 (0.0 为中心，1.0 为最外侧边沟沿)
+        float edgeFactor = abs(xl) / halfRoadW;
+        
+        // 采用高幂次曲线，让透明度在中心快速收敛至极低，在边缘处陡峭上升
+        float borderGlow = pow(edgeFactor, 4.0);
+        
+        // 调色：中心淡蓝色，边缘高亮深蓝
+        finalColor = mix(vec3(0.05, 0.1, 0.15), vec3(0.0, 0.6, 1.0), borderGlow);
+        emit = borderGlow * 0.3;
+        
+        // 透明度控制：中心留出 0.15 的极高透明度查看管网，边缘上升到 0.6 锁定轮廓
+        alpha = mix(0.15, 0.60, borderGlow);
+    }
+    else {
+        // 保持原其余内墙面（非路面、非水沟区域）渲染逻辑不变
+        float reff_wall = calculateHorseshoeRadius(vLocalPosition.xy);
+        float mid_r = (r + r2) * 0.5;
+    
+        if (reff_wall < mid_r) {
+            finalColor = colorSecondary * vInstanceColor;
+            roughness = 0.4;
+            float ringJoint = step(0.98, sin(vLocalPosition.z * (3.1415926 / 12.0)));
+            finalColor = mix(finalColor, colorEdge, ringJoint * 0.6);
+            float scanLine = step(0.97, sin(vLocalPosition.z * 0.5 - 0.0));
+            vec3 glowColor = vec3(0.0, 0.9, 1.0);
+            finalColor = mix(finalColor, glowColor, scanLine * 0.3);
+            emit = scanLine * 0.4;
+        } 
+        else {
+            finalColor = vec3(0.18, 0.22, 0.28); 
+            roughness = 0.9;
+            float cracks = step(0.95, sin(vLocalPosition.z * 2.0) * cos(reff_wall * 5.0));
+            finalColor = mix(finalColor, vec3(0.0, 0.5, 0.9), cracks * 0.5);
+            emit = cracks * 0.3;
         }
-        
-        
-        
-        else{
-            float reff_wall = calculateHorseshoeRadius(vLocalPosition.xy);
-            float mid_r = (r + rg) * 0.5;
-        
-            if (reff_wall < mid_r) {
-                finalColor = colorSecondary * vInstanceColor;
-                roughness = 0.4;
-                
-                float ringJoint = step(0.98, sin(vLocalPosition.z * (3.1415926 / 12.0)));
-                finalColor = mix(finalColor, colorEdge, ringJoint * 0.6);
-                
-                float scanLine = step(0.97, sin(vLocalPosition.z * 0.5 - 0.0));
-                vec3 glowColor = vec3(0.0, 0.9, 1.0);
-                finalColor = mix(finalColor, glowColor, scanLine * 0.3);
-                emit = scanLine * 0.4;
-            } 
-            else {
-                finalColor = vec3(0.18, 0.22, 0.28); 
-                roughness = 0.9;
-                
-                float cracks = step(0.95, sin(vLocalPosition.z * 2.0) * cos(reff_wall * 5.0));
-                finalColor = mix(finalColor, vec3(0.0, 0.5, 0.9), cracks * 0.5);
-                emit = cracks * 0.3;
-            }
-        }
+    }
         
     }
     

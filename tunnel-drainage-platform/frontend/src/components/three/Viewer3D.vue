@@ -57,8 +57,10 @@ const initWebGL = () => {
   // 适配高分屏设备像素比
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(width, height);
-
- 
+  
+  // 新增：开启渲染器阴影贴图支持，采用高品质软阴影过滤
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   // 场景与相机基础分配
   scene = new THREE.Scene();
@@ -75,7 +77,22 @@ const initWebGL = () => {
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
   scene.add(ambientLight);
   const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  dirLight.position.set(20, 40, 20);
+  dirLight.position.set(40, 80, 40); // 略微拉高光源位置以获得合理的阴影物理下落
+  // 新增：阴影核心参数设置，消除拉近时的 Shadow Acne (阴影粉刺)
+  dirLight.castShadow = true;
+  dirLight.shadow.bias = -0.0005;       // 深度绝对偏置
+  dirLight.shadow.normalBias = 0.04;    // 核心修改：依物体法线方向向外挤出阴影采样，彻底消除马蹄形仰拱曲面的条纹
+  
+  // 新增：根据当前隧道工程尺度（半径r约5-8m，双洞间距30m）优化阴影相机的正交裁剪面，保障显存像素密度
+  dirLight.shadow.camera.left = -50;
+  dirLight.shadow.camera.right = 50;
+  dirLight.shadow.camera.top = 50;
+  dirLight.shadow.camera.bottom = -50;
+  dirLight.shadow.camera.near = 0.5;
+  dirLight.shadow.camera.far = 300;     // 缩小远裁面，聚焦当前可视的分区分段
+  dirLight.shadow.mapSize.width = 2048; // 提升阴影贴图分辨率
+  dirLight.shadow.mapSize.height = 2048;
+
   scene.add(dirLight);
   // 注：几何体实例推迟至具有实际数据参数时懒加载
 
@@ -128,6 +145,10 @@ const renderSelectedSnapshots = () => {
 
     // 分段建立独立的几何构建管线
     const tGen = new TunnelGenerator(tType, start_chainage, end_chainage, r, aspect_ratio, D_spacing, r1, r2, rg, c);
+    // 新增：允许隧道网格投射与接收阴影
+    tGen.mesh.castShadow = true;
+    tGen.mesh.receiveShadow = true;
+    
     const rManager = new ReinforcementManager(start_chainage, end_chainage, 1.0, 1);
     const rBoltGen = new RockBoltGenerator(start_chainage, end_chainage, 1.0, 1);
 

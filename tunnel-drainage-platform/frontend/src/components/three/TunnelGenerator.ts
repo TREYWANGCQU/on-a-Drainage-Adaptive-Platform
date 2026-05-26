@@ -1,6 +1,5 @@
 // tunnel-drainage-platform\frontend\src\components\three\TunnelGenerator.ts
 import * as THREE from 'three';
-import { polarToCartesian, calculateNormalQuaternion } from '@/utils/math';
 import liningVert from '@/assets/shaders/lining.vert?raw';
 import liningFrag from '@/assets/shaders/lining.frag?raw';
 
@@ -35,7 +34,7 @@ export class TunnelGenerator {
     this.delta_l_min = delta_l_min;
 
     // 构建带有多层解算拓扑的二维截面，并执行拉伸
-    const geometry = this.createHorseshoeBase(type, r, rg, D_spacing, aspect_ratio);
+    const geometry = this.createHorseshoeBase(type, r, r2, D_spacing, aspect_ratio);
 
     //const material = new THREE.MeshStandardMaterial({ color: 0x808080, side: THREE.DoubleSide });// 替换为自定义着色器材质，支持基于半径和间距的动态纹理映射
     // 材质挂载与 Uniform 参数暴露
@@ -43,7 +42,9 @@ export class TunnelGenerator {
       vertexShader: liningVert,
       fragmentShader: liningFrag,
       side: THREE.DoubleSide,
+      
       glslVersion: THREE.GLSL3, // 新增：强制采用 GLSL 3.00 ES 规范编译
+      transparent: true,        // 新增：激活透明混合，用于后期查看排水管
       uniforms: {
         r: { value: r },
         r1: { value: r1 },
@@ -77,21 +78,21 @@ export class TunnelGenerator {
   /**
      * 构建单/双洞组合基准几何体
      */
-  private createHorseshoeBase(type: TunnelType, r: number, rg: number, spacing: number, aspect_ratio: number): THREE.BufferGeometry {
+  private createHorseshoeBase(type: TunnelType, r: number, r2: number, spacing: number, aspect_ratio: number): THREE.BufferGeometry {
     const shapes: THREE.Shape[] = [];
 
     // 根据隧道类型动态推演二维组合面域
     if (type === TunnelType.DOUBLE) {
-      shapes.push(this.createHorseshoeShape(r, rg, -spacing / 2, aspect_ratio));
-      shapes.push(this.createHorseshoeShape(r, rg, spacing / 2, aspect_ratio));
+      shapes.push(this.createHorseshoeShape(r, r2, -spacing / 2, aspect_ratio));
+      shapes.push(this.createHorseshoeShape(r, r2, spacing / 2, aspect_ratio));
     } else {
-      shapes.push(this.createHorseshoeShape(r, rg, 0, aspect_ratio));
+      shapes.push(this.createHorseshoeShape(r, r2, 0, aspect_ratio));
     }
 
     // 约束条件：Three.js 默认的 curveSegments (12) 会导致大半径曲面（仰拱和边墙）产生严重锯齿，且使水沟精确交点悬空
     // 实现方式：将曲线离散段数提升至 64
     // 影响范围：显著提升马蹄形内/外轮廓平滑度，确保排水沟直角结构与仰拱弧面的几何相交精确闭合
-    const settings = { depth: 1, bevelEnabled: false, curveSegments: 64 };
+    const settings = { depth: 1, bevelEnabled: false, curveSegments: 64};
     const geometry = new THREE.ExtrudeGeometry(shapes, settings);
     
    
@@ -101,7 +102,7 @@ export class TunnelGenerator {
   /**
    * 细部截面拓扑生成核心：引入 offsetX 支持空间横向偏移解算
    */
-  private createHorseshoeShape(r: number, rg: number, offsetX: number, aspect_ratio: number): THREE.Shape {
+  private createHorseshoeShape(r: number, r2: number, offsetX: number, aspect_ratio: number): THREE.Shape {
     const shape = new THREE.Shape();
 
     // 闭包函数：同步生成外轮廓与内开挖面，规避数学运算误差
@@ -138,47 +139,57 @@ export class TunnelGenerator {
         path.moveTo(R1 + offsetX, 0);
         if (H_side > 0) path.lineTo(R1 + offsetX, -H_side);
         path.absarc(dx + offsetX, -H_side, R2, Math.PI * 2, aRight, true);
+
+        const ditchW = 0.6;
+        const ditchH = 0.8;
+        const halfW = ditchW / 2;
+
+        // 回填层路面交点解算
+        const dy_road = R3 - ditchH;
+        const halfRoadW = Math.sqrt(Math.max(0, R3 * R3 - dy_road * dy_road));
+        const roadY = invertCenterY - dy_road;
+        const sideW = 0.3; // 侧边沟宽度
+
+        // 1. 计算边沟内缘的横坐标与对应的仰拱二衬弧面切点高程及角度
+        const halfSideW = halfRoadW - sideW;
+        const r3Y_at_side = invertCenterY - Math.sqrt(R3 * R3 - halfSideW * halfSideW);
         
-        // [修复] 动态水沟直接在此处作为内轮廓的延续段生成
+        let aSideInnerRight = Math.atan2(r3Y_at_side - invertCenterY, halfSideW);
+        if (aSideInnerRight < 0) aSideInnerRight += Math.PI * 2;
+
+        // 2. 绘制右侧仰拱弧段：严格止于边沟内缘，使其底部完全由二衬顶面承托
+        path.absarc(offsetX, invertCenterY, R3, aRight, aSideInnerRight, true);
+
+        // 3. 垂直向上绘制右侧边沟的内侧壁面至路面
+        path.lineTo(offsetX + halfSideW, roadY);
+
+        // 4. 对于 r > r_threshold，中心水沟严格保留（底部同样切齐 R3 弧面）
         const r_threshold = 5.0;
-        // 注：此处 r 提取自外部作用域，判别该主参数是否达到触发阈值
         if (r > r_threshold) {
-          const ditchW = 0.6;
-          const ditchH = 0.8;
-          const halfW = ditchW / 2;
-          
-          /// 回填层路面交点解算，确保水沟位于仰拱回填层内
-          const dy_road = R3 - ditchH;
-          const halfRoadW = Math.sqrt(Math.max(0, R3 * R3 - dy_road * dy_road));
-          
-          let aRoadRight = Math.atan2(-dy_road, halfRoadW);
-          if (aRoadRight < 0) aRoadRight += Math.PI * 2;
-          let aRoadLeft = Math.atan2(-dy_road, -halfRoadW);
-          if (aRoadLeft < 0) aRoadLeft += Math.PI * 2;
-          
-          // 绘制右侧仰拱弧段至回填路面交点
-          path.absarc(offsetX, invertCenterY, R3, aRight, aRoadRight, true);
-          
-          // 绘制平坦路面与下凹水沟（水沟底部严密贴合二衬上沿弧面）
-          const roadY = invertCenterY - dy_road;
-          const ditchBottomY = invertCenterY - Math.sqrt(R3 * R3 - halfW * halfW); 
-          
+          const ditchBottomY = invertCenterY - Math.sqrt(R3 * R3 - halfW * halfW);
+
           path.lineTo(offsetX + halfW, roadY);
           path.lineTo(offsetX + halfW, ditchBottomY);
           path.lineTo(offsetX - halfW, ditchBottomY);
           path.lineTo(offsetX - halfW, roadY);
-          path.lineTo(offsetX - halfRoadW, roadY);
-          
-          // 绘制左侧仰拱弧段
-          path.absarc(offsetX, invertCenterY, R3, aRoadLeft, aLeft, true);
-        } else {
-          // 无水沟时，直接补全仰拱弧面
-          path.absarc(offsetX, invertCenterY, R3, aRight, aLeft, true);
         }
-        
+
+        // 5. 横向横穿平坦路面，延伸至左侧边沟内缘
+        path.lineTo(offsetX - halfSideW, roadY);
+
+        // 6. 垂直向下绘制左侧边沟的内侧壁面，直至触及二衬仰拱表面
+        path.lineTo(offsetX - halfSideW, r3Y_at_side);
+
+        // 7. 顺时针补全左侧仰拱弧段，由左边沟内缘平滑过渡至左侧墙角
+        let aSideInnerLeft = Math.atan2(r3Y_at_side - invertCenterY, -halfSideW);
+        if (aSideInnerLeft < 0) aSideInnerLeft += Math.PI * 2;
+
+        path.absarc(offsetX, invertCenterY, R3, aSideInnerLeft, aLeft, true);
+
         path.absarc(-dx + offsetX, -H_side, R2, aLeft, Math.PI, true);
         if (H_side > 0) path.lineTo(-R1 + offsetX, 0);
         path.absarc(offsetX, 0, R1, Math.PI, 0, true);
+      
       } else {
         // 外轮廓：逆时针绘制 Shape
         path.moveTo(R1 + offsetX, 0);
@@ -192,8 +203,8 @@ export class TunnelGenerator {
       return path;
     };
 
-    // 1. 生成衬砌注浆圈最外侧轮廓
-    buildPath(rg, false);
+    // 1. 移出注浆圈的生成解算，改为生成初支最外侧轮廓
+    buildPath(r2, false);
 
     // 2. 生成隧道内侧开挖孔洞
     const holePath = buildPath(r, true) as THREE.Path;

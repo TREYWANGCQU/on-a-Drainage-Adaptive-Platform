@@ -320,7 +320,7 @@ def run_calculation(data):
                 "num_iterations": final_num_iterations,
                 "P_crit_input": P_crit_input,
                 "rg_crit": rg_crit,
-                "tg_crit": tg_crit,
+                "tg_crit": tg_crit, 
                 "q": critical.get('q', 0.0), 
                 "Q": critical.get('Q', 0.0),
                 "P": critical.get('P'),
