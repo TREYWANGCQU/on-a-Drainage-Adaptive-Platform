@@ -60,7 +60,7 @@ const initWebGL = () => {
   
   // 新增：开启渲染器阴影贴图支持，采用高品质软阴影过滤
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   // 场景与相机基础分配
   scene = new THREE.Scene();
@@ -148,7 +148,7 @@ const renderSelectedSnapshots = () => {
     // 新增：允许隧道网格投射与接收阴影
     tGen.mesh.castShadow = true;
     tGen.mesh.receiveShadow = true;
-    
+
     const rManager = new ReinforcementManager(start_chainage, end_chainage, 1.0, 1);
     const rBoltGen = new RockBoltGenerator(start_chainage, end_chainage, 1.0, 1);
 
