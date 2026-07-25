@@ -33,6 +33,7 @@ class ParameterResponse(BaseModel):
     project_name: str
     tunnel_type: str
     parameters_json: str
+    results_json: str | None = None
     created_at: datetime
 
     # Pydantic V2 语法，允许从 SQLAlchemy ORM 模型解析数据
@@ -51,7 +52,8 @@ async def create_parameter(param_in: ParameterCreate, db: AsyncSession = Depends
     db_obj = TunnelParameter(
         project_name=param_in.project_name,
         tunnel_type=param_in.tunnel_type,
-        parameters_json=json.dumps(param_in.parameters_json, ensure_ascii=False)
+        parameters_json=json.dumps(param_in.parameters_json, ensure_ascii=False),
+        results_json=json.dumps(param_in.results_json, ensure_ascii=False) if param_in.results_json else None
     )
     db.add(db_obj)
     await db.commit()

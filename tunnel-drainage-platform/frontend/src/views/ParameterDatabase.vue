@@ -14,6 +14,7 @@
           <el-option label="铁路" value="铁路" />
           <el-option label="水工" value="水工" />
           <el-option label="综合管廊" value="综合管廊" />
+          <el-option label="其他" value="其他" />
         </el-select>
         <el-button type="primary" @click="fetchData" icon="Search">查询</el-button>
         <el-button type="warning" @click="openCompare" :disabled="selectedRows.length < 2">
@@ -133,7 +134,8 @@ const handleSelectionChange = (val: any[]) => { selectedRows.value = val; };
 // [修改] 载入参数后，触发 close 事件关闭弹窗，而不是跳转路由
 const loadToWorkspace = (row: any) => {
   const parsedParams = parseJSON(row.parameters_json);
-  paramStore.overrideAll(parsedParams, parsedParams.tunnel_type);
+  const parsedResults = row.results_json ? parseJSON(row.results_json) : null;
+  paramStore.overrideAll(parsedParams, parsedParams.tunnel_type, parsedResults);
   ElMessage.success(`已将 [${row.project_name}] 载入当前计算引擎`);
   emit('close'); // 通知 Dashboard 关闭弹窗
 };

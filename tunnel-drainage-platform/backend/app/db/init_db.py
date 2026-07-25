@@ -53,7 +53,7 @@ async def init_models():
 
             demo_project = TunnelParameter(
                 project_name="晏家隧道-多维协同智能排水示范段",
-                tunnel_type="市政",
+                tunnel_type="公路",
                 parameters_json=demo_params.model_dump_json() # Pydantic v2 序列化
             )
 
