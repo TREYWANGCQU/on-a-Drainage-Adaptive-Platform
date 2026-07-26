@@ -80,8 +80,8 @@ const initWebGL = () => {
   dirLight.position.set(40, 80, 40); // 略微拉高光源位置以获得合理的阴影物理下落
   // 新增：阴影核心参数设置，消除拉近时的 Shadow Acne (阴影粉刺)
   dirLight.castShadow = true;
-  dirLight.shadow.bias = -0.0005;       // 深度绝对偏置
-  dirLight.shadow.normalBias = 0.04;    // 核心修改：依物体法线方向向外挤出阴影采样，彻底消除马蹄形仰拱曲面的条纹
+  dirLight.shadow.bias = 0.0001;        // 核心修改：修正为正微量偏置，消除曲面阴影自遮挡 Shadow Acne 斑马条纹
+  dirLight.shadow.normalBias = 0.05;    // 依物体法线方向向外挤出阴影采样，平滑马蹄形曲面 shadow
   
   // 新增：根据当前隧道工程尺度（半径r约5-8m，双洞间距30m）优化阴影相机的正交裁剪面，保障显存像素密度
   dirLight.shadow.camera.left = -50;
@@ -145,12 +145,42 @@ const renderSelectedSnapshots = () => {
 
     // 分段建立独立的几何构建管线
     const tGen = new TunnelGenerator(tType, start_chainage, end_chainage, r, aspect_ratio, D_spacing, r1, r2, rg, c);
-    // 新增：允许隧道网格投射与接收阴影
-    tGen.mesh.castShadow = true;
-    tGen.mesh.receiveShadow = true;
+    // 新增：关闭隧道自定义Shader网格的透射与接收阴影，防止Shadow Acne斑马纹，关闭视锥体裁剪以防旋转消失
+    tGen.mesh.castShadow = false;
+    tGen.mesh.receiveShadow = false;
+    tGen.mesh.frustumCulled = false;
 
-    const rManager = new ReinforcementManager(start_chainage, end_chainage, 1.0, 1);
-    const rBoltGen = new RockBoltGenerator(start_chainage, end_chainage, 1.0, 1);
+    const rManager = new ReinforcementManager(
+      {
+        outer_angle: 5,
+        circumferential_spacing: 0.4,
+        per_ring: 30,
+        longitudinal_spacing: 2.0,
+        start_chainage,
+        end_chainage,
+        tunnel_radius: r
+      },
+      {
+        rg,
+        r2,
+        start_chainage,
+        end_chainage,
+        tunnel_type: tunnel_type === 'double' ? 'double' : 'single',
+        D_spacing
+      }
+    );
+    rManager.updateFromSnapshot(rawData);
+
+    const rBoltGen = new RockBoltGenerator({
+      bolts_per_ring: 12,
+      spacing_z: 1.0,
+      start_angle: -Math.PI / 4,
+      end_angle: Math.PI + Math.PI / 4,
+      start_chainage,
+      end_chainage,
+      tunnel_radius: r
+    });
+    rBoltGen.updateFromSnapshot(rawData);
 
     const spacingZ = 1.0;
     const nCurrent = Math.ceil((end_chainage - start_chainage) / spacingZ);
@@ -159,11 +189,20 @@ const renderSelectedSnapshots = () => {
     }
     // 依据实际起点里程，沿 Z 轴负方向进行轴向空间定位偏置，实现全线多区间纵向顺序组装
     tGen.mesh.position.z = -start_chainage;
-    rManager.advancePipeMesh.position.z = -start_chainage;
-    rBoltGen.mesh.position.z = -start_chainage;
+    scene.add(tGen.mesh);
+    activeMeshes.push(tGen.mesh);
 
-    scene.add(tGen.mesh, rManager.advancePipeMesh, rBoltGen.mesh);
-    activeMeshes.push(tGen.mesh, rManager.advancePipeMesh, rBoltGen.mesh);
+    rManager.getMeshes().forEach(mesh => {
+      mesh.position.z = -start_chainage;
+      mesh.frustumCulled = false;
+      scene.add(mesh);
+      activeMeshes.push(mesh);
+    });
+
+    rBoltGen.mesh.position.z = -start_chainage;
+    rBoltGen.mesh.frustumCulled = false;
+    scene.add(rBoltGen.mesh);
+    activeMeshes.push(rBoltGen.mesh);
   });
 
 

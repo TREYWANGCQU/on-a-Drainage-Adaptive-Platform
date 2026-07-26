@@ -52,13 +52,15 @@ export class TunnelGenerator {
         rg: { value: rg },
         // 新增：动态传入真实的双洞间距，若是单洞则传 0
         spacing: { value: type === TunnelType.DOUBLE ? D_spacing : 0.0 },
-        aspect: { value: aspect_ratio } // 新增：传入长宽比参数，支持非等比例隧道截面纹理适配
+        aspect: { value: aspect_ratio }, // 新增：传入长宽比参数，支持非等比例隧道截面纹理适配
+        totalLength: { value: this.L_max } // 新增：传入隧道总长度，用于着色器内部端面切片剔除
       }
     });
     // 极值计算：N_max = ceil(L_max / delta_l_min) * C_ring
     // 规避运行时高频内存垃圾回收(GC)，一次性向 GPU 申请最大连续显存空间 BufferAttribute
     const nMax = Math.ceil(this.L_max / this.delta_l_min) * this.c_ring;
     this.mesh = new THREE.InstancedMesh(geometry, material, nMax);
+    this.mesh.frustumCulled = false;
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     // 动态控制初始化渲染实例数为 0，避免冗余网格绘制
@@ -92,8 +94,9 @@ export class TunnelGenerator {
     // 约束条件：Three.js 默认的 curveSegments (12) 会导致大半径曲面（仰拱和边墙）产生严重锯齿，且使水沟精确交点悬空
     // 实现方式：将曲线离散段数提升至 64
     // 影响范围：显著提升马蹄形内/外轮廓平滑度，确保排水沟直角结构与仰拱弧面的几何相交精确闭合
-    const settings = { depth: 1, bevelEnabled: false, curveSegments: 64};
+    const settings = { depth: 0.999, bevelEnabled: false, curveSegments: 64};
     const geometry = new THREE.ExtrudeGeometry(shapes, settings);
+    geometry.computeVertexNormals();
     
    
 

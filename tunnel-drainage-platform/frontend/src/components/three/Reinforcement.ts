@@ -96,6 +96,7 @@ export class ReinforcementManager {
       advanceMaterial, 
       this.nMaxAdvance
     );
+    this.advancePipeMesh.frustumCulled = false;
     this.advancePipeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.advancePipeMesh.count = 0;
 
@@ -120,6 +121,7 @@ export class ReinforcementManager {
       groutingMaterial,
       this.nMaxGrouting
     );
+    this.groutingMesh.frustumCulled = false;
     this.groutingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.groutingMesh.count = 0;
 
@@ -138,6 +140,7 @@ export class ReinforcementManager {
         criticalMaterial,
         this.nMaxGrouting
       );
+      this.criticalGroutingMesh.frustumCulled = false;
       this.criticalGroutingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       this.criticalGroutingMesh.count = 0;
     }
@@ -374,6 +377,7 @@ export class RockBoltGenerator {
     });
 
     this.mesh = new THREE.InstancedMesh(geometry, material, nMax);
+    this.mesh.frustumCulled = false;
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.count = 0;
   }

@@ -86,6 +86,7 @@ export class DrainagePipeGenerator {
     });
 
     const mesh = new THREE.InstancedMesh(geometry, material, count);
+    mesh.frustumCulled = false;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.count = 0;
     mesh.castShadow = true;

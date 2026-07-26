@@ -1,4 +1,6 @@
 // tunnel-drainage-platform\frontend\src\assets\shaders\lining.vert
+#include <common>
+
 // 暴露的隧道参数 Uniforms
 uniform float r;
 uniform float r1;
@@ -11,6 +13,9 @@ out vec3 vNormal;
 out vec3 vViewPosition;
 out vec3 vInstanceColor;
 out vec3 vLocalNormal; // 确保此处存在输出声明
+out vec3 vWorldPosition; // 新增：传递世界坐标
+
+#include <logdepthbuf_pars_vertex>
 
 void main() {
     vLocalPosition = position;
@@ -27,9 +32,12 @@ void main() {
         transformedNormal = instanceNormalMatrix * transformedNormal;
     #endif
     
-    // 传递法线与视图方向
+    // 传递世界坐标与视图参数
+    vec4 worldPosition = modelMatrix * localPosition;
+    vWorldPosition = worldPosition.xyz;
+
     vNormal = normalize(normalMatrix * transformedNormal);
-    vec4 mvPosition = modelViewMatrix * localPosition;
+    vec4 mvPosition = viewMatrix * worldPosition;
     vViewPosition = -mvPosition.xyz;
     
     // 严格分离：适配实例颜色的独立宏推演
@@ -40,4 +48,6 @@ void main() {
     #endif
     
     gl_Position = projectionMatrix * mvPosition;
+
+    #include <logdepthbuf_vertex>
 }
