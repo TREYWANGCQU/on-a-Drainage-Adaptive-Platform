@@ -126,9 +126,13 @@ export class DrainagePipeGenerator {
   /**
    * 计算环向管数量：基于里程跨度与推荐间距
    */
+  /**
+   * 计算环向管数量：基于里程跨度与推荐间距，若双侧排水则左右各一根（数量翻倍）
+   */
   private calculateRingCount(): number {
     const length = Math.abs(this.config.endChainage - this.config.startChainage);
-    return Math.max(1, Math.ceil(length / this.config.ringSpacing));
+    const baseRings = Math.max(1, Math.ceil(length / this.config.ringSpacing));
+    return this.config.doubleSide ? baseRings * 2 : baseRings;
   }
 
   /**
@@ -183,28 +187,48 @@ export class DrainagePipeGenerator {
   }
 
   /**
-   * 更新环向排水盲管阵列
+   * 更新环向排水盲管阵列（左右双侧对称生成）
    */
   private updateRingPipes(xOffset: number = 0, targetMesh: THREE.InstancedMesh = this.ringMesh): void {
-    const count = this.calculateRingCount();
-    targetMesh.count = Math.min(count, targetMesh.instanceMatrix.count);
+    const lengthVal = Math.abs(this.config.endChainage - this.config.startChainage);
+    const baseRings = Math.max(1, Math.ceil(lengthVal / this.config.ringSpacing));
+    const isDoubleSide = this.config.doubleSide;
+    const totalCount = isDoubleSide ? baseRings * 2 : baseRings;
+    targetMesh.count = Math.min(totalCount, targetMesh.instanceMatrix.count);
     
     const matrix = new THREE.Matrix4();
     const { sideDitchX, roadY } = this.getDitchGeometry();
-    const length = Math.PI * this.config.tunnelRadius * 0.25;
+    const pipeLength = Math.PI * this.config.tunnelRadius * 0.25;
 
-    for (let i = 0; i < count; i++) {
+    let idx = 0;
+    for (let i = 0; i < baseRings; i++) {
       const z = -(i * this.config.ringSpacing);
-      const position = new THREE.Vector3(xOffset + sideDitchX, roadY + 0.2, z);
-      const center = new THREE.Vector3(xOffset, 0, z);
-      
-      const quaternion = calculateNormalQuaternion(position, center);
-      const ringQuaternion = quaternion.clone().multiply(
-        new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2)
-      );
 
-      matrix.compose(position, ringQuaternion, new THREE.Vector3(1, length, 1));
-      targetMesh.setMatrixAt(i, matrix);
+      // 右侧环向盲管
+      if (idx < targetMesh.count) {
+        const posRight = new THREE.Vector3(xOffset + sideDitchX, roadY + 0.2, z);
+        const centerRight = new THREE.Vector3(xOffset, 0, z);
+        const quatRight = calculateNormalQuaternion(posRight, centerRight);
+        const ringQuatRight = quatRight.clone().multiply(
+          new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2)
+        );
+        matrix.compose(posRight, ringQuatRight, new THREE.Vector3(1, pipeLength, 1));
+        targetMesh.setMatrixAt(idx, matrix);
+        idx++;
+      }
+
+      // 左侧环向盲管（双侧排水模式下生成对称镜像）
+      if (isDoubleSide && idx < targetMesh.count) {
+        const posLeft = new THREE.Vector3(xOffset - sideDitchX, roadY + 0.2, z);
+        const centerLeft = new THREE.Vector3(xOffset, 0, z);
+        const quatLeft = calculateNormalQuaternion(posLeft, centerLeft);
+        const ringQuatLeft = quatLeft.clone().multiply(
+          new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2)
+        );
+        matrix.compose(posLeft, ringQuatLeft, new THREE.Vector3(1, pipeLength, 1));
+        targetMesh.setMatrixAt(idx, matrix);
+        idx++;
+      }
     }
 
     targetMesh.instanceMatrix.needsUpdate = true;

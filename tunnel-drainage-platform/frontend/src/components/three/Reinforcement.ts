@@ -1,6 +1,7 @@
 // tunnel-drainage-platform/frontend/src/components/three/Reinforcement.ts
 import * as THREE from 'three';
 import { polarToCartesian, calculateNormalQuaternion } from '@/utils/math';
+import { buildHorseshoeShape } from './TunnelGenerator';
 
 /**
  * 注浆圈配置接口 - 严格遵循阶段4-snapshot字段映射
@@ -110,9 +111,11 @@ export class ReinforcementManager {
     const segmentsGrouting = Math.max(1, Math.ceil(L_grouting / 5.0)); // 每5m一段
     this.nMaxGrouting = segmentsGrouting * 2;
 
-    // 原始注浆圈（半透明青色），默认 CylinderGeometry 沿 Y 轴，需 rotateX(Math.PI / 2) 轴线顺 Z 轴
-    const groutingGeom = new THREE.CylinderGeometry(1, 1, 1, 32, 1, true);
-    groutingGeom.rotateX(Math.PI / 2);
+    // 原始注浆圈（半透明青色），构建封闭马蹄形环状截面
+    const r_base = groutingConfig.r2 ? groutingConfig.r2 / 1.18 : 5.5;
+    const shapeInitial = buildHorseshoeShape(r_base, groutingConfig.rg || (groutingConfig.r2 + 1.5), groutingConfig.r2 || 6.5, 0, 0.7);
+    const groutingGeom = new THREE.ExtrudeGeometry(shapeInitial, { depth: 1.0, bevelEnabled: false, curveSegments: 32 });
+
     const groutingMaterial = new THREE.MeshStandardMaterial({
       color: 0x00ffff,
       roughness: 0.3,
@@ -204,8 +207,8 @@ export class ReinforcementManager {
     mesh: THREE.InstancedMesh,
     segments: number,
     segmentLength: number,
-    startZ: number,
-    _rInner: number,
+    _startZ: number,
+    rInner: number,
     rOuter: number,
     _color: number,
     opacity: number = 0.25,
@@ -216,9 +219,17 @@ export class ReinforcementManager {
     const totalInstances = isDouble ? segments * 2 : segments;
     mesh.count = Math.min(totalInstances, mesh.instanceMatrix.count);
 
+    if (rOuter > rInner) {
+      const r_base = rInner ? rInner / 1.18 : 5.5;
+      const horseshoeShape = buildHorseshoeShape(r_base, rOuter, rInner, 0, 0.7);
+      const newGeom = new THREE.ExtrudeGeometry(horseshoeShape, { depth: 1.0, bevelEnabled: false, curveSegments: 32 });
+      if (mesh.geometry) mesh.geometry.dispose();
+      mesh.geometry = newGeom;
+    }
+
     const matrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
-    const scale = new THREE.Vector3(rOuter, rOuter, segmentLength);
+    const scale = new THREE.Vector3(1, 1, segmentLength);
     const quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0));
 
     let idx = 0;

@@ -144,22 +144,72 @@ export class StressProbeManager {
     const zPos = zPosition - L / 2;
     const probePos = new THREE.Vector3(probeX, probeY, zPos);
 
-    // 3. 构建 3D 高亮光环与锚线
-    const ringGeo = new THREE.TorusGeometry(0.6, 0.08, 16, 32);
+    // 3. 构建 24 单元色阶环 (围绕截面 24 个衬砌单元周向分布)
+    const computeHorseshoePoint = (deg: number): THREE.Vector3 => {
+      const r = (deg * Math.PI) / 180;
+      let px = 0;
+      let py = 0;
+      if (r >= 0 && r <= Math.PI) {
+        px = R1 * Math.cos(r);
+        py = R1 * Math.sin(r);
+      } else if (Math.sin(r) < -0.6) {
+        px = R3 * Math.cos(r);
+        py = invertCenterY + R3 * Math.sin(r);
+      } else if (Math.cos(r) > 0) {
+        px = dx + R2 * Math.cos(r);
+        py = -H_side + R2 * Math.sin(r);
+      } else {
+        px = -dx + R2 * Math.cos(r);
+        py = -H_side + R2 * Math.sin(r);
+      }
+      return new THREE.Vector3(px, py, zPos);
+    };
+
+    for (let i = 0; i < 24; i++) {
+      const deg1 = 90 - (i / 24) * 360;
+      const deg2 = 90 - ((i + 1) / 24) * 360;
+      const p1 = computeHorseshoePoint(deg1);
+      const p2 = computeHorseshoePoint(deg2);
+
+      const segVec = p2.clone().sub(p1);
+      const segLen = segVec.length();
+      if (segLen > 0.001) {
+        const segCenter = p1.clone().add(p2).multiplyScalar(0.5);
+        const segGeo = new THREE.CylinderGeometry(0.12, 0.12, segLen, 8);
+        const segMat = new THREE.MeshStandardMaterial({
+          color: colors[i],
+          emissive: colors[i].clone().multiplyScalar(0.35),
+          roughness: 0.3
+        });
+        const segMesh = new THREE.Mesh(segGeo, segMat);
+        segMesh.position.copy(segCenter);
+
+        const up = new THREE.Vector3(0, 1, 0);
+        const dir = segVec.clone().normalize();
+        const quat = new THREE.Quaternion().setFromUnitVectors(up, dir);
+        segMesh.quaternion.copy(quat);
+
+        this.probeGroup.add(segMesh);
+      }
+    }
+
+    // 4. 构建 3D 最不利探针高亮光环与球体 (同步 24 单元精准 HSL 色彩)
     const isCritical = minK <= tolSafetyFactor;
+    const activeColor = colors[controlIdx] || (isCritical ? new THREE.Color(0xff0000) : new THREE.Color(0x00ff88));
+    const ringGeo = new THREE.TorusGeometry(0.6, 0.08, 16, 32);
     const ringMat = new THREE.MeshBasicMaterial({
-      color: isCritical ? 0xff0000 : 0x00ff88,
+      color: activeColor,
       wireframe: true
     });
     const ringMesh = new THREE.Mesh(ringGeo, ringMat);
     ringMesh.position.copy(probePos);
     this.probeGroup.add(ringMesh);
 
-    // 指示红点/绿点
+    // 指示高亮点
     const sphereGeo = new THREE.SphereGeometry(0.3, 16, 16);
     const sphereMat = new THREE.MeshStandardMaterial({
-      color: isCritical ? 0xff0000 : 0x00ff88,
-      emissive: isCritical ? 0x990000 : 0x006633,
+      color: activeColor,
+      emissive: activeColor.clone().multiplyScalar(0.5),
       roughness: 0.2
     });
     const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);

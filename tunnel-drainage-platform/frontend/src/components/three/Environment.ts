@@ -290,17 +290,21 @@ export class Environment {
       : this.config.tunnelRadius * 4;
     
     for (let i = 0; i < particleCount; i++) {
-      // 初始位置分布在隧道周围（沿-Z向延伸）
-      positions[i * 3] = (Math.random() - 0.5) * spreadX;
-      positions[i * 3 + 1] = this.currentState.waterHead - Math.random() * 10;
+      // 360° 围绕隧道的极坐标分布
+      const theta = Math.random() * Math.PI * 2;
+      const rDist = this.config.tunnelRadius * 1.5 + Math.random() * this.config.tunnelRadius * 3.5;
+      
+      positions[i * 3] = rDist * Math.cos(theta);
+      positions[i * 3 + 1] = rDist * Math.sin(theta);
       positions[i * 3 + 2] = -this.config.startChainage - Math.random() * length;
       
       sizes[i] = Math.random() * 3 + 1;
       phases[i] = Math.random() * Math.PI * 2;
       
-      // 向隧道中心的渗透速度
-      velocities[i * 3] = (Math.random() - 0.5) * 0.5;
-      velocities[i * 3 + 1] = -Math.random() * 2 - 0.5; // 向下
+      // 径向向隧道中心 (0, 0, Z) 的渗透速度矢量
+      const speed = Math.random() * 1.2 + 0.4;
+      velocities[i * 3] = -Math.cos(theta) * speed;
+      velocities[i * 3 + 1] = -Math.sin(theta) * speed;
       velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.3;
     }
     
@@ -333,17 +337,16 @@ export class Environment {
    * 基于总渗漏量 Q 动态调整：Q越大，流速越快
    */
   private calculateFlowSpeed(leakageQ: number): number {
-    // 基础流速 + 渗漏量映射
     const baseSpeed = 0.5;
-    const speedFactor = Math.min(leakageQ / 100, 5.0); // 上限保护
+    const speedFactor = Math.min(leakageQ / 100, 5.0);
     return baseSpeed + speedFactor;
   }
 
   /**
-   * 初始化流线可视化
+   * 初始化流线可视化 (360° 辐射向隧道中心轴线收敛)
    */
   private initFlowLines(): void {
-    const lineCount = 50;
+    const lineCount = 60;
     const pointsPerLine = 20;
     const geometry = new THREE.BufferGeometry();
     
@@ -353,24 +356,25 @@ export class Environment {
     const length = Math.abs(this.config.endChainage - this.config.startChainage);
     
     for (let i = 0; i < lineCount; i++) {
-      const startX = (Math.random() - 0.5) * this.config.tunnelRadius * 6;
+      const theta = (i / lineCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.1;
+      const rOuter = this.config.tunnelRadius * 3.5;
+      const rInner = this.config.tunnelRadius * 1.1;
       const startZ = -this.config.startChainage - Math.random() * length;
       
       for (let j = 0; j < pointsPerLine - 1; j++) {
         const t1 = j / (pointsPerLine - 1);
         const t2 = (j + 1) / (pointsPerLine - 1);
         
-        // 流线向隧道中心汇聚
-        const y1 = this.currentState.waterHead * (1 - t1) + this.config.tunnelRadius * t1;
-        const y2 = this.currentState.waterHead * (1 - t2) + this.config.tunnelRadius * t2;
+        const r1 = rOuter * (1 - t1) + rInner * t1;
+        const r2 = rOuter * (1 - t2) + rInner * t2;
         
-        const convergeFactor1 = 1 - t1 * 0.8;
-        const convergeFactor2 = 1 - t2 * 0.8;
+        const x1 = r1 * Math.cos(theta);
+        const y1 = r1 * Math.sin(theta);
+        const z1 = startZ - t1 * 2;
         
-        const x1 = startX * convergeFactor1;
-        const x2 = startX * convergeFactor2;
-        const z1 = startZ - t1 * 5;
-        const z2 = startZ - t2 * 5;
+        const x2 = r2 * Math.cos(theta);
+        const y2 = r2 * Math.sin(theta);
+        const z2 = startZ - t2 * 2;
         
         positions.push(x1, y1, z1, x2, y2, z2);
         
@@ -388,7 +392,7 @@ export class Environment {
     const material = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: 0.3,
+      opacity: 0.35,
       linewidth: 1
     });
     

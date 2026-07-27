@@ -107,6 +107,37 @@
         </div>
       </div>
     </div>
+
+    <!-- 标准视角与交互测距 Toolbar -->
+    <div class="toolbar-panel glass-card">
+      <div class="toolbar-section">
+        <span class="section-title">标准视角</span>
+        <div class="view-btn-grid">
+          <button class="tool-btn" @click="switchToStandardView('front')" title="正视图">正视 F</button>
+          <button class="tool-btn" @click="switchToStandardView('left')" title="左视图">左视 L</button>
+          <button class="tool-btn" @click="switchToStandardView('right')" title="右视图">右视 R</button>
+          <button class="tool-btn" @click="switchToStandardView('top')" title="俯视图">俯视 T</button>
+          <button class="tool-btn" @click="switchToStandardView('bottom')" title="仰视图">仰视 B</button>
+          <button class="tool-btn" @click="switchToStandardView('perspective')" title="透视图">透视 P</button>
+        </div>
+      </div>
+      <div class="toolbar-divider"></div>
+      <div class="toolbar-section">
+        <span class="section-title">交互工具</span>
+        <div class="action-btn-row">
+          <button 
+            class="tool-btn measure-btn" 
+            :class="{ active: isMeasuring }" 
+            @click="toggleMeasurementMode"
+          >
+            📏 {{ isMeasuring ? '测距中...' : '距离量测' }}
+          </button>
+          <button class="tool-btn clear-btn" @click="clearMeasurements" title="清除所有测距标注">
+            🗑 清除
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -324,7 +355,189 @@ const initWebGL = () => {
   scene.add(dirLight);
 
   probeManager = new StressProbeManager(scene);
+  scene.add(measureGroup);
   scheduleRender();
+};
+
+// 交互测距与标准视角控制状态
+const isMeasuring = ref(false);
+const measurePoints = ref<THREE.Vector3[]>([]);
+const measureGroup = new THREE.Group();
+const raycaster = new THREE.Raycaster();
+const mouseVec = new THREE.Vector2();
+let cameraAnimFrameId: number | null = null;
+
+/**
+ * 切换标准工程视角 (0.8s 平滑动画过渡)
+ */
+const switchToStandardView = (viewKey: string) => {
+  if (!camera || !controls) return;
+  if (cameraAnimFrameId !== null) cancelAnimationFrame(cameraAnimFrameId);
+
+  const L = maxChainageLength.value || 50;
+  const startZ = startChainageVal.value || 0;
+  const targetZ = -startZ - L / 2;
+  const targetLookAt = new THREE.Vector3(0, 0, targetZ);
+  const R = 6.0;
+
+  let targetPos = new THREE.Vector3();
+
+  switch (viewKey) {
+    case 'front':
+      targetPos.set(0, 0, 35);
+      break;
+    case 'left':
+      targetPos.set(-R * 6, 0, targetZ);
+      break;
+    case 'right':
+      targetPos.set(R * 6, 0, targetZ);
+      break;
+    case 'top':
+      targetPos.set(0, R * 6, targetZ);
+      break;
+    case 'bottom':
+      targetPos.set(0, -R * 6, targetZ);
+      break;
+    case 'perspective':
+    default:
+      targetPos.set(R * 4, R * 3, 20);
+      break;
+  }
+
+  const startPos = camera.position.clone();
+  const startTarget = controls.target.clone();
+  const startTime = performance.now();
+  const durationMs = 800;
+
+  const animateStep = (now: number) => {
+    const elapsed = now - startTime;
+    const progress = Math.min(1.0, elapsed / durationMs);
+    const ease = progress < 0.5
+      ? 4 * progress * progress * progress
+      : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+    camera.position.lerpVectors(startPos, targetPos, ease);
+    controls.target.lerpVectors(startTarget, targetLookAt, ease);
+    controls.update();
+    scheduleRender();
+
+    if (progress < 1.0) {
+      cameraAnimFrameId = requestAnimationFrame(animateStep);
+    } else {
+      cameraAnimFrameId = null;
+    }
+  };
+
+  cameraAnimFrameId = requestAnimationFrame(animateStep);
+};
+
+/**
+ * 切换距离量测模式
+ */
+const toggleMeasurementMode = () => {
+  isMeasuring.value = !isMeasuring.value;
+  if (!isMeasuring.value) {
+    measurePoints.value = [];
+  }
+};
+
+/**
+ * 清除所有量测标注与虚线
+ */
+const clearMeasurements = () => {
+  measurePoints.value = [];
+  while (measureGroup.children.length > 0) {
+    const child = measureGroup.children[0];
+    measureGroup.remove(child);
+    if ((child as any).geometry) (child as any).geometry.dispose();
+    if ((child as any).material) {
+      if (Array.isArray((child as any).material)) {
+        (child as any).material.forEach((m: any) => m.dispose());
+      } else {
+        (child as any).material.dispose();
+      }
+    }
+  }
+  scheduleRender();
+};
+
+/**
+ * Canvas 点击事件处理器 (3D 交互拾取测距)
+ */
+const handleCanvasClick = (event: MouseEvent) => {
+  if (!isMeasuring.value || !canvasRef.value || !camera || !scene) return;
+
+  const rect = canvasRef.value.getBoundingClientRect();
+  mouseVec.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouseVec.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouseVec, camera);
+  const intersects = raycaster.intersectObjects(activeMeshes, true);
+
+  if (intersects.length > 0) {
+    const point = intersects[0].point;
+    measurePoints.value.push(point);
+
+    // 点选标记球
+    const sphereGeo = new THREE.SphereGeometry(0.15, 16, 16);
+    const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+    const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+    sphere.position.copy(point);
+    measureGroup.add(sphere);
+
+    if (measurePoints.value.length === 2) {
+      const p1 = measurePoints.value[0];
+      const p2 = measurePoints.value[1];
+      const dist = p1.distanceTo(p2);
+
+      // 1. 虚线连接
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+      const lineMat = new THREE.LineDashedMaterial({
+        color: 0xffea00,
+        dashSize: 0.3,
+        gapSize: 0.15,
+        linewidth: 2
+      });
+      const line = new THREE.Line(lineGeo, lineMat);
+      line.computeLineDistances();
+      measureGroup.add(line);
+
+      // 2. 中点 Sprite 距离标签
+      const midPoint = p1.clone().add(p2).multiplyScalar(0.5);
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        if (typeof (ctx as any).roundRect === 'function') {
+          (ctx as any).roundRect(10, 8, 236, 48, 8);
+        } else {
+          ctx.rect(10, 8, 236, 48);
+        }
+        ctx.fill();
+        ctx.strokeStyle = '#ffea00';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        ctx.font = 'bold 22px sans-serif';
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`L = ${dist.toFixed(2)} m`, 128, 32);
+      }
+      const texture = new THREE.CanvasTexture(canvas);
+      const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.scale.set(4.0, 1.0, 1);
+      sprite.position.copy(midPoint).add(new THREE.Vector3(0, 0.5, 0));
+      measureGroup.add(sprite);
+
+      measurePoints.value = [];
+    }
+
+    scheduleRender();
+  }
 };
 
 const scheduleRender = () => {
@@ -459,8 +672,8 @@ const renderSceneData = () => {
     const rBoltGen = new RockBoltGenerator({
       bolts_per_ring: 12,
       spacing_z: 1.0,
-      start_angle: -Math.PI / 4,
-      end_angle: Math.PI + Math.PI / 4,
+      start_angle: -45,
+      end_angle: 225,
       start_chainage,
       end_chainage,
       tunnel_radius: r,
@@ -545,10 +758,13 @@ onMounted(() => {
   initWebGL();
   renderSceneData();
   window.addEventListener('resize', handleResize);
+  canvasRef.value?.addEventListener('click', handleCanvasClick);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize);
+  canvasRef.value?.removeEventListener('click', handleCanvasClick);
+  if (cameraAnimFrameId !== null) cancelAnimationFrame(cameraAnimFrameId);
   if (renderFrameId !== null) cancelAnimationFrame(renderFrameId);
   if (envInstance) envInstance.dispose();
   if (probeManager) probeManager.dispose();
@@ -655,14 +871,12 @@ canvas {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-weight: 600;
   margin-bottom: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .panel-title {
-  color: #64b5f6;
+  font-weight: 600;
+  color: #ffffff;
 }
 
 .switch-toggle {
@@ -710,7 +924,7 @@ input:checked + .switch-slider:before {
 .panel-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .control-row {
@@ -719,15 +933,15 @@ input:checked + .switch-slider:before {
   gap: 4px;
 }
 
-.control-row.inline-row {
+.inline-row {
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
 }
 
 .control-label {
-  color: #8c9ba5;
   font-size: 12px;
+  color: #a0aec0;
 }
 
 .btn-group {
@@ -812,4 +1026,83 @@ input:checked + .switch-slider:before {
 .pipes-dot { background-color: #2ecc71; }
 .env-dot { background-color: #1a5276; }
 .probe-dot { background-color: #00ff88; }
+
+/* 标准视角与测距工具 Toolbar */
+.toolbar-panel {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  padding: 10px 14px;
+  color: #e0e6ed;
+  font-size: 12px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.toolbar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8c9ba5;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.view-btn-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.action-btn-row {
+  display: flex;
+  gap: 6px;
+}
+
+.tool-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #d1d5db;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tool-btn:hover {
+  background: rgba(0, 229, 255, 0.2);
+  border-color: #00e5ff;
+  color: #ffffff;
+}
+
+.tool-btn.active {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.measure-btn.active {
+  background: #d97706;
+  border-color: #f59e0b;
+}
+
+.clear-btn:hover {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: #ef4444;
+}
+
+.toolbar-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
 </style>

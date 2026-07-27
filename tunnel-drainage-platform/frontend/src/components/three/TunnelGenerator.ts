@@ -106,118 +106,9 @@ export class TunnelGenerator {
    * 细部截面拓扑生成核心：引入 offsetX 支持空间横向偏移解算
    */
   private createHorseshoeShape(r: number, r2: number, offsetX: number, aspect_ratio: number): THREE.Shape {
-    const shape = new THREE.Shape();
-
-    // 闭包函数：同步生成外轮廓与内开挖面，规避数学运算误差
-    const buildPath = (target_r: number, isHole: boolean): THREE.Path | THREE.Shape => {
-      const path = isHole ? new THREE.Path() : shape;
-      // 基于内部净空 r 构建同心基准拓扑，保证所有衬砌层圆心重合与等厚边界
-      const R1_base = 1.05 * r;
-      const R2_base = 0.65 * r;
-      const R3_base = 1.80 * r;
-
-      const dx = R1_base - R2_base;
-      const dy = Math.sqrt(Math.pow(R3_base - R2_base, 2) - Math.pow(dx, 2));
-
-      // 解除原代码 0.1*radius 的钳位截断，支持平坦型隧道（高宽比 < 1.0）
-      const w = 2.1 * r;
-      const h = w * aspect_ratio;
-      const H_side = Math.max(0.0, h - R1_base + dy - R3_base);
-      const invertCenterY = -H_side + dy;
-
-      // 根据目标层级执行无缩放等厚向外偏移
-      const t = target_r - r;
-      const R1 = R1_base + t;
-      const R2 = R2_base + t;
-      const R3 = R3_base + t;
-
-      // 仰拱与边墙过渡圆弧切线角度解算
-      let aLeft = Math.atan2(-dy, -dx);
-      if (aLeft < 0) aLeft += Math.PI * 2;
-      let aRight = Math.atan2(-dy, dx);
-      if (aRight < 0) aRight += Math.PI * 2;
-
-      if (isHole) {
-        // 内轮廓：顺时针绘制 Hole
-        path.moveTo(R1 + offsetX, 0);
-        if (H_side > 0) path.lineTo(R1 + offsetX, -H_side);
-        path.absarc(dx + offsetX, -H_side, R2, Math.PI * 2, aRight, true);
-
-        const ditchW = 0.6;
-        const ditchH = 0.8;
-        const halfW = ditchW / 2;
-
-        // 回填层路面交点解算
-        const dy_road = R3 - ditchH;
-        const halfRoadW = Math.sqrt(Math.max(0, R3 * R3 - dy_road * dy_road));
-        const roadY = invertCenterY - dy_road;
-        const sideW = 0.3; // 侧边沟宽度
-
-        // 1. 计算边沟内缘的横坐标与对应的仰拱二衬弧面切点高程及角度
-        const halfSideW = halfRoadW - sideW;
-        const r3Y_at_side = invertCenterY - Math.sqrt(R3 * R3 - halfSideW * halfSideW);
-
-        let aSideInnerRight = Math.atan2(r3Y_at_side - invertCenterY, halfSideW);
-        if (aSideInnerRight < 0) aSideInnerRight += Math.PI * 2;
-
-        // 2. 绘制右侧仰拱弧段：严格止于边沟内缘，使其底部完全由二衬顶面承托
-        path.absarc(offsetX, invertCenterY, R3, aRight, aSideInnerRight, true);
-
-        // 3. 垂直向上绘制右侧边沟的内侧壁面至路面
-        path.lineTo(offsetX + halfSideW, roadY);
-
-        // 4. 对于 r > r_threshold，中心水沟严格保留（底部同样切齐 R3 弧面）
-        const r_threshold = 5.0;
-        if (r > r_threshold) {
-          const ditchBottomY = invertCenterY - Math.sqrt(R3 * R3 - halfW * halfW);
-
-          path.lineTo(offsetX + halfW, roadY);
-          path.lineTo(offsetX + halfW, ditchBottomY);
-          path.lineTo(offsetX - halfW, ditchBottomY);
-          path.lineTo(offsetX - halfW, roadY);
-        }
-
-        // 5. 横向横穿平坦路面，延伸至左侧边沟内缘
-        path.lineTo(offsetX - halfSideW, roadY);
-
-        // 6. 垂直向下绘制左侧边沟的内侧壁面，直至触及二衬仰拱表面
-        path.lineTo(offsetX - halfSideW, r3Y_at_side);
-
-        // 7. 顺时针补全左侧仰拱弧段，由左边沟内缘平滑过渡至左侧墙角
-        let aSideInnerLeft = Math.atan2(r3Y_at_side - invertCenterY, -halfSideW);
-        if (aSideInnerLeft < 0) aSideInnerLeft += Math.PI * 2;
-
-        path.absarc(offsetX, invertCenterY, R3, aSideInnerLeft, aLeft, true);
-
-        path.absarc(-dx + offsetX, -H_side, R2, aLeft, Math.PI, true);
-        if (H_side > 0) path.lineTo(-R1 + offsetX, 0);
-        path.absarc(offsetX, 0, R1, Math.PI, 0, true);
-
-      } else {
-        // 外轮廓：逆时针绘制 Shape
-        path.moveTo(R1 + offsetX, 0);
-        path.absarc(offsetX, 0, R1, 0, Math.PI, false);
-        if (H_side > 0) path.lineTo(-R1 + offsetX, -H_side);
-        path.absarc(-dx + offsetX, -H_side, R2, Math.PI, aLeft, false);
-        path.absarc(offsetX, invertCenterY, R3, aLeft, aRight, false);
-        path.absarc(dx + offsetX, -H_side, R2, aRight, Math.PI * 2, false);
-        if (H_side > 0) path.lineTo(R1 + offsetX, 0);
-      }
-      return path;
-    };
-
-    // 1. 移出注浆圈的生成解算，改为生成初支最外侧轮廓
-    buildPath(r2, false);
-
-    // 2. 生成隧道内侧开挖孔洞
-    const holePath = buildPath(r, true) as THREE.Path;
-    shape.holes.push(holePath);
-
-
-
-    return shape;
-
+    return createHorseshoeLiningShape(r, r2, offsetX, aspect_ratio);
   }
+
   /**
    * 动态更新渲染实例数量
    */
@@ -268,5 +159,167 @@ export class TunnelGenerator {
       this.mesh.instanceColor.needsUpdate = true;
     }
   }
+}
 
+/**
+ * 独立导出的马蹄形 Shape 构建工具函数
+ * @param r 基准内净空半径
+ * @param target_r 目标外轮廓半径 (例如 r2, rg)
+ * @param hole_r 可选 Hole 挖孔半径 (例如注浆圈内径 r2)
+ * @param offsetX 空间横向 X 偏移
+ * @param aspect_ratio 高宽比
+ */
+export function buildHorseshoeShape(
+  r: number,
+  target_r: number,
+  hole_r?: number,
+  offsetX: number = 0,
+  aspect_ratio: number = 0.7
+): THREE.Shape {
+  const shape = new THREE.Shape();
+
+  const buildOuterPath = (targetRadius: number, isHole: boolean): THREE.Path | THREE.Shape => {
+    const path = isHole ? new THREE.Path() : shape;
+
+    const R1_base = 1.05 * r;
+    const R2_base = 0.65 * r;
+    const R3_base = 1.80 * r;
+
+    const dx = R1_base - R2_base;
+    const dy = Math.sqrt(Math.max(0, Math.pow(R3_base - R2_base, 2) - Math.pow(dx, 2)));
+
+    const w = 2.1 * r;
+    const h = w * aspect_ratio;
+    const H_side = Math.max(0.0, h - R1_base + dy - R3_base);
+    const invertCenterY = -H_side + dy;
+
+    const t = targetRadius - r;
+    const R1 = R1_base + t;
+    const R2 = R2_base + t;
+    const R3 = R3_base + t;
+
+    let aLeft = Math.atan2(-dy, -dx);
+    if (aLeft < 0) aLeft += Math.PI * 2;
+    let aRight = Math.atan2(-dy, dx);
+    if (aRight < 0) aRight += Math.PI * 2;
+
+    if (isHole) {
+      path.moveTo(R1 + offsetX, 0);
+      if (H_side > 0) path.lineTo(R1 + offsetX, -H_side);
+      path.absarc(dx + offsetX, -H_side, R2, Math.PI * 2, aRight, true);
+      path.absarc(offsetX, invertCenterY, R3, aRight, aLeft, true);
+      path.absarc(-dx + offsetX, -H_side, R2, aLeft, Math.PI, true);
+      if (H_side > 0) path.lineTo(-R1 + offsetX, 0);
+      path.absarc(offsetX, 0, R1, Math.PI, 0, true);
+    } else {
+      path.moveTo(R1 + offsetX, 0);
+      path.absarc(offsetX, 0, R1, 0, Math.PI, false);
+      if (H_side > 0) path.lineTo(-R1 + offsetX, -H_side);
+      path.absarc(-dx + offsetX, -H_side, R2, Math.PI, aLeft, false);
+      path.absarc(offsetX, invertCenterY, R3, aLeft, aRight, false);
+      path.absarc(dx + offsetX, -H_side, R2, aRight, Math.PI * 2, false);
+      if (H_side > 0) path.lineTo(R1 + offsetX, 0);
+    }
+    return path;
+  };
+
+  buildOuterPath(target_r, false);
+
+  if (hole_r !== undefined && hole_r > 0) {
+    const holePath = buildOuterPath(hole_r, true) as THREE.Path;
+    shape.holes.push(holePath);
+  }
+
+  return shape;
+}
+
+/**
+ * 包含内部路面/排水沟槽切口的衬砌 Shape 构建函数
+ */
+function createHorseshoeLiningShape(r: number, r2: number, offsetX: number, aspect_ratio: number): THREE.Shape {
+  const shape = new THREE.Shape();
+
+  const buildPath = (target_r: number, isHole: boolean): THREE.Path | THREE.Shape => {
+    const path = isHole ? new THREE.Path() : shape;
+    const R1_base = 1.05 * r;
+    const R2_base = 0.65 * r;
+    const R3_base = 1.80 * r;
+
+    const dx = R1_base - R2_base;
+    const dy = Math.sqrt(Math.pow(R3_base - R2_base, 2) - Math.pow(dx, 2));
+
+    const w = 2.1 * r;
+    const h = w * aspect_ratio;
+    const H_side = Math.max(0.0, h - R1_base + dy - R3_base);
+    const invertCenterY = -H_side + dy;
+
+    const t = target_r - r;
+    const R1 = R1_base + t;
+    const R2 = R2_base + t;
+    const R3 = R3_base + t;
+
+    let aLeft = Math.atan2(-dy, -dx);
+    if (aLeft < 0) aLeft += Math.PI * 2;
+    let aRight = Math.atan2(-dy, dx);
+    if (aRight < 0) aRight += Math.PI * 2;
+
+    if (isHole) {
+      path.moveTo(R1 + offsetX, 0);
+      if (H_side > 0) path.lineTo(R1 + offsetX, -H_side);
+      path.absarc(dx + offsetX, -H_side, R2, Math.PI * 2, aRight, true);
+
+      const ditchW = 0.6;
+      const ditchH = 0.8;
+      const halfW = ditchW / 2;
+
+      const dy_road = R3 - ditchH;
+      const halfRoadW = Math.sqrt(Math.max(0, R3 * R3 - dy_road * dy_road));
+      const roadY = invertCenterY - dy_road;
+      const sideW = 0.3;
+
+      const halfSideW = halfRoadW - sideW;
+      const r3Y_at_side = invertCenterY - Math.sqrt(R3 * R3 - halfSideW * halfSideW);
+
+      let aSideInnerRight = Math.atan2(r3Y_at_side - invertCenterY, halfSideW);
+      if (aSideInnerRight < 0) aSideInnerRight += Math.PI * 2;
+
+      path.absarc(offsetX, invertCenterY, R3, aRight, aSideInnerRight, true);
+      path.lineTo(offsetX + halfSideW, roadY);
+
+      const r_threshold = 5.0;
+      if (r > r_threshold) {
+        const ditchBottomY = invertCenterY - Math.sqrt(R3 * R3 - halfW * halfW);
+        path.lineTo(offsetX + halfW, roadY);
+        path.lineTo(offsetX + halfW, ditchBottomY);
+        path.lineTo(offsetX - halfW, ditchBottomY);
+        path.lineTo(offsetX - halfW, roadY);
+      }
+
+      path.lineTo(offsetX - halfSideW, roadY);
+      path.lineTo(offsetX - halfSideW, r3Y_at_side);
+
+      let aSideInnerLeft = Math.atan2(r3Y_at_side - invertCenterY, -halfSideW);
+      if (aSideInnerLeft < 0) aSideInnerLeft += Math.PI * 2;
+
+      path.absarc(offsetX, invertCenterY, R3, aSideInnerLeft, aLeft, true);
+      path.absarc(-dx + offsetX, -H_side, R2, aLeft, Math.PI, true);
+      if (H_side > 0) path.lineTo(-R1 + offsetX, 0);
+      path.absarc(offsetX, 0, R1, Math.PI, 0, true);
+    } else {
+      path.moveTo(R1 + offsetX, 0);
+      path.absarc(offsetX, 0, R1, 0, Math.PI, false);
+      if (H_side > 0) path.lineTo(-R1 + offsetX, -H_side);
+      path.absarc(-dx + offsetX, -H_side, R2, Math.PI, aLeft, false);
+      path.absarc(offsetX, invertCenterY, R3, aLeft, aRight, false);
+      path.absarc(dx + offsetX, -H_side, R2, aRight, Math.PI * 2, false);
+      if (H_side > 0) path.lineTo(R1 + offsetX, 0);
+    }
+    return path;
+  };
+
+  buildPath(r2, false);
+  const holePath = buildPath(r, true) as THREE.Path;
+  shape.holes.push(holePath);
+
+  return shape;
 }
