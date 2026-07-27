@@ -86,6 +86,43 @@
       </div>
     </div>
     
+    <!-- 受力表达模式切换器 (K | M | N | 综合受力) -->
+    <div v-if="layerVisibility.probe" class="force-mode-panel glass-card">
+      <div class="panel-header">
+        <span class="panel-title">受力表达模式</span>
+      </div>
+      <div class="btn-group force-btn-group">
+        <button 
+          :class="{ active: currentForceMode === 'K' }" 
+          @click="setForceMode('K')"
+          title="安全系数 K 云图"
+        >
+          安全系数 K
+        </button>
+        <button 
+          :class="{ active: currentForceMode === 'M' }" 
+          @click="setForceMode('M')"
+          title="弯矩包络图 M"
+        >
+          弯矩图 M
+        </button>
+        <button 
+          :class="{ active: currentForceMode === 'N' }" 
+          @click="setForceMode('N')"
+          title="轴向压力图 N"
+        >
+          轴力图 N
+        </button>
+        <button 
+          :class="{ active: currentForceMode === 'COMBINED' }" 
+          @click="setForceMode('COMBINED')"
+          title="综合受力包络"
+        >
+          综合受力
+        </button>
+      </div>
+    </div>
+    
     <!-- 顶层 Overlay 标量看板/探针悬浮框 -->
     <div v-if="probeInfo && showOverlay" class="probe-tooltip glass-card">
       <div class="tooltip-header">
@@ -152,7 +189,7 @@ import { TunnelGenerator, TunnelType } from './TunnelGenerator';
 import { ReinforcementManager, RockBoltGenerator } from './Reinforcement';
 import { DrainagePipeGenerator } from './DrainagePipeGenerator';
 import { Environment } from './Environment';
-import { StressProbeManager } from './PostProcessing';
+import { StressProbeManager, ForceDisplayMode } from './PostProcessing';
 
 const props = withDefaults(defineProps<{
   mode?: 'all' | 'original' | 'critical';
@@ -228,11 +265,23 @@ const updateLayerVisibility = () => {
     if (envInstance.depthIndicator) envInstance.depthIndicator.visible = layerVisibility.environment;
   }
 
-  if (probeManager?.probeGroup) {
+  if (probeManager) {
     probeManager.probeGroup.visible = layerVisibility.probe;
+    probeManager.diagramGroup.visible = layerVisibility.probe;
   }
 
   scheduleRender();
+};
+
+// 受力表达模式状态与切换器
+const currentForceMode = ref<ForceDisplayMode>('K');
+
+const setForceMode = (mode: ForceDisplayMode) => {
+  currentForceMode.value = mode;
+  if (probeManager) {
+    probeManager.setForceMode(mode);
+    scheduleRender();
+  }
 };
 
 // 最不利点浮窗信息
@@ -724,6 +773,7 @@ const renderSceneData = () => {
     // 5. 受力云图与探针挂载
     if (probeManager) {
       const probeRes = probeManager.updateFromSnapshot(rawData, r, -start_chainage, 2.0);
+      probeManager.setForceMode(currentForceMode.value);
       probeInfo.value = {
         controlIdx: probeRes.controlIdx,
         controlM: probeRes.controlM,
@@ -1105,5 +1155,49 @@ input:checked + .switch-slider:before {
 .toolbar-divider {
   height: 1px;
   background: rgba(255, 255, 255, 0.1);
+}
+
+/* 受力表达模式面板样式 */
+.force-mode-panel {
+  position: absolute;
+  top: 420px;
+  left: 16px;
+  padding: 10px 14px;
+  color: #e0e6ed;
+  font-size: 12px;
+  z-index: 10;
+  min-width: 220px;
+}
+
+.force-btn-group {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.force-btn-group button {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cfd8dc;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.force-btn-group button:hover {
+  background: rgba(0, 229, 255, 0.2);
+  border-color: #00e5ff;
+  color: #ffffff;
+}
+
+.force-btn-group button.active {
+  background: #1e88e5;
+  color: #ffffff;
+  border-color: #42a5f5;
+  box-shadow: 0 0 10px rgba(30, 136, 229, 0.6);
 }
 </style>
