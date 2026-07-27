@@ -69,15 +69,16 @@ export class DrainagePipeGenerator {
   /**
    * 创建实例化网格
    */
+  /**
+   * 创建实例化网格 - 使用未二次旋转/平移的 1.0 长度标准圆柱几何体
+   */
   private createInstancedMesh(
     radius: number, 
-    length: number, 
+    _length: number, 
     count: number, 
     color: number
   ): THREE.InstancedMesh {
-    const geometry = new THREE.CylinderGeometry(radius, radius, length, 12);
-    geometry.translate(0, length / 2, 0);
-    geometry.rotateX(Math.PI / 2);
+    const geometry = new THREE.CylinderGeometry(radius, radius, 1.0, 12);
 
     const material = new THREE.MeshStandardMaterial({ 
       color,
@@ -99,7 +100,7 @@ export class DrainagePipeGenerator {
    * 计算环向管数量：基于里程跨度与推荐间距
    */
   private calculateRingCount(): number {
-    const length = this.config.endChainage - this.config.startChainage;
+    const length = Math.abs(this.config.endChainage - this.config.startChainage);
     return Math.max(1, Math.ceil(length / this.config.ringSpacing));
   }
 
@@ -115,7 +116,7 @@ export class DrainagePipeGenerator {
    */
   private calculateLatCount(): number {
     // 横向管间距约为环向管间距的2倍
-    const length = this.config.endChainage - this.config.startChainage;
+    const length = Math.abs(this.config.endChainage - this.config.startChainage);
     const latSpacing = this.config.ringSpacing * 2;
     return Math.max(1, Math.ceil(length / latSpacing));
   }
@@ -124,28 +125,19 @@ export class DrainagePipeGenerator {
    * 更新所有排水管实例数据
    * 基于快照计算结果动态调整位姿与可视化状态
    */
-  public updateFromSnapshot(snapshot: {
-    original_state?: {
-      ring_diam_recommend?: number;
-      ring_spacing_recommend?: number;
-    };
-    critical_state?: {
-      ring_diam_recommend?: number;
-      ring_spacing_recommend?: number;
-    };
-    input_parameter?: {
-      double_side?: boolean;
-      D_spacing?: number;
-    };
-  }): void {
-    // 优先读取临界状态推荐值，降级至原始状态，最终使用当前配置兜底
+  public updateFromSnapshot(snapshot: any): void {
+    if (!snapshot) return;
+    // 优先读取临界状态推荐值，降级至原始状态，最后从 input_parameter / params 提取默认值
     const state = snapshot.critical_state ?? snapshot.original_state ?? {};
-    const params = snapshot.input_parameter ?? {};
+    const params = snapshot.input_parameter ?? snapshot.params ?? {};
     
     // 动态更新配置（支持计算结果驱动的管网重构）
-    this.config.ringDiam = state.ring_diam_recommend ?? this.config.ringDiam;
+    this.config.ringDiam = state.ring_diam_recommend ?? params.d_ring_default ?? this.config.ringDiam;
     this.config.ringSpacing = state.ring_spacing_recommend ?? this.config.ringSpacing;
+    this.config.longDiam = params.d_long_default ?? this.config.longDiam;
+    this.config.latDiam = params.d_lat_default ?? this.config.latDiam;
     this.config.doubleSide = params.double_side ?? this.config.doubleSide;
+    
     if (this.config.tunnelType === 'double') {
       this.config.dSpacing = params.D_spacing ?? this.config.dSpacing;
     }
@@ -171,11 +163,10 @@ export class DrainagePipeGenerator {
     
     const matrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
-    const scale = new THREE.Vector3(1, 1, 1);
     const length = Math.PI * this.config.tunnelRadius * 0.3; // 底部120度弧长
 
     for (let i = 0; i < count; i++) {
-      const z = this.config.startChainage + i * this.config.ringSpacing;
+      const z = -(i * this.config.ringSpacing);
       // 右侧环向管位置（底部偏右）
       const angle = -45; // 底部右侧45度
       const polar = polarToCartesian(this.config.tunnelRadius, angle);
@@ -183,13 +174,6 @@ export class DrainagePipeGenerator {
       position.set(polar.x, polar.y, z);
       
       // 环向管沿隧道截面圆周切线方向
-      const tangentAngle = angle + 90;
-      const tangent = polarToCartesian(1, tangentAngle);
-      const target = new THREE.Vector3(
-        position.x + tangent.x,
-        position.y + tangent.y,
-        z
-      );
       const center = new THREE.Vector3(0, 0, z);
       
       const quaternion = calculateNormalQuaternion(position, center);
@@ -214,7 +198,7 @@ export class DrainagePipeGenerator {
     this.longMesh.count = Math.min(count, this.longMesh.instanceMatrix.count);
     
     const matrix = new THREE.Matrix4();
-    const length = this.config.endChainage - this.config.startChainage;
+    const length = Math.abs(this.config.endChainage - this.config.startChainage);
     const scale = new THREE.Vector3(1, length, 1);
 
     for (let i = 0; i < count; i++) {
@@ -223,7 +207,7 @@ export class DrainagePipeGenerator {
       const angle = side * 45; // 底部两侧45度
       
       const polar = polarToCartesian(this.config.tunnelRadius, angle);
-      const position = new THREE.Vector3(polar.x, polar.y, this.config.startChainage);
+      const position = new THREE.Vector3(polar.x, polar.y, -length / 2);
       
       // 纵向沿Z轴
       const quaternion = new THREE.Quaternion().setFromAxisAngle(
@@ -249,7 +233,7 @@ export class DrainagePipeGenerator {
     const matrix = new THREE.Matrix4();
     
     for (let i = 0; i < count; i++) {
-      const z = this.config.startChainage + i * this.config.ringSpacing * 2;
+      const z = -(i * this.config.ringSpacing * 2);
       
       // 从隧道侧壁通向中心
       const startAngle = this.config.doubleSide ? -45 : 0;
@@ -291,7 +275,7 @@ export class DrainagePipeGenerator {
     const length = Math.PI * this.config.tunnelRadius * 0.3;
 
     for (let i = 0; i < count; i++) {
-      const z = this.config.startChainage + i * this.config.ringSpacing;
+      const z = -(i * this.config.ringSpacing);
       const angle = -45;
       const polar = polarToCartesian(this.config.tunnelRadius, angle);
       
@@ -321,14 +305,14 @@ export class DrainagePipeGenerator {
     
     const offsetX = -(this.config.dSpacing ?? 0);
     const matrix = new THREE.Matrix4();
-    const length = this.config.endChainage - this.config.startChainage;
+    const length = Math.abs(this.config.endChainage - this.config.startChainage);
 
     for (let i = 0; i < count; i++) {
       const side = this.config.doubleSide ? (i === 0 ? 1 : -1) : 1;
       const angle = side * 45;
       
       const polar = polarToCartesian(this.config.tunnelRadius, angle);
-      const position = new THREE.Vector3(polar.x + offsetX, polar.y, this.config.startChainage);
+      const position = new THREE.Vector3(polar.x + offsetX, polar.y, -length / 2);
       
       const quaternion = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(1, 0, 0), 

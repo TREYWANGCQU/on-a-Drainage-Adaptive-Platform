@@ -1,5 +1,6 @@
 // 接收来自顶点着色器的 Varyings
 #include <common>
+#include <clipping_planes_pars_fragment>
 
 in vec3 vLocalPosition;
 in vec3 vNormal;
@@ -68,6 +69,7 @@ float calculateHorseshoeRadius(vec2 p) {
 }
 
 void main() {
+    #include <clipping_planes_fragment>
     // 光照计算仍使用受视图矩阵影响的法线，引入 gl_FrontFacing 修正 DoubleSide 背面光照
     vec3 normal_view = normalize(vNormal);       
     if (!gl_FrontFacing) {

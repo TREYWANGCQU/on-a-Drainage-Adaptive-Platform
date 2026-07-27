@@ -41,19 +41,19 @@ export interface WaterStateData {
 }
 
 export class Environment {
-  public waterPlane: THREE.Mesh;
-  public groundPlane: THREE.Mesh;
-  public waterParticles: THREE.Points;
-  public flowLines: THREE.LineSegments;
-  public depthIndicator: THREE.Group;
+  public waterPlane!: THREE.Mesh;
+  public groundPlane!: THREE.Mesh;
+  public waterParticles!: THREE.Points;
+  public flowLines!: THREE.LineSegments;
+  public depthIndicator!: THREE.Group;
   
   private scene: THREE.Scene;
   private config: WaterEnvironmentConfig;
   private currentState: WaterStateData;
   
   // 动画相关
-  private particleUniforms: { [key: string]: THREE.IUniform };
-  private flowUniforms: { [key: string]: THREE.IUniform };
+  private particleUniforms!: { [key: string]: THREE.IUniform };
+  private flowUniforms!: { [key: string]: THREE.IUniform };
   private clock: THREE.Clock;
   
   // 着色器代码
@@ -210,7 +210,7 @@ export class Environment {
     
     this.waterPlane = new THREE.Mesh(geometry, material);
     this.waterPlane.rotation.x = -Math.PI / 2;
-    this.waterPlane.position.z = (this.config.startChainage + this.config.endChainage) / 2;
+    this.waterPlane.position.z = -this.config.startChainage - length / 2;
     
     this.scene.add(this.waterPlane);
   }
@@ -220,7 +220,7 @@ export class Environment {
    * 基于埋深 c 定义地面高程：Y_ground = Y_crown + c
    */
   private initGroundPlane(): void {
-    const length = this.config.endChainage - this.config.startChainage;
+    const length = Math.abs(this.config.endChainage - this.config.startChainage);
     const width = this.config.tunnelType === 'double'
       ? (this.config.dSpacing || 0) + this.config.tunnelRadius * 10
       : this.config.tunnelRadius * 10;
@@ -266,7 +266,7 @@ export class Environment {
     // 实际应根据隧道拱顶位置计算
     const tunnelHeight = this.config.tunnelRadius * 1.4; // 近似拱顶高度
     this.groundPlane.position.y = tunnelHeight + this.config.burialDepth;
-    this.groundPlane.position.z = (this.config.startChainage + this.config.endChainage) / 2;
+    this.groundPlane.position.z = -this.config.startChainage - length / 2;
     
     this.scene.add(this.groundPlane);
   }
@@ -284,16 +284,16 @@ export class Environment {
     const phases = new Float32Array(particleCount);
     const velocities = new Float32Array(particleCount * 3);
     
-    const length = this.config.endChainage - this.config.startChainage;
+    const length = Math.abs(this.config.endChainage - this.config.startChainage);
     const spreadX = this.config.tunnelType === 'double'
       ? (this.config.dSpacing || 0) + this.config.tunnelRadius * 4
       : this.config.tunnelRadius * 4;
     
     for (let i = 0; i < particleCount; i++) {
-      // 初始位置分布在隧道周围
+      // 初始位置分布在隧道周围（沿-Z向延伸）
       positions[i * 3] = (Math.random() - 0.5) * spreadX;
       positions[i * 3 + 1] = this.currentState.waterHead - Math.random() * 10;
-      positions[i * 3 + 2] = this.config.startChainage + Math.random() * length;
+      positions[i * 3 + 2] = -this.config.startChainage - Math.random() * length;
       
       sizes[i] = Math.random() * 3 + 1;
       phases[i] = Math.random() * Math.PI * 2;
@@ -350,11 +350,11 @@ export class Environment {
     const positions: number[] = [];
     const colors: number[] = [];
     
-    const length = this.config.endChainage - this.config.startChainage;
+    const length = Math.abs(this.config.endChainage - this.config.startChainage);
     
     for (let i = 0; i < lineCount; i++) {
       const startX = (Math.random() - 0.5) * this.config.tunnelRadius * 6;
-      const startZ = this.config.startChainage + Math.random() * length;
+      const startZ = -this.config.startChainage - Math.random() * length;
       
       for (let j = 0; j < pointsPerLine - 1; j++) {
         const t1 = j / (pointsPerLine - 1);
@@ -369,8 +369,8 @@ export class Environment {
         
         const x1 = startX * convergeFactor1;
         const x2 = startX * convergeFactor2;
-        const z1 = startZ + t1 * 5;
-        const z2 = startZ + t2 * 5;
+        const z1 = startZ - t1 * 5;
+        const z2 = startZ - t2 * 5;
         
         positions.push(x1, y1, z1, x2, y2, z2);
         
@@ -407,8 +407,8 @@ export class Environment {
     const groundY = tunnelHeight + this.config.burialDepth;
     
     const points = [
-      new THREE.Vector3(this.config.tunnelRadius * 2, tunnelHeight, this.config.startChainage),
-      new THREE.Vector3(this.config.tunnelRadius * 2, groundY, this.config.startChainage)
+      new THREE.Vector3(this.config.tunnelRadius * 2, tunnelHeight, -this.config.startChainage),
+      new THREE.Vector3(this.config.tunnelRadius * 2, groundY, -this.config.startChainage)
     ];
     
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
@@ -433,4 +433,91 @@ export class Environment {
     ctx.fillStyle = 'white';
     ctx.textAlign = 'center';
     ctx.fillText(`埋深: ${this.config.burialDepth.toFixed(1)}m`, 128, 40);
-   
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(10, 2.5, 1);
+    sprite.position.set(this.config.tunnelRadius * 2, (tunnelHeight + groundY) / 2, -this.config.startChainage);
+    this.depthIndicator.add(sprite);
+    
+    this.scene.add(this.depthIndicator);
+  }
+
+  /**
+   * 基于快照数据动态更新水文随动与水位平面
+   */
+  public updateFromSnapshot(snapshot: any): void {
+    if (!snapshot) return;
+    const state = snapshot.critical_state ?? snapshot.original_state ?? {};
+    const params = snapshot.input_parameter ?? snapshot.params ?? {};
+
+    const waterHead = state.final_waterHead ?? state.waterHead ?? params.h ?? (this.config.burialDepth * 0.6);
+    const leakageQ = state.Q ?? state.q ?? 0;
+    const burialDepth = params.c ?? params.depth ?? this.config.burialDepth;
+
+    this.currentState.waterHead = waterHead;
+    this.currentState.totalLeakage = leakageQ;
+    this.config.burialDepth = burialDepth;
+
+    // 更新 Shader Uniforms
+    if (this.particleUniforms && this.particleUniforms.uWaterHead) {
+      this.particleUniforms.uWaterHead.value = waterHead;
+    }
+    if (this.flowUniforms) {
+      if (this.flowUniforms.uWaterHead) this.flowUniforms.uWaterHead.value = waterHead;
+      if (this.flowUniforms.uSpeed) this.flowUniforms.uSpeed.value = this.calculateFlowSpeed(leakageQ);
+    }
+
+    // 更新水位面高度与地面高度
+    if (this.waterPlane) {
+      this.waterPlane.position.y = waterHead;
+    }
+    if (this.groundPlane) {
+      const tunnelHeight = this.config.tunnelRadius * 1.4;
+      this.groundPlane.position.y = tunnelHeight + burialDepth;
+    }
+  }
+
+  /**
+   * 动画帧驱动，水流波纹与粒子流动
+   */
+  public update(_delta: number = 0.016): void {
+    const elapsedTime = this.clock.getElapsedTime();
+    if (this.particleUniforms && this.particleUniforms.uTime) {
+      this.particleUniforms.uTime.value = elapsedTime;
+    }
+    if (this.flowUniforms && this.flowUniforms.uTime) {
+      this.flowUniforms.uTime.value = elapsedTime;
+    }
+  }
+
+  /**
+   * 释放水文环境 3D 资源
+   */
+  public dispose(): void {
+    if (this.waterPlane) {
+      this.scene.remove(this.waterPlane);
+      this.waterPlane.geometry.dispose();
+      (this.waterPlane.material as THREE.Material).dispose();
+    }
+    if (this.groundPlane) {
+      this.scene.remove(this.groundPlane);
+      this.groundPlane.geometry.dispose();
+      (this.groundPlane.material as THREE.Material).dispose();
+    }
+    if (this.waterParticles) {
+      this.scene.remove(this.waterParticles);
+      this.waterParticles.geometry.dispose();
+      (this.waterParticles.material as THREE.Material).dispose();
+    }
+    if (this.flowLines) {
+      this.scene.remove(this.flowLines);
+      this.flowLines.geometry.dispose();
+      (this.flowLines.material as THREE.Material).dispose();
+    }
+    if (this.depthIndicator) {
+      this.scene.remove(this.depthIndicator);
+    }
+  }
+}

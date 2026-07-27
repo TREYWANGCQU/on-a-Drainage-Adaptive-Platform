@@ -125,8 +125,10 @@ export const parseUploadFile = (file: File, sequenceName: string): Promise<void>
           return {
             id: `snap_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
             timestamp: Date.now(),
-            remark: `Excel导入: ${params.start_chainage}-${params.end_chainage}`,
-            status: 'pending', // 🟢 初始状态：待计算
+            remark: `Excel导入: ${params.start_chainage || 0}-${params.end_chainage || 0}`,
+            start_chainage: Number(params.start_chainage || 0),
+            end_chainage: Number(params.end_chainage || 0),
+            status: 'pending' as const, // 🟢 初始状态：待计算
             params: { ...useParameterStore().currentPayload, ...params },
             results: null
           };

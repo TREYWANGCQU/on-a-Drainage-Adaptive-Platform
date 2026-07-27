@@ -1,5 +1,6 @@
 // tunnel-drainage-platform\frontend\src\assets\shaders\lining.vert
 #include <common>
+#include <clipping_planes_pars_vertex>
 
 // 暴露的隧道参数 Uniforms
 uniform float r;
@@ -18,6 +19,7 @@ out vec3 vWorldPosition; // 新增：传递世界坐标
 #include <logdepthbuf_pars_vertex>
 
 void main() {
+    #include <clipping_planes_vertex>
     vLocalPosition = position;
     vLocalNormal = normal; // 确保此处对局部物理法线赋值
     

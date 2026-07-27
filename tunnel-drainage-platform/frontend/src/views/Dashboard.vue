@@ -13,9 +13,12 @@
             <el-radio-button value="result">结果</el-radio-button>
           </el-radio-group>
           
-          <!-- 2. [美化] 重新设计的参数数据库入口 -->
+          <!-- 2. [美化] 重新设计的参数数据库与双视角对比入口 -->
           <el-button type="primary" color="#4f46e5" icon="Coin" @click="dbDialogVisible = true" class="db-btn">
             参数数据库
+          </el-button>
+          <el-button type="warning" color="#e6a23c" icon="Files" @click="compareDialogVisible = true" class="compare-btn">
+            双视角对比
           </el-button>
         </div>
         
@@ -86,9 +89,12 @@
         <SnapshotSidebar v-show="!isRightCollapsed" />
       </aside>
     </main>
-    <!-- [新增插入] 独立的系统计算输入参数数据库弹窗 -->
+    <!-- [新增插入] 独立的系统计算输入参数数据库弹窗与双视角对比弹窗 -->
     <el-dialog v-model="dbDialogVisible" title="参数台账库" fullscreen destroy-on-close>
       <ParameterDatabase @close="dbDialogVisible = false" />
+    </el-dialog>
+    <el-dialog v-model="compareDialogVisible" title="3D 双视角对比" fullscreen destroy-on-close>
+      <CompareView />
     </el-dialog>
   </div>
 </template>
@@ -104,6 +110,7 @@ import CaseSelector from '@/components/ui/CaseSelector.vue';
 import ParameterForm from '@/components/ui/ParameterForm.vue';
 import SnapshotSidebar from '@/components/ui/SnapshotSidebar.vue';
 import ParameterDatabase from '@/views/ParameterDatabase.vue';
+import CompareView from '@/views/CompareView.vue';
 import { useSnapshotStore } from '@/store/snapshotStore';
 import { useParameterStore } from '@/store/parameterStore'; // 引入参数 Store
 import { useThemeStore } from '@/store/themeStore'; // 引入主题 Store
@@ -116,9 +123,9 @@ const themeStore = useThemeStore();
 const snapshotStore = useSnapshotStore();
 const parameterStore = useParameterStore(); // 实例化参数 Store
 
-
 // [新增] 弹窗控制状态
 const dbDialogVisible = ref(false);
+const compareDialogVisible = ref(false);
 
 const isTechBlueRef = computed(() => themeStore.isTechBlue);
 
@@ -141,7 +148,7 @@ const handleFileChange = async (e: Event) => {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
 
-  const { value: name } = await ElMessageBox.prompt('请输入导入序列名称', '批量导入', { defaultValue: '新导入序列' });
+  const { value: name } = await ElMessageBox.prompt('请输入导入序列名称', '批量导入', { inputValue: '新导入序列' });
   try {
     await parseUploadFile(file, name);
     ElMessage.success('导入成功，请在右侧序列库查看并执行计算');

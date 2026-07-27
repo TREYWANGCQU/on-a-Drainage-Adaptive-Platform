@@ -168,7 +168,10 @@ export class ReinforcementManager {
       config.start_chainage,
       r_inner,
       r_outer,
-      tg_original > 0 ? 0x00ffff : 0x888888
+      tg_original > 0 ? 0x00ffff : 0x888888,
+      0.25,
+      config.tunnel_type,
+      config.D_spacing
     );
 
     // ========== 临界注浆圈（双状态对比） ==========
@@ -182,57 +185,56 @@ export class ReinforcementManager {
         config.r2,
         hasCritical ? config.rg_crit : config.r2,
         hasCritical ? 0xff6600 : 0x888888,
-        hasCritical ? 0.35 : 0.1
+        hasCritical ? 0.35 : 0.1,
+        config.tunnel_type,
+        config.D_spacing
       );
-    }
-
-    // 双洞模式：副洞注浆圈（X轴平移 D_spacing）
-    if (config.tunnel_type === 'double' && config.D_spacing) {
-      // 注：实际实现中需在主洞基础上克隆并平移
-      // 此处标记为需要外部调用方处理双洞位姿
     }
   }
 
   /**
-   * 内部：更新注浆圈环状体实例
+   * 内部：更新注浆圈环状体实例（支持双洞平移阵列）
    */
   private updateGroutingRing(
     mesh: THREE.InstancedMesh,
     segments: number,
     segmentLength: number,
     startZ: number,
-    rInner: number,
+    _rInner: number,
     rOuter: number,
-    color: number,
-    opacity: number = 0.25
+    _color: number,
+    opacity: number = 0.25,
+    tunnelType: 'single' | 'double' = 'single',
+    D_spacing: number = 30.0
   ): void {
-    mesh.count = Math.min(segments, mesh.instanceMatrix.count);
+    const isDouble = tunnelType === 'double';
+    const totalInstances = isDouble ? segments * 2 : segments;
+    mesh.count = Math.min(totalInstances, mesh.instanceMatrix.count);
+
     const matrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
-    const scale = new THREE.Vector3();
+    const scale = new THREE.Vector3(rOuter, rOuter, segmentLength);
     const quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0));
 
-    for (let i = 0; i < mesh.count; i++) {
-      const z = startZ + i * segmentLength + segmentLength / 2;
-      position.set(0, 0, z);
+    let idx = 0;
+    for (let i = 0; i < segments; i++) {
+      const z = -(i * segmentLength + segmentLength / 2);
+      const xOffsets = isDouble ? [-D_spacing / 2, D_spacing / 2] : [0];
 
-      // 环状体：X/Y方向为内外径，Z方向为段长
-      const thickness = rOuter - rInner;
-      const avgRadius = (rInner + rOuter) / 2;
-      
-      // 缩放：生成空心圆柱效果
-      // 使用缩放将单位圆柱变换为注浆圈形状
-      scale.set(rOuter, rOuter, segmentLength);
-
-      matrix.compose(position, quaternion, scale);
-      mesh.setMatrixAt(i, matrix);
+      for (const xOff of xOffsets) {
+        if (idx >= mesh.count) break;
+        position.set(xOff, 0, z);
+        matrix.compose(position, quaternion, scale);
+        mesh.setMatrixAt(idx, matrix);
+        idx++;
+      }
     }
 
     mesh.instanceMatrix.needsUpdate = true;
     
     // 更新材质透明度
     if (Array.isArray(mesh.material)) {
-      mesh.material.forEach(m => {
+      mesh.material.forEach((m: any) => {
         if (m instanceof THREE.MeshStandardMaterial) {
           m.opacity = opacity;
         }
@@ -240,6 +242,49 @@ export class ReinforcementManager {
     } else if (mesh.material instanceof THREE.MeshStandardMaterial) {
       mesh.material.opacity = opacity;
     }
+  }
+
+  /**
+   * 更新超前小导管实例矩阵
+   */
+  public updateAdvancePipes(config: AdvancePipeConfig): void {
+    const L = Math.abs(config.end_chainage - config.start_chainage);
+    const rings = Math.max(1, Math.ceil(L / config.longitudinal_spacing));
+    const totalPipes = rings * config.per_ring;
+    this.advancePipeMesh.count = Math.min(totalPipes, this.nMaxAdvance);
+
+    const matrix = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+    const scale = new THREE.Vector3(1, 1, 1);
+    const outerRad = (config.outer_angle * Math.PI) / 180;
+
+    let idx = 0;
+    const startAngle = 0;
+    const endAngle = Math.PI;
+    const angleStep = config.per_ring > 1 ? (endAngle - startAngle) / (config.per_ring - 1) : 0;
+
+    for (let ring = 0; ring < rings; ring++) {
+      const zRing = -ring * config.longitudinal_spacing;
+      for (let pipe = 0; pipe < config.per_ring; pipe++) {
+        if (idx >= this.advancePipeMesh.count) break;
+        const angle = startAngle + pipe * angleStep;
+        const x = (config.tunnel_radius + 0.1) * Math.cos(angle);
+        const y = (config.tunnel_radius + 0.1) * Math.sin(angle);
+        position.set(x, y, zRing);
+
+        const normal = new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0).normalize();
+        const dir = new THREE.Vector3()
+          .addScaledVector(normal, Math.sin(outerRad))
+          .addScaledVector(new THREE.Vector3(0, 0, -1), Math.cos(outerRad))
+          .normalize();
+
+        const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+        matrix.compose(position, quaternion, scale);
+        this.advancePipeMesh.setMatrixAt(idx, matrix);
+        idx++;
+      }
+    }
+    this.advancePipeMesh.instanceMatrix.needsUpdate = true;
   }
 
   /**
@@ -283,40 +328,36 @@ export class ReinforcementManager {
   /**
    * 从快照数据完整更新所有加固构件
    */
-  public updateFromSnapshot(snapshot: {
-    input_parameter?: {
-      rg?: number;
-      r2?: number;
-      r?: number;
-      start_chainage?: number;
-      end_chainage?: number;
-      tunnel_type?: 'single' | 'double';
-      D_spacing?: number;
-    };
-    critical_state?: {
-      rg_crit?: number;
-      tg_crit?: number;
-    };
-    original_state?: {
-      // 原始状态可能也有rg相关，但优先用input_parameter
-    };
-  }): void {
-    const params = snapshot.input_parameter;
-    if (!params) return;
+  public updateFromSnapshot(snapshot: any): void {
+    if (!snapshot) return;
+    const params = snapshot.input_parameter ?? snapshot.params ?? {};
+    const critical = snapshot.critical_state ?? {};
 
     // 构建注浆圈配置（强制降级规范）
     const groutingConfig: GroutingConfig = {
-      rg: params.rg ?? 0,
-      r2: params.r2 ?? 0,
-      rg_crit: snapshot.critical_state?.rg_crit,
-      tg_crit: snapshot.critical_state?.tg_crit,
-      start_chainage: params.start_chainage ?? 0,
-      end_chainage: params.end_chainage ?? 0,
-      tunnel_type: params.tunnel_type ?? 'single',
-      D_spacing: params.D_spacing
+      rg: params.rg ?? snapshot.rg ?? 8.0,
+      r2: params.r2 ?? snapshot.r2 ?? 6.5,
+      rg_crit: critical.rg_crit,
+      tg_crit: critical.tg_crit,
+      start_chainage: params.start_chainage ?? snapshot.start_chainage ?? 0,
+      end_chainage: params.end_chainage ?? snapshot.end_chainage ?? 50,
+      tunnel_type: params.tunnel_type ?? snapshot.tunnel_type ?? 'single',
+      D_spacing: params.D_spacing ?? snapshot.D_spacing
     };
 
     this.updateGroutingFromSnapshot(groutingConfig);
+
+    // 超前小导管更新
+    const advanceConfig: AdvancePipeConfig = {
+      outer_angle: params.outer_angle ?? snapshot.outer_angle ?? 5,
+      circumferential_spacing: params.circumferential_spacing ?? 0.4,
+      per_ring: params.per_ring ?? 30,
+      longitudinal_spacing: params.longitudinal_spacing ?? 2.0,
+      start_chainage: params.start_chainage ?? snapshot.start_chainage ?? 0,
+      end_chainage: params.end_chainage ?? snapshot.end_chainage ?? 50,
+      tunnel_radius: params.r2 ?? params.r ?? 6.5
+    };
+    this.updateAdvancePipes(advanceConfig);
   }
 
   /**
@@ -382,21 +423,9 @@ export class RockBoltGenerator {
     this.mesh.count = 0;
   }
 
-  /**
-   * 从快照更新锚杆数据
-   */
-  public updateFromSnapshot(snapshot: {
-    input_parameter?: {
-      r?: number;
-      start_chainage?: number;
-      end_chainage?: number;
-    };
-    critical_state?: {
-      // 锚杆应力状态可用于着色
-    };
-  }, stateColors?: THREE.Color[]): void {
-    const params = snapshot.input_parameter;
-    if (!params) return;
+  public updateFromSnapshot(snapshot: any, stateColors?: THREE.Color[]): void {
+    if (!snapshot) return;
+    const params = snapshot.input_parameter ?? snapshot.params ?? {};
 
     // 更新配置（降级取值）
     this.config.tunnel_radius = params.r ?? this.config.tunnel_radius;
@@ -439,7 +468,7 @@ export class RockBoltGenerator {
     const angleStep = boltsPerRing > 1 ? (endAngle - startAngle) / (boltsPerRing - 1) : 0;
 
     for (let ringIdx = 0; ringIdx < ringCount; ringIdx++) {
-      const z = this.config.start_chainage + ringIdx * spacingZ;
+      const z = -(ringIdx * spacingZ);
       const center = { x: 0, y: 0, z: z };
 
       for (let boltIdx = 0; boltIdx < boltsPerRing; boltIdx++) {

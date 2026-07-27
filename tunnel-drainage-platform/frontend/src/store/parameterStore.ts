@@ -100,6 +100,18 @@ export const useParameterStore = defineStore('parameter', {
     // 获取当前计算所需的完整负荷数据
     currentPayload: (state) => {
       return state.activeTunnelType === 'single' ? state.singleParams : state.doubleParams;
+    },
+    // 是否存在临界超限加固解
+    hasCriticalState: (state) => {
+      return Boolean(state.currentResults?.critical_state && Object.keys(state.currentResults.critical_state).length > 0);
+    },
+    // 原始状态计算结果
+    originalState: (state) => {
+      return state.currentResults?.original_state ?? null;
+    },
+    // 临界状态计算结果
+    criticalState: (state) => {
+      return state.currentResults?.critical_state ?? null;
     }
   },
 

@@ -42,7 +42,7 @@ export class TunnelGenerator {
       vertexShader: liningVert,
       fragmentShader: liningFrag,
       side: THREE.DoubleSide,
-      
+      clipping: true,           // 新增：使能 Three.js 材质剖切机制
       glslVersion: THREE.GLSL3, // 新增：强制采用 GLSL 3.00 ES 规范编译
       transparent: true,        // 新增：激活透明混合，用于后期查看排水管
       uniforms: {
@@ -233,8 +233,8 @@ export class TunnelGenerator {
     nCurrent: number,
     spacingZ: number,
     scaleFactor: number,
-    radius: number,
-    angleDegrees: number,
+    _radius: number,
+    _angleDegrees: number,
     stateColors?: THREE.Color[]
   ): void {
     this.updateCount(nCurrent);
