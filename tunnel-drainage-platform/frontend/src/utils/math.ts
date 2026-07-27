@@ -117,3 +117,124 @@ export const calculateNormalQuaternion = (
   quaternion.setFromUnitVectors(defaultDirection, normal);
   return quaternion;
 };
+
+/**
+ * 270° 马蹄形拱形半环三维曲线
+ * 离散化构建贴合初支背水面 (r2) 的拱形半环，用于生成环向排水盲管 TubeGeometry
+ */
+export class HorseshoeArcCurve extends THREE.Curve<THREE.Vector3> {
+  private points: THREE.Vector3[] = [];
+  public sampledNormals: THREE.Vector3[] = [];
+  public sampledPoints: THREE.Vector3[] = [];
+
+  constructor(
+    r: number, 
+    r2: number = 6.5,
+    aspect_ratio: number = 0.7
+  ) {
+    super();
+    this.buildPoints(r, r2, aspect_ratio);
+  }
+
+  private buildPoints(r: number, r2: number, aspect_ratio: number): void {
+    const R1_base = 1.05 * r;
+    const R2_base = 0.65 * r;
+    const R3_base = 1.80 * r;
+
+    const dx = R1_base - R2_base;
+    const dy = Math.sqrt(Math.max(0, Math.pow(R3_base - R2_base, 2) - Math.pow(dx, 2)));
+
+    const w = 2.1 * r;
+    const h = w * aspect_ratio;
+    const H_side = Math.max(0.0, h - R1_base + dy - R3_base);
+
+    // 衬砌背水面（初支外壁）外廓半径：t = r2 - r
+    const t = Math.max(0, r2 - r);
+    const R1 = R1_base + t;
+    const R2 = R2_base + t;
+
+    // 极角推导（与 TunnelGenerator.ts 外轮廓全同）
+    let aLeft = Math.atan2(-dy, -dx);
+    if (aLeft < 0) aLeft += Math.PI * 2;
+    let aRight = Math.atan2(-dy, dx);
+    if (aRight < 0) aRight += Math.PI * 2;
+
+    const points: THREE.Vector3[] = [];
+    const normals: THREE.Vector3[] = [];
+
+    // 1. 左侧墙下半段圆弧 (从左墙脚 aLeft ~225° 逆时针至 180° / PI)
+    const leftSteps = 16;
+    for (let i = 0; i <= leftSteps; i++) {
+      const angle = aLeft + (Math.PI - aLeft) * (i / leftSteps);
+      const px = -dx + R2 * Math.cos(angle);
+      const py = -H_side + R2 * Math.sin(angle);
+      points.push(new THREE.Vector3(px, py, 0));
+      normals.push(new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0).normalize());
+    }
+
+    // 2. 左侧直墙段 (若 H_side > 0，从 -H_side 垂直向上至 0)
+    if (H_side > 0) {
+      const wallSteps = 8;
+      for (let i = 1; i <= wallSteps; i++) {
+        const y = -H_side + H_side * (i / wallSteps);
+        points.push(new THREE.Vector3(-R1, y, 0));
+        normals.push(new THREE.Vector3(-1, 0, 0));
+      }
+    }
+
+    // 3. 拱顶大圆弧段 (从 180° / PI 顺时针至 0°)
+    const vaultSteps = 32;
+    for (let i = 0; i <= vaultSteps; i++) {
+      const angle = Math.PI - Math.PI * (i / vaultSteps);
+      const px = R1 * Math.cos(angle);
+      const py = R1 * Math.sin(angle);
+      points.push(new THREE.Vector3(px, py, 0));
+      normals.push(new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0).normalize());
+    }
+
+    // 4. 右侧直墙段 (若 H_side > 0，从 0 垂直向下至 -H_side)
+    if (H_side > 0) {
+      const wallSteps = 8;
+      for (let i = 1; i <= wallSteps; i++) {
+        const y = -H_side * (i / wallSteps);
+        points.push(new THREE.Vector3(R1, y, 0));
+        normals.push(new THREE.Vector3(1, 0, 0));
+      }
+    }
+
+    // 5. 右侧墙下半段圆弧 (从 0° / 2*PI 顺时针至 aRight ~315°)
+    const rightSteps = 16;
+    for (let i = 1; i <= rightSteps; i++) {
+      const angle = Math.PI * 2 + (aRight - Math.PI * 2) * (i / rightSteps);
+      const px = dx + R2 * Math.cos(angle);
+      const py = -H_side + R2 * Math.sin(angle);
+      points.push(new THREE.Vector3(px, py, 0));
+      normals.push(new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0).normalize());
+    }
+
+    this.points = points;
+    this.sampledPoints = points;
+    this.sampledNormals = normals;
+  }
+
+  getPoint(t: number, target = new THREE.Vector3()): THREE.Vector3 {
+    const clampedT = Math.max(0, Math.min(1, t));
+    const index = clampedT * (this.points.length - 1);
+    const low = Math.floor(index);
+    const high = Math.ceil(index);
+    const frac = index - low;
+
+    if (low === high || high >= this.points.length) {
+      return target.copy(this.points[Math.min(low, this.points.length - 1)]);
+    }
+
+    const p0 = this.points[low];
+    const p1 = this.points[high];
+    return target.set(
+      p0.x + (p1.x - p0.x) * frac,
+      p0.y + (p1.y - p0.y) * frac,
+      p0.z + (p1.z - p0.z) * frac
+    );
+  }
+}
+

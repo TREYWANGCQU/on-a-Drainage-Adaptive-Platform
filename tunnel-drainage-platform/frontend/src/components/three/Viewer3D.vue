@@ -698,6 +698,7 @@ const renderSceneData = () => {
       startChainage: start_chainage,
       endChainage: end_chainage,
       tunnelRadius: r,
+      outerRadius: r2,
       dSpacing: D_spacing
     });
     pipeGen.updateFromSnapshot(rawData);
