@@ -30,7 +30,7 @@ export class TunnelGenerator {
     delta_l_min: number = 1.0
   ) {
     // 从 store 传入的空间里程推导纵深 L_max
-    this.L_max =Math.abs(end_chainage - start_chainage);
+    this.L_max = Math.abs(end_chainage - start_chainage);
     this.delta_l_min = delta_l_min;
 
     // 构建带有多层解算拓扑的二维截面，并执行拉伸
@@ -94,11 +94,11 @@ export class TunnelGenerator {
     // 约束条件：Three.js 默认的 curveSegments (12) 会导致大半径曲面（仰拱和边墙）产生严重锯齿，且使水沟精确交点悬空
     // 实现方式：将曲线离散段数提升至 64
     // 影响范围：显著提升马蹄形内/外轮廓平滑度，确保排水沟直角结构与仰拱弧面的几何相交精确闭合
-    const settings = { depth: 0.999, bevelEnabled: false, curveSegments: 64};
+    const settings = { depth: 0.999, bevelEnabled: false, curveSegments: 64 };
     const geometry = new THREE.ExtrudeGeometry(shapes, settings);
     geometry.computeVertexNormals();
-    
-   
+
+
 
     return geometry;
   }
@@ -122,7 +122,7 @@ export class TunnelGenerator {
       // 解除原代码 0.1*radius 的钳位截断，支持平坦型隧道（高宽比 < 1.0）
       const w = 2.1 * r;
       const h = w * aspect_ratio;
-      const H_side = Math.max(0.0, h - R1_base + dy - R3_base); 
+      const H_side = Math.max(0.0, h - R1_base + dy - R3_base);
       const invertCenterY = -H_side + dy;
 
       // 根据目标层级执行无缩放等厚向外偏移
@@ -156,7 +156,7 @@ export class TunnelGenerator {
         // 1. 计算边沟内缘的横坐标与对应的仰拱二衬弧面切点高程及角度
         const halfSideW = halfRoadW - sideW;
         const r3Y_at_side = invertCenterY - Math.sqrt(R3 * R3 - halfSideW * halfSideW);
-        
+
         let aSideInnerRight = Math.atan2(r3Y_at_side - invertCenterY, halfSideW);
         if (aSideInnerRight < 0) aSideInnerRight += Math.PI * 2;
 
@@ -192,7 +192,7 @@ export class TunnelGenerator {
         path.absarc(-dx + offsetX, -H_side, R2, aLeft, Math.PI, true);
         if (H_side > 0) path.lineTo(-R1 + offsetX, 0);
         path.absarc(offsetX, 0, R1, Math.PI, 0, true);
-      
+
       } else {
         // 外轮廓：逆时针绘制 Shape
         path.moveTo(R1 + offsetX, 0);
@@ -213,7 +213,7 @@ export class TunnelGenerator {
     const holePath = buildPath(r, true) as THREE.Path;
     shape.holes.push(holePath);
 
-    
+
 
     return shape;
 
@@ -242,13 +242,13 @@ export class TunnelGenerator {
     const matrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
     const scale = new THREE.Vector3(scaleFactor, scaleFactor, scaleFactor);
-    
+
     for (let i = 0; i < nCurrent; i++) {
       const z = -i * spacingZ;
-      
+
       position.set(0, 0, z);
 
-      const quaternion = new THREE.Quaternion(); 
+      const quaternion = new THREE.Quaternion();
 
       matrix.compose(position, quaternion, scale);
 

@@ -46,6 +46,46 @@
       </div>
     </div>
     
+    <!-- 图层隐显控制 Floating Toolbar -->
+    <div class="layer-panel glass-card">
+      <div class="panel-header" @click="isLayerPanelOpen = !isLayerPanelOpen">
+        <span class="panel-title">图层显隐控制</span>
+        <span class="collapse-icon">{{ isLayerPanelOpen ? '▲' : '▼' }}</span>
+      </div>
+      <div v-if="isLayerPanelOpen" class="panel-body layer-body">
+        <label class="layer-item">
+          <input type="checkbox" v-model="layerVisibility.lining" @change="updateLayerVisibility" />
+          <span class="layer-color-dot lining-dot"></span>
+          <span class="layer-label">隧道衬砌</span>
+        </label>
+        <label class="layer-item">
+          <input type="checkbox" v-model="layerVisibility.grouting" @change="updateLayerVisibility" />
+          <span class="layer-color-dot grouting-dot"></span>
+          <span class="layer-label">注浆加固圈</span>
+        </label>
+        <label class="layer-item">
+          <input type="checkbox" v-model="layerVisibility.bolts" @change="updateLayerVisibility" />
+          <span class="layer-color-dot bolts-dot"></span>
+          <span class="layer-label">系统锚杆</span>
+        </label>
+        <label class="layer-item">
+          <input type="checkbox" v-model="layerVisibility.pipes" @change="updateLayerVisibility" />
+          <span class="layer-color-dot pipes-dot"></span>
+          <span class="layer-label">排水管网</span>
+        </label>
+        <label class="layer-item">
+          <input type="checkbox" v-model="layerVisibility.environment" @change="updateLayerVisibility" />
+          <span class="layer-color-dot env-dot"></span>
+          <span class="layer-label">水文环境</span>
+        </label>
+        <label class="layer-item">
+          <input type="checkbox" v-model="layerVisibility.probe" @change="updateLayerVisibility" />
+          <span class="layer-color-dot probe-dot"></span>
+          <span class="layer-label">最不利探针</span>
+        </label>
+      </div>
+    </div>
+    
     <!-- 顶层 Overlay 标量看板/探针悬浮框 -->
     <div v-if="probeInfo && showOverlay" class="probe-tooltip glass-card">
       <div class="tooltip-header">
@@ -71,7 +111,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, toRaw } from 'vue';
+import { ref, reactive, onMounted, onBeforeUnmount, watch, toRaw } from 'vue';
 import * as THREE from 'three';
 import { useSnapshotStore, extractSnapshotValue, Snapshot } from '@/store/snapshotStore';
 import { useParameterStore } from '@/store/parameterStore';
@@ -107,10 +147,62 @@ let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
 let controls: OrbitControls;
 
-// 追踪已挂载对象
+// 追踪已挂载对象与组件实例
 let activeMeshes: THREE.Object3D[] = [];
 let envInstance: Environment | null = null;
 let probeManager: StressProbeManager | null = null;
+
+let tGenInstance: TunnelGenerator | null = null;
+let rManagerInstance: ReinforcementManager | null = null;
+let rBoltGenInstance: RockBoltGenerator | null = null;
+let pipeGenInstance: DrainagePipeGenerator | null = null;
+
+// 图层显隐控制状态
+const isLayerPanelOpen = ref(true);
+const layerVisibility = reactive({
+  lining: true,
+  grouting: true,
+  bolts: true,
+  pipes: true,
+  environment: true,
+  probe: true
+});
+
+const updateLayerVisibility = () => {
+  if (tGenInstance?.mesh) {
+    tGenInstance.mesh.visible = layerVisibility.lining;
+  }
+
+  if (rManagerInstance) {
+    rManagerInstance.getMeshes().forEach(mesh => {
+      mesh.visible = layerVisibility.grouting;
+    });
+  }
+
+  if (rBoltGenInstance?.mesh) {
+    rBoltGenInstance.mesh.visible = layerVisibility.bolts;
+  }
+
+  if (pipeGenInstance) {
+    pipeGenInstance.getMeshes().forEach(mesh => {
+      mesh.visible = layerVisibility.pipes;
+    });
+  }
+
+  if (envInstance) {
+    if (envInstance.waterPlane) envInstance.waterPlane.visible = layerVisibility.environment;
+    if (envInstance.groundPlane) envInstance.groundPlane.visible = layerVisibility.environment;
+    if (envInstance.waterParticles) envInstance.waterParticles.visible = layerVisibility.environment;
+    if (envInstance.flowLines) envInstance.flowLines.visible = layerVisibility.environment;
+    if (envInstance.depthIndicator) envInstance.depthIndicator.visible = layerVisibility.environment;
+  }
+
+  if (probeManager?.probeGroup) {
+    probeManager.probeGroup.visible = layerVisibility.probe;
+  }
+
+  scheduleRender();
+};
 
 // 最不利点浮窗信息
 const probeInfo = ref<{
@@ -331,6 +423,7 @@ const renderSceneData = () => {
     tGen.mesh.position.z = -start_chainage;
     scene.add(tGen.mesh);
     activeMeshes.push(tGen.mesh);
+    tGenInstance = tGen;
 
     // 2. 加固注浆圈与锚杆
     const rManager = new ReinforcementManager(
@@ -361,6 +454,7 @@ const renderSceneData = () => {
       scene.add(mesh);
       activeMeshes.push(mesh);
     });
+    rManagerInstance = rManager;
 
     const rBoltGen = new RockBoltGenerator({
       bolts_per_ring: 12,
@@ -369,13 +463,16 @@ const renderSceneData = () => {
       end_angle: Math.PI + Math.PI / 4,
       start_chainage,
       end_chainage,
-      tunnel_radius: r
+      tunnel_radius: r,
+      tunnel_type,
+      D_spacing
     });
     rBoltGen.updateFromSnapshot(rawData);
     rBoltGen.mesh.position.z = -start_chainage;
     rBoltGen.mesh.frustumCulled = false;
     scene.add(rBoltGen.mesh);
     activeMeshes.push(rBoltGen.mesh);
+    rBoltGenInstance = rBoltGen;
 
     // 3. 排水管网生成器
     const pipeGen = new DrainagePipeGenerator({
@@ -397,6 +494,7 @@ const renderSceneData = () => {
       scene.add(mesh);
       activeMeshes.push(mesh);
     });
+    pipeGenInstance = pipeGen;
 
     // 4. 水文环境建模随动
     envInstance = new Environment(scene, {
@@ -423,6 +521,7 @@ const renderSceneData = () => {
   });
 
   updateClipping();
+  updateLayerVisibility();
   scheduleRender();
 };
 
@@ -661,4 +760,56 @@ input:checked + .switch-slider:before {
   accent-color: #64b5f6;
   cursor: pointer;
 }
+
+/* 图层控制面板样式 */
+.layer-panel {
+  position: absolute;
+  top: 190px;
+  left: 16px;
+  padding: 12px 16px;
+  color: #e0e6ed;
+  font-size: 13px;
+  z-index: 10;
+  min-width: 220px;
+}
+
+.collapse-icon {
+  font-size: 10px;
+  color: #8c9ba5;
+  cursor: pointer;
+}
+
+.layer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.layer-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  user-select: none;
+}
+
+.layer-item input[type="checkbox"] {
+  accent-color: #00ff88;
+  cursor: pointer;
+}
+
+.layer-color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.lining-dot { background-color: #808080; }
+.grouting-dot { background-color: #00ffff; }
+.bolts-dot { background-color: #8a8a8a; }
+.pipes-dot { background-color: #2ecc71; }
+.env-dot { background-color: #1a5276; }
+.probe-dot { background-color: #00ff88; }
 </style>

@@ -64,6 +64,10 @@ export interface RockBoltConfig {
   end_chainage: number;
   /** 隧道等效内半径 (m)，对应 r */
   tunnel_radius: number;
+  /** 隧道类型，对应 tunnel_type */
+  tunnel_type?: 'single' | 'double';
+  /** 双洞间距 (m)，对应 D_spacing */
+  D_spacing?: number;
 }
 
 export class ReinforcementManager {
@@ -102,12 +106,13 @@ export class ReinforcementManager {
 
     // ========== 2. 注浆圈初始化（支持原始+临界双状态） ==========
     const L_grouting = groutingConfig.end_chainage - groutingConfig.start_chainage;
-    // 注浆圈：沿纵向分段，每段一个环状体
+    // 注浆圈：沿纵向分段，每段一个环状体（双洞模式容量翻倍）
     const segmentsGrouting = Math.max(1, Math.ceil(L_grouting / 5.0)); // 每5m一段
-    this.nMaxGrouting = segmentsGrouting;
+    this.nMaxGrouting = segmentsGrouting * 2;
 
-    // 原始注浆圈（半透明青色）
+    // 原始注浆圈（半透明青色），默认 CylinderGeometry 沿 Y 轴，需 rotateX(Math.PI / 2) 轴线顺 Z 轴
     const groutingGeom = new THREE.CylinderGeometry(1, 1, 1, 32, 1, true);
+    groutingGeom.rotateX(Math.PI / 2);
     const groutingMaterial = new THREE.MeshStandardMaterial({
       color: 0x00ffff,
       roughness: 0.3,
@@ -403,7 +408,8 @@ export class RockBoltGenerator {
     
     const L_max = config.end_chainage - config.start_chainage;
     const ringCount = Math.ceil(L_max / config.spacing_z);
-    const nMax = ringCount * config.bolts_per_ring;
+    // 支持双洞模式下的容量预留 (ringCount * bolts_per_ring * 2)
+    const nMax = ringCount * config.bolts_per_ring * 2;
 
     const boltRadius = 0.025; // 25mm锚杆
     const boltLength = 3.0 * (config.length_scale ?? 1.0);
@@ -431,6 +437,8 @@ export class RockBoltGenerator {
     this.config.tunnel_radius = params.r ?? this.config.tunnel_radius;
     this.config.start_chainage = params.start_chainage ?? this.config.start_chainage;
     this.config.end_chainage = params.end_chainage ?? this.config.end_chainage;
+    this.config.tunnel_type = params.tunnel_type ?? snapshot.tunnel_type ?? this.config.tunnel_type ?? 'single';
+    this.config.D_spacing = params.D_spacing ?? snapshot.D_spacing ?? this.config.D_spacing ?? 30.0;
 
     // 重新计算并更新
     this.updateSystemData(
@@ -441,12 +449,14 @@ export class RockBoltGenerator {
       this.config.start_angle,
       this.config.end_angle,
       this.config.length_scale ?? 1.0,
-      stateColors
+      stateColors,
+      this.config.tunnel_type,
+      this.config.D_spacing
     );
   }
 
   /**
-   * 系统锚杆 (环向排布) 空间位姿自动解算
+   * 系统锚杆 (环向排布) 空间位姿自动解算（支持双洞平移）
    */
   public updateSystemData(
     ringCount: number,
@@ -456,9 +466,13 @@ export class RockBoltGenerator {
     startAngle: number,
     endAngle: number,
     scaleFactor: number = 1.0,
-    stateColors?: THREE.Color[]
+    stateColors?: THREE.Color[],
+    tunnelType: 'single' | 'double' = 'single',
+    D_spacing: number = 30.0
   ): void {
-    const nCurrent = ringCount * boltsPerRing;
+    const isDouble = tunnelType === 'double';
+    const perRingTotal = isDouble ? boltsPerRing * 2 : boltsPerRing;
+    const nCurrent = ringCount * perRingTotal;
     this.mesh.count = Math.min(nCurrent, this.mesh.instanceMatrix.count);
 
     const matrix = new THREE.Matrix4();
@@ -466,26 +480,31 @@ export class RockBoltGenerator {
     const scale = new THREE.Vector3(1, 1, scaleFactor);
 
     const angleStep = boltsPerRing > 1 ? (endAngle - startAngle) / (boltsPerRing - 1) : 0;
+    const xOffsets = isDouble ? [-D_spacing / 2, D_spacing / 2] : [0];
 
+    let globalIdx = 0;
     for (let ringIdx = 0; ringIdx < ringCount; ringIdx++) {
       const z = -(ringIdx * spacingZ);
-      const center = { x: 0, y: 0, z: z };
 
-      for (let boltIdx = 0; boltIdx < boltsPerRing; boltIdx++) {
-        const globalIdx = ringIdx * boltsPerRing + boltIdx;
-        if (globalIdx >= this.mesh.instanceMatrix.count) break;
+      for (const xOff of xOffsets) {
+        const center = { x: xOff, y: 0, z: z };
 
-        const currentAngle = startAngle + boltIdx * angleStep;
-        const polarCoords = polarToCartesian(radius, currentAngle);
+        for (let boltIdx = 0; boltIdx < boltsPerRing; boltIdx++) {
+          if (globalIdx >= this.mesh.instanceMatrix.count) break;
 
-        position.set(polarCoords.x, polarCoords.y, z);
-        const quaternion = calculateNormalQuaternion(position, center);
+          const currentAngle = startAngle + boltIdx * angleStep;
+          const polarCoords = polarToCartesian(radius, currentAngle);
 
-        matrix.compose(position, quaternion, scale);
-        this.mesh.setMatrixAt(globalIdx, matrix);
+          position.set(polarCoords.x + xOff, polarCoords.y, z);
+          const quaternion = calculateNormalQuaternion(position, center);
 
-        if (stateColors && stateColors[globalIdx]) {
-          this.mesh.setColorAt(globalIdx, stateColors[globalIdx]);
+          matrix.compose(position, quaternion, scale);
+          this.mesh.setMatrixAt(globalIdx, matrix);
+
+          if (stateColors && stateColors[globalIdx]) {
+            this.mesh.setColorAt(globalIdx, stateColors[globalIdx]);
+          }
+          globalIdx++;
         }
       }
     }

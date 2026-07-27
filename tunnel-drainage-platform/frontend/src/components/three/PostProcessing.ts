@@ -92,15 +92,57 @@ export class StressProbeManager {
     // 1. 生成 24 单元色阶
     const colors = this.generateColorSpectrum(K_list, tolSafetyFactor);
 
-    // 2. 解算 24 单元最不利点的 3D 角度与物理坐标 (0 ~ 360 度，24 均分)
-    const angleDegree = (controlIdx / 24) * 360 - 90; // 从顶部开始
-    const polar = polarToCartesian(tunnelRadius * 1.05, angleDegree);
+    // 2. 解算 24 单元最不利点的 3D 角度与物理坐标 (0 ~ 23 单元)
+    // controlIdx = 0 对应拱顶 (90 度)，沿截面周向顺时针分布
+    const angleDegree = 90 - (controlIdx / 24) * 360;
+    const rad = (angleDegree * Math.PI) / 180;
+
+    const aspect_ratio = snapshot?.input_parameter?.aspect_ratio ?? snapshot?.params?.aspect_ratio ?? 0.7;
+    const r2 = snapshot?.input_parameter?.r2 ?? snapshot?.params?.r2 ?? (tunnelRadius * 1.18);
+
+    const R1_base = 1.05 * tunnelRadius;
+    const R2_base = 0.65 * tunnelRadius;
+    const R3_base = 1.80 * tunnelRadius;
+    const t = Math.max(0, r2 - tunnelRadius);
+    const R1 = (R1_base + t) * 1.02; // 稍许外扩贴合衬砌外缘
+    const R2 = (R2_base + t) * 1.02;
+    const R3 = (R3_base + t) * 1.02;
+
+    const dx = R1_base - R2_base;
+    const dy = Math.sqrt(Math.max(0, Math.pow(R3_base - R2_base, 2) - Math.pow(dx, 2)));
+    const w = 2.1 * tunnelRadius;
+    const h = w * aspect_ratio;
+    const H_side = Math.max(0.0, h - R1_base + dy - R3_base);
+    const invertCenterY = -H_side + dy;
+
+    let probeX = 0;
+    let probeY = 0;
+
+    if (rad >= 0 && rad <= Math.PI) {
+      // 拱顶区域 (Y >= 0)
+      probeX = R1 * Math.cos(rad);
+      probeY = R1 * Math.sin(rad);
+    } else if (Math.sin(rad) < -0.6) {
+      // 仰拱底端区域
+      probeX = R3 * Math.cos(rad);
+      probeY = invertCenterY + R3 * Math.sin(rad);
+    } else if (Math.cos(rad) > 0) {
+      // 右边墙区域
+      probeX = dx + R2 * Math.cos(rad);
+      probeY = -H_side + R2 * Math.sin(rad);
+    } else {
+      // 左边墙区域
+      probeX = -dx + R2 * Math.cos(rad);
+      probeY = -H_side + R2 * Math.sin(rad);
+    }
+
     const L = Math.abs(
       (snapshot?.input_parameter?.end_chainage ?? snapshot?.params?.end_chainage ?? snapshot?.end_chainage ?? 50) -
       (snapshot?.input_parameter?.start_chainage ?? snapshot?.params?.start_chainage ?? snapshot?.start_chainage ?? 0)
     );
-    const zPos = zPosition - (controlIdx / 24) * L;
-    const probePos = new THREE.Vector3(polar.x, polar.y, zPos);
+    // Z 轴纵向居中定位，避免将周向单元索引 controlIdx 误用为 Z 轴里程
+    const zPos = zPosition - L / 2;
+    const probePos = new THREE.Vector3(probeX, probeY, zPos);
 
     // 3. 构建 3D 高亮光环与锚线
     const ringGeo = new THREE.TorusGeometry(0.6, 0.08, 16, 32);
