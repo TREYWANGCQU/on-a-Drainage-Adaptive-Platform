@@ -183,14 +183,6 @@
               </el-form-item>
             </el-col>
           </el-row>
-
-          <el-row :gutter="20">
-            <el-col :span="12">
-              <el-form-item label="涌水量折减系数">
-                <el-input-number :model-value="formData.beta2" @change="(val) => paramStore.updateParam('beta2', val)" :step="0.1" :max="1" />
-              </el-form-item>
-            </el-col>
-          </el-row>
         </el-collapse-item>
 
         <el-collapse-item title="⚙️ 高级默认参数设置" name="4">
@@ -339,12 +331,40 @@ const validateChainage = (rule: any, value: any, callback: any) => {
   }
 };
 
+// 自定义几何半径级联校验规则：r < r1 < r2 <= rg
+const validateRadius = (rule: any, value: any, callback: any) => {
+  const { r, r1, r2, rg } = formData.value;
+  if (r >= r1) {
+    callback(new Error('二衬内半径 r 必须小于二衬外半径 r1'));
+  } else if (r1 >= r2) {
+    callback(new Error('二衬外半径 r1 必须小于初支外半径 r2'));
+  } else if (r2 > rg) {
+    callback(new Error('初支外半径 r2 不能大于注浆圈外半径 rg'));
+  } else {
+    callback();
+  }
+};
+
+// 自定义地下水头与埋深校验：h <= c
+const validateWaterHead = (rule: any, value: any, callback: any) => {
+  if (formData.value.h > formData.value.c) {
+    callback(new Error('初始地下水头 h 不宜超过隧道埋深 c'));
+  } else {
+    callback();
+  }
+};
+
 const formRules = ref<FormRules>({
   start_chainage: [{ required: true, message: '请输入起点里程', trigger: 'blur' }],
   end_chainage: [
     { required: true, message: '请输入终点里程', trigger: 'blur' },
     { validator: validateChainage, trigger: 'blur' }
-  ]
+  ],
+  r: [{ validator: validateRadius, trigger: 'change' }],
+  r1: [{ validator: validateRadius, trigger: 'change' }],
+  r2: [{ validator: validateRadius, trigger: 'change' }],
+  rg: [{ validator: validateRadius, trigger: 'change' }],
+  h: [{ validator: validateWaterHead, trigger: 'change' }]
 });
 
 // ==========================================

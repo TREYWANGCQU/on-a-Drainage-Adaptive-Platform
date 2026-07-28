@@ -45,7 +45,6 @@ async def init_models():
                 rebar_type="HRB400",
                 Ag=0.0025,
                 D_spacing=45.0,
-                beta2=0.85,
                 P_crit=0.0,
                 I_long=0.02,
                 double_side=True

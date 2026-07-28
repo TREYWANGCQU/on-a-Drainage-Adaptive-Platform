@@ -31,12 +31,12 @@ const caseOptions = [
     value: 'karst_double_high',
     data: {
       tunnel_type: 'double',
-      K: 0.15, h: 29, ha: 0.0, p_mm: 1025.2, Kg: 0.00864, K1:0.000864, K2: 0.00864,
-      cn_condition: '灌溉良好', land_use: '林地', grades: 5,
+      K: 0.15, h: 29, ha: 0.0, p_mm: 1025.2, Kg: 0.00864, K1: 0.00864, K2: 0.000864,
+      cn_condition: '灌溉良好', land_use: '居住地', grades: 5,
       r: 7.95, r1: 8.35, r2: 8.57, rg: 10.57, c: 32, aspect_ratio: 0.7,
       start_chainage: 0, end_chainage: 47,
       concrete_grade: 'C40', rebar_type: 'HRB400', Ag: 0.0011,
-      D_spacing: 43.0, beta2: 1.0, P_crit: 0.0,
+      D_spacing: 43.0, P_crit: 500.0,
       I_long: 0.02, double_side: true
     }
   },
@@ -45,16 +45,15 @@ const caseOptions = [
     value: 'urban_single_low',
     data: {
       tunnel_type: 'single',
-      K: 0.15, h: 29, p_mm: 1025.2, Kg: 0.00864, K1: 0.000864, K2: 0.00864,
-      cn_condition: '灌溉良好', land_use: '林地', grades: 5,
-      r: 7.95, r1: 8.35, r2:8.57, rg: 10.57, c: 30, aspect_ratio: 0.7,
+      K: 0.15, h: 29, p_mm: 1025.2, Kg: 0.00864, K1: 0.00864, K2: 0.000864,
+      cn_condition: '灌溉良好', land_use: '居住地', grades: 4,
+      r: 7.95, r1: 8.35, r2: 8.57, rg: 10.57, c: 30, aspect_ratio: 0.7,
       start_chainage: 0, end_chainage: 47,
-      concrete_grade: 'C40', rebar_type: 'HRB400', Ag: 0.0011,
-      beta2: 1.0, P_crit: 0.0,
+      concrete_grade: 'C35', rebar_type: 'HRB400', Ag: 0.002,
+      P_crit: 500.0,
       I_long: 0.02, double_side: true
     }
-  },
-  
+  }
 ];
 
 const handleCaseChange = (val: string) => {

@@ -45,7 +45,6 @@ class SingleTubeSchema(BaseModel):
     Ag: float = Field(..., description="配筋面积 (m²)")
     #D_spacing: float = Field(43.0, description="双洞间距 (m)，单洞设计时输入0") # 双洞特有参数，单洞设计时输入0
 
-    beta2: float = Field(1.0, description="设计涌水量折减系数")
     P_crit: float = Field(0.0, description="临界输入外水压力 (kPa)")#由内部计算得到的临界压力输入
     
     I_long: float = Field(0.02, description="纵向排水管水力坡降")
@@ -104,7 +103,6 @@ class DoubleTubeSchema(BaseModel):
     Ag: float = Field(..., description="配筋面积 (m²)")
     D_spacing: float = Field(43.0, description="双洞间距 (m)") # 双洞特有参数，单洞设计时输入0
 
-    beta2: float = Field(1.0, description="设计涌水量折减系数")
     P_crit: float = Field(0.0, description="临界输入外水压力 (kPa)")#由内部计算得到的临界压力输入
     
     I_long: float = Field(0.02, description="纵向排水管水力坡降")

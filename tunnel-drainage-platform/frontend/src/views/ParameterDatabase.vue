@@ -101,9 +101,11 @@ const compareDrawerVisible = ref(false);
 
 const compareKeys = computed(() => {
   if (selectedRows.value.length === 0) return [];
-  // 提取第一个勾选项的所有 Key 作为基准目录
+  // 提取第一个勾选项的所有 Key 作为基准目录，并清洗废弃字段
   const baseParams = parseJSON(selectedRows.value[0].parameters_json);
-  return Object.keys(baseParams).map(key => ({ key }));
+  return Object.keys(baseParams)
+    .filter(key => key !== 'beta2')
+    .map(key => ({ key }));
 });
 
 const fetchData = async () => {

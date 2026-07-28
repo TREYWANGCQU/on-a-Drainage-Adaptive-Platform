@@ -19,7 +19,7 @@ interface AdvancedParams {
   tol_safety_factor: number;
 }
 
-// 单洞参数结构 (25个参数)
+// 单洞参数结构 (24个核心/复选参数 + 13个高级参数)
 export interface SingleTubeParams extends AdvancedParams {
   tunnel_type: 'single';
   K: number; h: number; p_mm: number; Kg: number; K1: number; K2: number;
@@ -27,11 +27,11 @@ export interface SingleTubeParams extends AdvancedParams {
   r: number; r1: number; r2: number; rg: number; c: number; aspect_ratio: number;
   start_chainage: number; end_chainage: number; // 分区里程
   concrete_grade: string; rebar_type: string; Ag: number;
-  beta2: number;  P_crit: number;
+  P_crit: number;
   I_long: number; double_side: boolean;
 }
 
-// 双洞参数结构 (27个参数)
+// 双洞参数结构 (26个核心/复选参数 + 13个高级参数)
 export interface DoubleTubeParams extends AdvancedParams {
   tunnel_type: 'double';
   K: number; h: number; ha: number; p_mm: number; Kg: number; K1: number; K2: number;
@@ -39,7 +39,7 @@ export interface DoubleTubeParams extends AdvancedParams {
   r: number; r1: number; r2: number; rg: number; c: number; aspect_ratio: number;
   start_chainage: number; end_chainage: number; // 分区里程
   concrete_grade: string; rebar_type: string; Ag: number;
-  D_spacing: number; beta2: number; P_crit: number;
+  D_spacing: number; P_crit: number;
   I_long: number; double_side: boolean;
 }
 
@@ -69,15 +69,15 @@ export const useParameterStore = defineStore('parameter', {
     isDirty: false,
     currentResults: null as any | null,
 
-    // 单洞状态机初始化
+    // 单洞状态机初始化 (包含规范推荐默认物理数值)
     singleParams: {
       tunnel_type: 'single',
-      K: 0, h: 0, p_mm: 0, Kg: 0, K1: 0, K2: 0,
-      cn_condition: '灌溉良好', land_use: '林地', grades: 3,
-      r: 0, r1: 0, r2: 0, rg: 0, c: 0, aspect_ratio: 0.7,
-      start_chainage: 0, end_chainage: 0,
-      concrete_grade: 'C30', rebar_type: 'HRB400', Ag: 0,
-      beta2: 1.0, P_crit: 0.0,
+      K: 0.15, h: 30.0, p_mm: 1000.0, Kg: 0.00864, K1: 0.00864, K2: 0.000864,
+      cn_condition: '灌溉良好', land_use: '居住地', grades: 4,
+      r: 7.95, r1: 8.35, r2: 8.57, rg: 8.57, c: 50.0, aspect_ratio: 0.7,
+      start_chainage: 0, end_chainage: 47,
+      concrete_grade: 'C35', rebar_type: 'HRB400', Ag: 0.002,
+      P_crit: 500.0,
       I_long: 0.02, double_side: true,
       ...defaultAdvancedSettings
     } as SingleTubeParams,
@@ -85,12 +85,12 @@ export const useParameterStore = defineStore('parameter', {
     // 双洞状态机初始化
     doubleParams: {
       tunnel_type: 'double',
-      K: 0, h: 0, ha: 0, p_mm: 0, Kg: 0, K1: 0, K2: 0,
-      cn_condition: '灌溉良好', land_use: '林地', grades: 3,
-      r: 0, r1: 0, r2: 0, rg: 0, c: 0,
-      start_chainage: 0, end_chainage: 0,
-      concrete_grade: 'C30', rebar_type: 'HRB400', Ag: 0,
-      D_spacing: 0, beta2: 1.0,  P_crit: 0.0,
+      K: 0.15, h: 30.0, ha: 0.0, p_mm: 1000.0, Kg: 0.00864, K1: 0.00864, K2: 0.000864,
+      cn_condition: '灌溉良好', land_use: '居住地', grades: 4,
+      r: 7.95, r1: 8.35, r2: 8.57, rg: 8.57, c: 50.0, aspect_ratio: 0.7,
+      start_chainage: 0, end_chainage: 47,
+      concrete_grade: 'C35', rebar_type: 'HRB400', Ag: 0.002,
+      D_spacing: 43.0, P_crit: 500.0,
       I_long: 0.02, double_side: true,
       ...defaultAdvancedSettings
     } as DoubleTubeParams
