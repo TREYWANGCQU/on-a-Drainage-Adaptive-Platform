@@ -72,48 +72,25 @@ export interface RockBoltConfig {
 }
 
 export class ReinforcementManager {
-  public advancePipeMesh: THREE.InstancedMesh;
   public groutingMesh: THREE.InstancedMesh;
   public criticalGroutingMesh?: THREE.InstancedMesh; // 临界注浆圈（双状态对比）
-  private readonly nMaxAdvance: number;
   private readonly nMaxGrouting: number;
 
   /**
-   * 构造函数 - 初始化超前小导管与注浆圈实例网格
+   * 构造函数 - 初始化注浆圈实例网格
    */
-  constructor(advanceConfig: AdvancePipeConfig, groutingConfig: GroutingConfig) {
-    // ========== 1. 超前小导管初始化 ==========
-    const L_advance = advanceConfig.end_chainage - advanceConfig.start_chainage;
-    const ringsAdvance = Math.ceil(L_advance / advanceConfig.longitudinal_spacing);
-    this.nMaxAdvance = ringsAdvance * advanceConfig.per_ring;
+  constructor(groutingConfig: GroutingConfig | any, optionalGroutingConfig?: GroutingConfig) {
+    const config: GroutingConfig = optionalGroutingConfig || groutingConfig;
 
-    const advancePipeGeom = new THREE.CylinderGeometry(0.04, 0.04, 4.0, 8);
-    advancePipeGeom.translate(0, 2.0, 0);
-    advancePipeGeom.rotateX(Math.PI / 2);
-    const advanceMaterial = new THREE.MeshStandardMaterial({ 
-      color: 0xffaa00, 
-      roughness: 0.6,
-      transparent: true,
-      opacity: 0.9
-    });
-    this.advancePipeMesh = new THREE.InstancedMesh(
-      advancePipeGeom, 
-      advanceMaterial, 
-      this.nMaxAdvance
-    );
-    this.advancePipeMesh.frustumCulled = false;
-    this.advancePipeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.advancePipeMesh.count = 0;
-
-    // ========== 2. 注浆圈初始化（支持原始+临界双状态） ==========
-    const L_grouting = groutingConfig.end_chainage - groutingConfig.start_chainage;
+    // ========== 注浆圈初始化（支持原始+临界双状态） ==========
+    const L_grouting = config.end_chainage - config.start_chainage;
     // 注浆圈：沿纵向分段，每段一个环状体（双洞模式容量翻倍）
     const segmentsGrouting = Math.max(1, Math.ceil(L_grouting / 5.0)); // 每5m一段
     this.nMaxGrouting = segmentsGrouting * 2;
 
     // 原始注浆圈（半透明青色），构建封闭马蹄形环状截面
-    const r_base = groutingConfig.r2 ? groutingConfig.r2 / 1.18 : 5.5;
-    const shapeInitial = buildHorseshoeShape(r_base, groutingConfig.rg || (groutingConfig.r2 + 1.5), groutingConfig.r2 || 6.5, 0, 0.7);
+    const r_base = config.r2 ? config.r2 / 1.18 : 5.5;
+    const shapeInitial = buildHorseshoeShape(r_base, config.rg || (config.r2 + 1.5), config.r2 || 6.5, 0, 0.7);
     const groutingGeom = new THREE.ExtrudeGeometry(shapeInitial, { depth: 1.0, bevelEnabled: false, curveSegments: 32 });
 
     const groutingMaterial = new THREE.MeshStandardMaterial({
@@ -260,46 +237,7 @@ export class ReinforcementManager {
 
   /**
    * 更新超前小导管实例矩阵
-   */
-  public updateAdvancePipes(config: AdvancePipeConfig): void {
-    const L = Math.abs(config.end_chainage - config.start_chainage);
-    const rings = Math.max(1, Math.ceil(L / config.longitudinal_spacing));
-    const totalPipes = rings * config.per_ring;
-    this.advancePipeMesh.count = Math.min(totalPipes, this.nMaxAdvance);
 
-    const matrix = new THREE.Matrix4();
-    const position = new THREE.Vector3();
-    const scale = new THREE.Vector3(1, 1, 1);
-    const outerRad = (config.outer_angle * Math.PI) / 180;
-
-    let idx = 0;
-    const startAngle = 0;
-    const endAngle = Math.PI;
-    const angleStep = config.per_ring > 1 ? (endAngle - startAngle) / (config.per_ring - 1) : 0;
-
-    for (let ring = 0; ring < rings; ring++) {
-      const zRing = -ring * config.longitudinal_spacing;
-      for (let pipe = 0; pipe < config.per_ring; pipe++) {
-        if (idx >= this.advancePipeMesh.count) break;
-        const angle = startAngle + pipe * angleStep;
-        const x = (config.tunnel_radius + 0.1) * Math.cos(angle);
-        const y = (config.tunnel_radius + 0.1) * Math.sin(angle);
-        position.set(x, y, zRing);
-
-        const normal = new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0).normalize();
-        const dir = new THREE.Vector3()
-          .addScaledVector(normal, Math.sin(outerRad))
-          .addScaledVector(new THREE.Vector3(0, 0, -1), Math.cos(outerRad))
-          .normalize();
-
-        const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
-        matrix.compose(position, quaternion, scale);
-        this.advancePipeMesh.setMatrixAt(idx, matrix);
-        idx++;
-      }
-    }
-    this.advancePipeMesh.instanceMatrix.needsUpdate = true;
-  }
 
   /**
    * 泛型矩阵与状态更新：支持环向矩阵布设的解算注入
@@ -360,18 +298,6 @@ export class ReinforcementManager {
     };
 
     this.updateGroutingFromSnapshot(groutingConfig);
-
-    // 超前小导管更新
-    const advanceConfig: AdvancePipeConfig = {
-      outer_angle: params.outer_angle ?? snapshot.outer_angle ?? 5,
-      circumferential_spacing: params.circumferential_spacing ?? 0.4,
-      per_ring: params.per_ring ?? 30,
-      longitudinal_spacing: params.longitudinal_spacing ?? 2.0,
-      start_chainage: params.start_chainage ?? snapshot.start_chainage ?? 0,
-      end_chainage: params.end_chainage ?? snapshot.end_chainage ?? 50,
-      tunnel_radius: params.r2 ?? params.r ?? 6.5
-    };
-    this.updateAdvancePipes(advanceConfig);
   }
 
   /**
@@ -379,7 +305,6 @@ export class ReinforcementManager {
    */
   public getMeshes(): THREE.InstancedMesh[] {
     const meshes: THREE.InstancedMesh[] = [
-      this.advancePipeMesh,
       this.groutingMesh
     ];
     if (this.criticalGroutingMesh) {
@@ -392,9 +317,6 @@ export class ReinforcementManager {
    * 释放资源
    */
   public dispose(): void {
-    this.advancePipeMesh.geometry.dispose();
-    (this.advancePipeMesh.material as THREE.Material).dispose();
-    
     this.groutingMesh.geometry.dispose();
     (this.groutingMesh.material as THREE.Material).dispose();
     

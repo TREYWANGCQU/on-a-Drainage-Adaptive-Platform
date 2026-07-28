@@ -78,6 +78,11 @@
           <span class="layer-color-dot env-dot"></span>
           <span class="layer-label">水文环境</span>
         </label>
+        <label class="layer-item sub-layer-item">
+          <input type="checkbox" v-model="layerVisibility.waterParticles" @change="updateLayerVisibility" />
+          <span class="layer-color-dot particle-dot"></span>
+          <span class="layer-label">└ 地下水粒子特效</span>
+        </label>
         <label class="layer-item">
           <input type="checkbox" v-model="layerVisibility.probe" @change="updateLayerVisibility" />
           <span class="layer-color-dot probe-dot"></span>
@@ -232,6 +237,7 @@ const layerVisibility = reactive({
   criticalGrouting: true,
   pipes: true,
   environment: true,
+  waterParticles: true,
   probe: true
 });
 
@@ -254,9 +260,11 @@ const updateLayerVisibility = () => {
   if (envInstance) {
     if (envInstance.waterPlane) envInstance.waterPlane.visible = layerVisibility.environment;
     if (envInstance.groundPlane) envInstance.groundPlane.visible = layerVisibility.environment;
-    if (envInstance.waterParticles) envInstance.waterParticles.visible = layerVisibility.environment;
     if (envInstance.flowLines) envInstance.flowLines.visible = layerVisibility.environment;
     if (envInstance.depthIndicator) envInstance.depthIndicator.visible = layerVisibility.environment;
+    if (envInstance.waterParticles) {
+      envInstance.waterParticles.visible = layerVisibility.environment && layerVisibility.waterParticles;
+    }
   }
 
   if (probeManager) {
@@ -682,28 +690,17 @@ const renderSceneData = () => {
     activeMeshes.push(tGen.mesh);
     tGenInstance = tGen;
 
-    // 2. 加固注浆圈与锚杆
-    const rManager = new ReinforcementManager(
-      {
-        outer_angle: 5,
-        circumferential_spacing: 0.4,
-        per_ring: 30,
-        longitudinal_spacing: 2.0,
-        start_chainage,
-        end_chainage,
-        tunnel_radius: r
-      },
-      {
-        rg,
-        r2,
-        rg_crit: props.mode === 'original' ? undefined : rawData.results?.critical_state?.rg_crit,
-        tg_crit: props.mode === 'original' ? undefined : rawData.results?.critical_state?.tg_crit,
-        start_chainage,
-        end_chainage,
-        tunnel_type,
-        D_spacing
-      }
-    );
+    // 2. 加固注浆圈 (去除超前小导管)
+    const rManager = new ReinforcementManager({
+      rg,
+      r2,
+      rg_crit: props.mode === 'original' ? undefined : rawData.results?.critical_state?.rg_crit,
+      tg_crit: props.mode === 'original' ? undefined : rawData.results?.critical_state?.tg_crit,
+      start_chainage,
+      end_chainage,
+      tunnel_type,
+      D_spacing
+    });
     rManager.updateFromSnapshot(rawData);
     rManager.getMeshes().forEach(mesh => {
       mesh.position.z = -start_chainage;
@@ -736,7 +733,7 @@ const renderSceneData = () => {
     });
     pipeGenInstance = pipeGen;
 
-    // 4. 水文环境建模随动
+    // 4. 水文环境建模随动 (注入 activeMeshes 支持 3D 剖切分析)
     envInstance = new Environment(scene, {
       startChainage: start_chainage,
       endChainage: end_chainage,
@@ -746,6 +743,9 @@ const renderSceneData = () => {
       tunnelType: tunnel_type
     });
     envInstance.updateFromSnapshot(rawData);
+    envInstance.getMeshes().forEach(mesh => {
+      activeMeshes.push(mesh);
+    });
 
     // 5. 受力云图与探针挂载
     if (probeManager) {
@@ -1055,7 +1055,14 @@ input:checked + .switch-slider:before {
 .critical-grouting-dot { background-color: #ff6600; }
 .pipes-dot { background-color: #2ecc71; }
 .env-dot { background-color: #1a5276; }
+.particle-dot { background-color: #38bdf8; }
 .probe-dot { background-color: #00ff88; }
+
+.sub-layer-item {
+  margin-left: 14px;
+  font-size: 11px;
+  opacity: 0.9;
+}
 
 /* 标准视角与测距工具 Toolbar */
 .toolbar-panel {

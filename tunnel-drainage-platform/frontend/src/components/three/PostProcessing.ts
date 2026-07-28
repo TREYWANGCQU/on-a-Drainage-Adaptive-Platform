@@ -479,10 +479,18 @@ export class StressProbeManager {
       : 0;
     const minK = K_24[controlIdx24] ?? (state.final_safety_factor ?? state.safety_factor ?? 2.5);
 
-    // 3. 构建里程字符串
+    // 3. 构建精准控制里程与字符串解算
     const startChain = snapshot?.input_parameter?.start_chainage ?? snapshot?.params?.start_chainage ?? snapshot?.start_chainage ?? 0;
     const endChain = snapshot?.input_parameter?.end_chainage ?? snapshot?.params?.end_chainage ?? snapshot?.end_chainage ?? 50;
-    const chainageText = `DK${startChain.toFixed(0)}+000 ~ DK${endChain.toFixed(0)}+000`;
+
+    const controlChainageOffset = snapshot?.critical_state?.control_chainage
+      ?? snapshot?.original_state?.control_chainage
+      ?? snapshot?.control_chainage
+      ?? (startChain + (endChain - startChain) / 2);
+
+    const km = Math.floor(controlChainageOffset / 1000);
+    const m = controlChainageOffset % 1000;
+    const chainageText = `DK${km}+${m.toFixed(1).padStart(5, '0')}`;
 
     this.cachedMechanics = {
       K_list: K_24,
@@ -497,8 +505,7 @@ export class StressProbeManager {
     const aspect_ratio = snapshot?.input_parameter?.aspect_ratio ?? snapshot?.params?.aspect_ratio ?? 0.7;
     const r2 = snapshot?.input_parameter?.r2 ?? snapshot?.params?.r2 ?? (tunnelRadius * 1.18);
 
-    const L = Math.abs(endChain - startChain);
-    const zPos = zPosition - L / 2;
+    const zPos = -controlChainageOffset;
 
     const tunnelType = snapshot?.input_parameter?.tunnel_type ?? snapshot?.params?.tunnel_type ?? snapshot?.tunnel_type ?? 'single';
     const D_spacing = snapshot?.input_parameter?.D_spacing ?? snapshot?.params?.D_spacing ?? snapshot?.D_spacing ?? 30.0;

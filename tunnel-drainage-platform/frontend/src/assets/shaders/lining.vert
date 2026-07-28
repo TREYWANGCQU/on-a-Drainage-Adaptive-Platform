@@ -19,7 +19,6 @@ out vec3 vWorldPosition; // 新增：传递世界坐标
 #include <logdepthbuf_pars_vertex>
 
 void main() {
-    #include <clipping_planes_vertex>
     vLocalPosition = position;
     vLocalNormal = normal; // 确保此处对局部物理法线赋值
     
@@ -41,6 +40,8 @@ void main() {
     vNormal = normalize(normalMatrix * transformedNormal);
     vec4 mvPosition = viewMatrix * worldPosition;
     vViewPosition = -mvPosition.xyz;
+
+    #include <clipping_planes_vertex>
     
     // 严格分离：适配实例颜色的独立宏推演
     #ifdef USE_INSTANCING_COLOR

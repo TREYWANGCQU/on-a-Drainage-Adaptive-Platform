@@ -58,6 +58,8 @@ export class Environment {
   
   // 着色器代码
   private readonly waterVertexShader = `
+    #include <common>
+    #include <clipping_planes_pars_vertex>
     uniform float uTime;
     uniform float uWaterHead;
     uniform float uSpeed;
@@ -82,11 +84,15 @@ export class Environment {
       pos.y += wave1 + wave2 + wave3;
       vElevation = pos.y - uWaterHead;
       
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+      #include <clipping_planes_vertex>
+      gl_Position = projectionMatrix * mvPosition;
     }
   `;
   
   private readonly waterFragmentShader = `
+    #include <common>
+    #include <clipping_planes_pars_fragment>
     uniform float uTime;
     uniform float uOpacity;
     uniform vec3 uColorDeep;
@@ -96,6 +102,7 @@ export class Environment {
     varying float vElevation;
     
     void main() {
+      #include <clipping_planes_fragment>
       // 基于高度的颜色混合
       float mixFactor = smoothstep(-0.3, 0.3, vElevation);
       vec3 color = mix(uColorDeep, uColorShallow, mixFactor);
@@ -109,6 +116,8 @@ export class Environment {
   `;
   
   private readonly particleVertexShader = `
+    #include <common>
+    #include <clipping_planes_pars_vertex>
     uniform float uTime;
     uniform float uSpeed;
     uniform float uWaterHead;
@@ -136,15 +145,19 @@ export class Environment {
                smoothstep(uWaterHead - 10.0, uWaterHead - 5.0, pos.y);
       
       vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+      #include <clipping_planes_vertex>
       gl_PointSize = aSize * (300.0 / -mvPosition.z);
       gl_Position = projectionMatrix * mvPosition;
     }
   `;
   
   private readonly particleFragmentShader = `
+    #include <common>
+    #include <clipping_planes_pars_fragment>
     varying float vAlpha;
     
     void main() {
+      #include <clipping_planes_fragment>
       // 圆形粒子
       vec2 coord = gl_PointCoord - vec2(0.5);
       float dist = length(coord);
@@ -180,6 +193,18 @@ export class Environment {
   }
 
   /**
+   * 获取所有水文环境 3D 网格对象 (用于剖切与显隐控制)
+   */
+  public getMeshes(): THREE.Object3D[] {
+    const meshes: THREE.Object3D[] = [];
+    if (this.waterPlane) meshes.push(this.waterPlane);
+    if (this.groundPlane) meshes.push(this.groundPlane);
+    if (this.waterParticles) meshes.push(this.waterParticles);
+    if (this.flowLines) meshes.push(this.flowLines);
+    return meshes;
+  }
+
+  /**
    * 初始化动态水位面
    * 基于 waterHead / final_waterHead 驱动Y轴高度
    */
@@ -205,6 +230,7 @@ export class Environment {
       fragmentShader: this.waterFragmentShader,
       uniforms: this.particleUniforms,
       transparent: true,
+      clipping: true,
       side: THREE.DoubleSide
     });
     
@@ -324,6 +350,7 @@ export class Environment {
       fragmentShader: this.particleFragmentShader,
       uniforms: this.flowUniforms,
       transparent: true,
+      clipping: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending
     });
