@@ -37,74 +37,88 @@ def run_calculation(data):
     else:
         input_data = dict(data)
 
+    def get_val(key, default=None):
+        if isinstance(input_data, dict) and key in input_data and input_data[key] is not None:
+            return input_data[key]
+        if hasattr(data, key) and getattr(data, key) is not None:
+            return getattr(data, key)
+        return default
+
     # 实例化并配置 TunnelParamsHc (与 optimizedDesign 保持一致)
     parHc = hc.TunnelParamsHc()
 
     # 映射入参到 TunnelParamsHc
-    parHc.k_r = getattr(data, 'K', parHc.k_r)
-    parHc.H = getattr(data, 'h', parHc.H)
-    parHc.r_0 = getattr(data, 'r', parHc.r_0)
-    parHc.r_s = getattr(data, 'r1', parHc.r_s)
-    parHc.r_p = getattr(data, 'r2', parHc.r_p)
-    parHc.r_g = getattr(data, 'rg', parHc.r_g)
-    parHc.k_s = getattr(data, 'K2', parHc.k_s)
-    parHc.k_p = getattr(data, 'K1', parHc.k_p)
-    parHc.k_g = getattr(data, 'Kg', parHc.k_g)
-    parHc.start_chainage = getattr(data, 'start_chainage', parHc.start_chainage)
-    parHc.end_chainage = getattr(data, 'end_chainage', parHc.end_chainage)
-    parHc.P_crit = getattr(data, 'P_crit', parHc.P_crit)
+    parHc.k_r = get_val('K', parHc.k_r)
+    parHc.H = get_val('h', parHc.H)
+    parHc.r_0 = get_val('r', parHc.r_0)
+    parHc.r_s = get_val('r1', parHc.r_s)
+    parHc.r_p = get_val('r2', parHc.r_p)
+    parHc.r_g = get_val('rg', parHc.r_g)
+    parHc.k_s = get_val('K2', parHc.k_s)
+    parHc.k_p = get_val('K1', parHc.k_p)
+    parHc.k_g = get_val('Kg', parHc.k_g)
+    parHc.start_chainage = get_val('start_chainage', parHc.start_chainage)
+    parHc.end_chainage = get_val('end_chainage', parHc.end_chainage)
+    parHc.P_crit = get_val('P_crit', parHc.P_crit)
 
     # 工况开关
-    parHc.tunnel_type = getattr(data, 'tunnel_type', parHc.tunnel_type)
-    ha_val = getattr(data, 'ha', 0.0)
-    c_val = getattr(data, 'c', getattr(data, 'depth', 50.0))
+    parHc.tunnel_type = get_val('tunnel_type', parHc.tunnel_type)
+    ha_val = get_val('ha', 0.0)
+    c_val = get_val('c', get_val('depth', 50.0))
     if parHc.tunnel_type == "double" and ha_val > 0:
         parHc.h_1 = ha_val
     else:
         parHc.h_1 = c_val
-    parHc.D_spacing = getattr(data, 'D_spacing', parHc.D_spacing)
+    parHc.D_spacing = get_val('D_spacing', parHc.D_spacing)
 
     # 降雨与下垫面
-    parHc.p_mm = getattr(data, 'p_mm', parHc.p_mm)
-    parHc.cn_condition = getattr(data, 'cn_condition', parHc.cn_condition)
-    parHc.land_use = getattr(data, 'land_use', parHc.land_use)
+    parHc.p_mm = get_val('p_mm', parHc.p_mm)
+    parHc.cn_condition = get_val('cn_condition', parHc.cn_condition)
+    parHc.land_use = get_val('land_use', parHc.land_use)
 
     # 高级默认参数
-    parHc.gamma = getattr(data, 'gamma', parHc.gamma)
-    parHc.double_side = getattr(data, 'double_side', parHc.double_side)
-    parHc.S_min = getattr(data, 'S_min', parHc.S_min)
-    if hasattr(data, 'S_code_max') and getattr(data, 'S_code_max') is not None:
-        parHc.S_max = getattr(data, 'S_code_max')
-    elif hasattr(data, 'S_max') and getattr(data, 'S_max') is not None:
-        parHc.S_max = getattr(data, 'S_max')
+    parHc.gamma = get_val('gamma', parHc.gamma)
+    parHc.double_side = get_val('double_side', parHc.double_side)
+    parHc.S_min = get_val('S_min', parHc.S_min)
+    s_max_val = get_val('S_code_max', get_val('S_max', parHc.S_max))
+    if s_max_val is not None:
+        parHc.S_max = s_max_val
 
-    parHc.n_long = getattr(data, 'n_long', parHc.n_long)
-    parHc.i_long = getattr(data, 'I_long', getattr(data, 'i_long', parHc.i_long))
-    parHc.n_ring = getattr(data, 'n_ring', parHc.n_ring)
-    parHc.i_ring = getattr(data, 'I_ring', getattr(data, 'i_ring', parHc.i_ring))
-    parHc.n_lat = getattr(data, 'n_lat', parHc.n_lat)
-    parHc.i_lat = getattr(data, 'I_lat', getattr(data, 'i_lat', parHc.i_lat))
+    parHc.n_long = get_val('n_long', parHc.n_long)
+    parHc.i_long = get_val('I_long', get_val('i_long', parHc.i_long))
+    parHc.n_ring = get_val('n_ring', parHc.n_ring)
+    parHc.i_ring = get_val('I_ring', get_val('i_ring', parHc.i_ring))
+    parHc.n_lat = get_val('n_lat', parHc.n_lat)
+    parHc.i_lat = get_val('I_lat', get_val('i_lat', parHc.i_lat))
 
-    parHc.d_long0 = getattr(data, 'd_long_default', getattr(data, 'd_long0', parHc.d_long0))
-    parHc.d_ring0 = getattr(data, 'd_ring_default', getattr(data, 'd_ring0', parHc.d_ring0))
-    parHc.d_lat0 = getattr(data, 'd_lat_default', getattr(data, 'd_lat0', parHc.d_lat0))
+    parHc.d_long0 = get_val('d_long_default', get_val('d_long0', parHc.d_long0))
+    parHc.d_ring0 = get_val('d_ring_default', get_val('d_ring0', parHc.d_ring0))
+    parHc.d_lat0 = get_val('d_lat_default', get_val('d_lat0', parHc.d_lat0))
 
     # 实例化并配置 TunnelParamsMc (与 optimizedDesign 完全对应)
     parMc = mc.TunnelParamsMc()
     parMc.ww = parHc.r_s + parHc.r_0
-    aspect_ratio = getattr(data, 'aspect_ratio', 1.0)
+    aspect_ratio = get_val('aspect_ratio', 1.0)
     if aspect_ratio != 1.0 and aspect_ratio > 0:
         parMc.hh = parMc.ww * aspect_ratio
     else:
         parMc.hh = parHc.r_s + parHc.r_0
     parMc.tt = parHc.r_s - parHc.r_0
     parMc.depth = c_val
-    parMc.grades = getattr(data, 'grades', parMc.grades)
-    parMc.concrete_grade = getattr(data, 'concrete_grade', parMc.concrete_grade)
-    parMc.Ag = getattr(data, 'Ag', parMc.Ag)
-    parMc.as_mm = getattr(data, 'as_mm', parMc.as_mm)
-    parMc.tol_safety_factor = getattr(data, 'tol_safety_factor', parMc.tol_safety_factor)
-    rebar_type = getattr(data, 'rebar_type', 'HRB400')
+    parMc.grades = get_val('grades', parMc.grades)
+    parMc.concrete_grade = get_val('concrete_grade', parMc.concrete_grade)
+    
+    # 提取 Ag 并处理 m² 与 mm² 单位转换
+    raw_ag = get_val('Ag', parMc.Ag)
+    if raw_ag is not None:
+        if raw_ag < 1.0:
+            parMc.Ag = raw_ag * 1e6
+        else:
+            parMc.Ag = raw_ag
+
+    parMc.as_mm = get_val('as_mm', parMc.as_mm)
+    parMc.tol_safety_factor = get_val('tol_safety_factor', parMc.tol_safety_factor)
+    rebar_type = get_val('rebar_type', 'HRB400')
 
     # ===== Part1: 材料与围岩/结构参数计算 =====
     Ec, vc, mmc = mc.get_concrete_parameters(parMc.concrete_grade)
