@@ -73,15 +73,31 @@
           <span class="layer-color-dot pipes-dot"></span>
           <span class="layer-label">排水管网</span>
         </label>
+        <label class="layer-item sub-layer-item">
+          <input type="checkbox" v-model="layerVisibility.pipeAnnotations" @change="updateLayerVisibility" />
+          <span class="layer-color-dot annotation-dot"></span>
+          <span class="layer-label">└ 排水管网参数标注</span>
+        </label>
         <label class="layer-item">
           <input type="checkbox" v-model="layerVisibility.environment" @change="updateLayerVisibility" />
           <span class="layer-color-dot env-dot"></span>
           <span class="layer-label">水文环境</span>
         </label>
-        <label class="layer-item sub-layer-item">
-          <input type="checkbox" v-model="layerVisibility.waterParticles" @change="updateLayerVisibility" />
-          <span class="layer-color-dot particle-dot"></span>
-          <span class="layer-label">└ 地下水粒子特效</span>
+        <label class="layer-item sub-layer-item inline-between">
+          <div class="left-group">
+            <input type="checkbox" v-model="layerVisibility.waterParticles" @change="updateLayerVisibility" />
+            <span class="layer-color-dot particle-dot"></span>
+            <span class="layer-label">└ 地下水粒子特效</span>
+          </div>
+          <button 
+            v-if="layerVisibility.waterParticles"
+            class="mini-anim-btn" 
+            :class="{ paused: !isWaterParticleAnimated }"
+            @click.stop="toggleWaterParticleAnimation"
+            :title="isWaterParticleAnimated ? '暂停粒子流动' : '启动粒子流动'"
+          >
+            {{ isWaterParticleAnimated ? '⏸ 动态' : '▶ 冻结' }}
+          </button>
         </label>
         <label class="layer-item">
           <input type="checkbox" v-model="layerVisibility.probe" @change="updateLayerVisibility" />
@@ -153,6 +169,28 @@
     <!-- 标准视角与交互测距 Toolbar -->
     <div class="toolbar-panel glass-card">
       <div class="toolbar-section">
+        <span class="section-title">相机投影模式</span>
+        <div class="projection-btn-row">
+          <button 
+            class="tool-btn proj-btn" 
+            :class="{ active: cameraMode === 'perspective' }" 
+            @click="setCameraProjectionMode('perspective')"
+            title="透视投影 (3D 真实透视)"
+          >
+            📷 透视 3D
+          </button>
+          <button 
+            class="tool-btn proj-btn" 
+            :class="{ active: cameraMode === 'orthographic' }" 
+            @click="setCameraProjectionMode('orthographic')"
+            title="正交/等轴投影 (工程无变形测绘)"
+          >
+            📐 正交/等轴
+          </button>
+        </div>
+      </div>
+      <div class="toolbar-divider"></div>
+      <div class="toolbar-section">
         <span class="section-title">标准视角</span>
         <div class="view-btn-grid">
           <button class="tool-btn" @click="switchToStandardView('front')" title="正视图">正视 F</button>
@@ -217,8 +255,25 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 // Three.js 核心上下文
 let renderer: THREE.WebGLRenderer;
 let scene: THREE.Scene;
-let camera: THREE.PerspectiveCamera;
+let perspectiveCamera: THREE.PerspectiveCamera;
+let orthographicCamera: THREE.OrthographicCamera;
+let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
+let activeCamera: THREE.Camera;
 let controls: OrbitControls;
+
+// 相机投影模式状态
+const cameraMode = ref<'perspective' | 'orthographic'>('perspective');
+
+// 粒子动态控制状态
+const isWaterParticleAnimated = ref(true);
+
+const toggleWaterParticleAnimation = () => {
+  isWaterParticleAnimated.value = !isWaterParticleAnimated.value;
+  if (envInstance) {
+    envInstance.setAnimationEnabled(isWaterParticleAnimated.value);
+  }
+  scheduleRender();
+};
 
 // 追踪已挂载对象与组件实例
 let activeMeshes: THREE.Object3D[] = [];
@@ -236,6 +291,7 @@ const layerVisibility = reactive({
   initialGrouting: true,
   criticalGrouting: true,
   pipes: true,
+  pipeAnnotations: true,
   environment: true,
   waterParticles: true,
   probe: true
@@ -255,6 +311,9 @@ const updateLayerVisibility = () => {
     pipeGenInstance.getMeshes().forEach(mesh => {
       mesh.visible = layerVisibility.pipes;
     });
+    if (pipeGenInstance.annotationGroup) {
+      pipeGenInstance.annotationGroup.visible = layerVisibility.pipes && layerVisibility.pipeAnnotations;
+    }
   }
 
   if (envInstance) {
@@ -363,6 +422,7 @@ const initWebGL = () => {
 
   const width = containerRef.value.clientWidth;
   const height = containerRef.value.clientHeight;
+  const aspect = width / height;
 
   renderer = new THREE.WebGLRenderer({
     canvas: canvasRef.value,
@@ -380,8 +440,19 @@ const initWebGL = () => {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1d24);
 
-  camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
-  camera.position.set(0, 25, 60);
+  // 1. 初始化透视相机
+  perspectiveCamera = new THREE.PerspectiveCamera(45, aspect, 0.1, 10000);
+  perspectiveCamera.position.set(0, 25, 60);
+
+  // 2. 初始化正交相机
+  const initD = perspectiveCamera.position.distanceTo(new THREE.Vector3(0, 0, -20));
+  const halfH = initD * Math.tan((45 * Math.PI) / 360);
+  const halfW = halfH * aspect;
+  orthographicCamera = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, 10000);
+  orthographicCamera.position.copy(perspectiveCamera.position);
+
+  activeCamera = cameraMode.value === 'orthographic' ? orthographicCamera : perspectiveCamera;
+  camera = activeCamera as any;
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 0, -20);
@@ -408,6 +479,52 @@ const initWebGL = () => {
 
   probeManager = new StressProbeManager(scene);
   scene.add(measureGroup);
+  scheduleRender();
+};
+
+/**
+ * 切换透视 (Perspective) 与 正交/等轴 (Orthographic) 投影相机
+ */
+const setCameraProjectionMode = (mode: 'perspective' | 'orthographic') => {
+  if (cameraMode.value === mode || !controls || !containerRef.value) return;
+
+  const width = containerRef.value.clientWidth;
+  const height = containerRef.value.clientHeight;
+  const aspect = width / height;
+
+  const currentPos = camera.position.clone();
+  const currentTarget = controls.target.clone();
+  const distance = currentPos.distanceTo(currentTarget);
+
+  if (mode === 'orthographic') {
+    // 透视 -> 正交：根据观察距离精准算定 Frustum 视锥范围
+    const halfH = distance * Math.tan((perspectiveCamera.fov * Math.PI) / 360);
+    const halfW = halfH * aspect;
+
+    orthographicCamera.left = -halfW;
+    orthographicCamera.right = halfW;
+    orthographicCamera.top = halfH;
+    orthographicCamera.bottom = -halfH;
+    orthographicCamera.position.copy(currentPos);
+    orthographicCamera.quaternion.copy(perspectiveCamera.quaternion);
+    orthographicCamera.updateProjectionMatrix();
+
+    activeCamera = orthographicCamera;
+    camera = orthographicCamera as any;
+  } else {
+    // 正交 -> 透视
+    perspectiveCamera.aspect = aspect;
+    perspectiveCamera.position.copy(currentPos);
+    perspectiveCamera.quaternion.copy(orthographicCamera.quaternion);
+    perspectiveCamera.updateProjectionMatrix();
+
+    activeCamera = perspectiveCamera;
+    camera = perspectiveCamera as any;
+  }
+
+  cameraMode.value = mode;
+  controls.object = camera;
+  controls.update();
   scheduleRender();
 };
 
@@ -470,6 +587,19 @@ const switchToStandardView = (viewKey: string) => {
 
     camera.position.lerpVectors(startPos, targetPos, ease);
     controls.target.lerpVectors(startTarget, targetLookAt, ease);
+
+    if (camera instanceof THREE.OrthographicCamera && perspectiveCamera && containerRef.value) {
+      const distance = camera.position.distanceTo(controls.target);
+      const aspect = containerRef.value.clientWidth / containerRef.value.clientHeight;
+      const halfH = distance * Math.tan((perspectiveCamera.fov * Math.PI) / 360);
+      const halfW = halfH * aspect;
+      camera.left = -halfW;
+      camera.right = halfW;
+      camera.top = halfH;
+      camera.bottom = -halfH;
+      camera.updateProjectionMatrix();
+    }
+
     controls.update();
     scheduleRender();
 
@@ -731,6 +861,10 @@ const renderSceneData = () => {
       scene.add(mesh);
       activeMeshes.push(mesh);
     });
+    if (pipeGen.annotationGroup) {
+      scene.add(pipeGen.annotationGroup);
+      activeMeshes.push(pipeGen.annotationGroup);
+    }
     pipeGenInstance = pipeGen;
 
     // 4. 水文环境建模随动 (注入 activeMeshes 支持 3D 剖切分析)
@@ -773,13 +907,28 @@ watch(
   () => renderSceneData()
 );
 
+let resizeObserver: ResizeObserver | null = null;
+
 const handleResize = () => {
   if (!containerRef.value || !camera || !renderer) return;
   const width = containerRef.value.clientWidth;
   const height = containerRef.value.clientHeight;
+  if (width <= 0 || height <= 0) return;
+  const aspect = width / height;
 
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
+  if (camera instanceof THREE.PerspectiveCamera) {
+    camera.aspect = aspect;
+    camera.updateProjectionMatrix();
+  } else if (camera instanceof THREE.OrthographicCamera && perspectiveCamera) {
+    const distance = camera.position.distanceTo(controls ? controls.target : new THREE.Vector3(0, 0, -20));
+    const halfH = distance * Math.tan((perspectiveCamera.fov * Math.PI) / 360);
+    const halfW = halfH * aspect;
+    camera.left = -halfW;
+    camera.right = halfW;
+    camera.top = halfH;
+    camera.bottom = -halfH;
+    camera.updateProjectionMatrix();
+  }
   renderer.setSize(width, height);
   scheduleRender();
 };
@@ -789,9 +938,20 @@ onMounted(() => {
   renderSceneData();
   window.addEventListener('resize', handleResize);
   canvasRef.value?.addEventListener('click', handleCanvasClick);
+
+  if (containerRef.value) {
+    resizeObserver = new ResizeObserver(() => {
+      handleResize();
+    });
+    resizeObserver.observe(containerRef.value);
+  }
 });
 
 onBeforeUnmount(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
   window.removeEventListener('resize', handleResize);
   canvasRef.value?.removeEventListener('click', handleCanvasClick);
   if (cameraAnimFrameId !== null) cancelAnimationFrame(cameraAnimFrameId);
@@ -1056,7 +1216,43 @@ input:checked + .switch-slider:before {
 .pipes-dot { background-color: #2ecc71; }
 .env-dot { background-color: #1a5276; }
 .particle-dot { background-color: #38bdf8; }
+.annotation-dot { background-color: #38bdf8; }
 .probe-dot { background-color: #00ff88; }
+
+.inline-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.left-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mini-anim-btn {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mini-anim-btn:hover {
+  background: rgba(56, 189, 248, 0.3);
+  color: #ffffff;
+}
+
+.mini-anim-btn.paused {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #f59e0b;
+}
 
 .sub-layer-item {
   margin-left: 14px;
@@ -1143,10 +1339,20 @@ input:checked + .switch-slider:before {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.projection-btn-row {
+  display: flex;
+  gap: 6px;
+}
+
+.proj-btn {
+  flex: 1;
+  text-align: center;
+}
+
 /* 受力表达模式面板样式 */
 .force-mode-panel {
   position: absolute;
-  top: 420px;
+  top: 470px;
   left: 16px;
   padding: 10px 14px;
   color: #e0e6ed;

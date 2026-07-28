@@ -233,7 +233,7 @@ onMounted(() => {
 <style scoped>
 .compare-view-container {
   width: 100%;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background-color: #0f1218;

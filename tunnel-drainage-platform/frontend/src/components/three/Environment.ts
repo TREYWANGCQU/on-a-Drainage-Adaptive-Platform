@@ -55,6 +55,7 @@ export class Environment {
   private particleUniforms!: { [key: string]: THREE.IUniform };
   private flowUniforms!: { [key: string]: THREE.IUniform };
   private clock: THREE.Clock;
+  private isAnimated: boolean = true; // 粒子流动与水面波纹动画使能标志
   
   // 着色器代码
   private readonly waterVertexShader = `
@@ -514,9 +515,19 @@ export class Environment {
   }
 
   /**
+   * 设置动态流速开关
+   */
+  public setAnimationEnabled(enabled: boolean): void {
+    this.isAnimated = enabled;
+  }
+
+  /**
    * 动画帧驱动，水流波纹与粒子流动
    */
   public update(_delta: number = 0.016): void {
+    // 当动画处于暂停状态时，跳过 uTime 递增
+    if (!this.isAnimated) return;
+
     const elapsedTime = this.clock.getElapsedTime();
     if (this.particleUniforms && this.particleUniforms.uTime) {
       this.particleUniforms.uTime.value = elapsedTime;

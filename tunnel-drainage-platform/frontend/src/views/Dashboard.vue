@@ -93,7 +93,7 @@
     <el-dialog v-model="dbDialogVisible" title="参数台账库" fullscreen destroy-on-close>
       <ParameterDatabase @close="dbDialogVisible = false" />
     </el-dialog>
-    <el-dialog v-model="compareDialogVisible" title="3D 双视角对比" fullscreen destroy-on-close>
+    <el-dialog v-model="compareDialogVisible" title="3D 双视角对比" fullscreen destroy-on-close class="compare-dialog">
       <CompareView />
     </el-dialog>
   </div>
@@ -348,6 +348,20 @@ onMounted(() => {
 :deep(.el-button .el-icon svg) {
   color: inherit;
   fill: currentColor;
+}
+
+/* [新增] 3D 双视角对比全屏弹窗无缝布局适配 */
+:deep(.compare-dialog.el-dialog) {
+  display: flex;
+  flex-direction: column;
+  margin: 0 !important;
+}
+
+:deep(.compare-dialog .el-dialog__body) {
+  flex: 1;
+  padding: 0 !important;
+  overflow: hidden !important;
+  height: 0;
 }
 
 /* ==========================================

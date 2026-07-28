@@ -48,11 +48,15 @@ export class DrainagePipeGenerator {
   public leftLongMesh?: THREE.InstancedMesh;   // 双洞副洞纵向管
   public leftLatMesh?: THREE.InstancedMesh;    // 双洞副洞横向管
 
+  public annotationGroup: THREE.Group;        // 排水管网参数标注图层组
+
   private config: DrainagePipeConfig;
   private horseshoeCurve: HorseshoeArcCurve;
 
   constructor(config: DrainagePipeConfig) {
     this.config = config;
+    this.annotationGroup = new THREE.Group();
+    this.annotationGroup.name = 'DrainagePipeAnnotations';
     const r2 = config.outerRadius ?? (config.tunnelRadius + 1.0);
     this.horseshoeCurve = new HorseshoeArcCurve(config.tunnelRadius, r2, 0.7);
 
@@ -250,6 +254,9 @@ export class DrainagePipeGenerator {
       if (this.leftLongMesh) this.updateLongPipes(subXOffset, this.leftLongMesh);
       if (this.leftLatMesh) this.updateLatPipes(subXOffset, this.leftLatMesh);
     }
+
+    // 刷新排水管网数值参数标注
+    this.updateAnnotations(snapshot);
   }
 
   /**
@@ -464,6 +471,95 @@ export class DrainagePipeGenerator {
   }
 
   /**
+   * 创建高性能 Canvas Texture Sprite 标注
+   */
+  private createTextSprite(text: string, color = '#38bdf8'): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+
+    // 背景圆角框
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    if (typeof (ctx as any).roundRect === 'function') {
+      (ctx as any).roundRect(8, 8, 496, 112, 12);
+    } else {
+      ctx.rect(8, 8, 496, 112);
+    }
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    // 绘制文本
+    ctx.font = 'bold 36px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 256, 64);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    const spriteMaterial = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false
+    });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.scale.set(6.0, 1.5, 1.0);
+    return sprite;
+  }
+
+  /**
+   * 依据快照数据动态更新管网标注
+   */
+  public updateAnnotations(_snapshot: any): void {
+    // 清空现有标注
+    while (this.annotationGroup.children.length > 0) {
+      const child = this.annotationGroup.children[0] as THREE.Sprite;
+      this.annotationGroup.remove(child);
+      if (child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
+    }
+
+    const ditchGeo = this.getDitchGeometry();
+    const isDouble = this.config.tunnelType === 'double';
+    const mainXOffset = isDouble ? (this.config.dSpacing ?? 30.0) / 2 : 0;
+    const r2 = this.config.outerRadius ?? (this.config.tunnelRadius + 1.0);
+    const length = Math.abs(this.config.endChainage - this.config.startChainage);
+
+    // 1. 环向盲管标注
+    const ringDiamMm = Math.round(this.config.ringDiam * 1000);
+    const ringSpacingM = this.config.ringSpacing.toFixed(1);
+    const ringText = `环向盲管: Φ${ringDiamMm}mm @ ${ringSpacingM}m`;
+    const ringSprite = this.createTextSprite(ringText, '#38bdf8');
+    ringSprite.position.set(mainXOffset, r2 + 0.6, -this.config.startChainage);
+    this.annotationGroup.add(ringSprite);
+
+    // 2. 纵向排水管标注
+    const longDiamMm = Math.round(this.config.longDiam * 1000);
+    const longText = `纵向排水管: Φ${longDiamMm}mm`;
+    const longSprite = this.createTextSprite(longText, '#2ecc71');
+    longSprite.position.set(mainXOffset + ditchGeo.sideDitchX, ditchGeo.sideDitchBottomY + 0.5, -this.config.startChainage - length * 0.4);
+    this.annotationGroup.add(longSprite);
+
+    // 3. 横向排水管标注
+    const latDiamMm = Math.round(this.config.latDiam * 1000);
+    const latText = `横向排水管: Φ${latDiamMm}mm`;
+    const latSprite = this.createTextSprite(latText, '#e74c3c');
+    latSprite.position.set(mainXOffset + ditchGeo.sideDitchX / 2, (ditchGeo.sideDitchBottomY + ditchGeo.ditchBottomY) / 2 + 0.5, -this.config.startChainage - length * 0.2);
+    this.annotationGroup.add(latSprite);
+
+    // 4. 径向排水管标注
+    const radialText = `径向排水管: L=4.0m Φ50mm`;
+    const radialSprite = this.createTextSprite(radialText, '#f39c12');
+    radialSprite.position.set(mainXOffset - r2 - 1.2, 0, -this.config.startChainage - length * 0.6);
+    this.annotationGroup.add(radialSprite);
+  }
+
+  /**
    * 释放资源
    */
   public dispose(): void {
@@ -472,5 +568,14 @@ export class DrainagePipeGenerator {
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
     });
+
+    while (this.annotationGroup.children.length > 0) {
+      const child = this.annotationGroup.children[0] as THREE.Sprite;
+      this.annotationGroup.remove(child);
+      if (child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
+    }
   }
 }
