@@ -112,14 +112,18 @@ export class DrainagePipeGenerator {
   }
 
   /**
-   * 创建 270° 马蹄拱形半环 实例化网格
+   * 创建 270° 马蹄拱形半环 实例化网格 (修复半径混淆与自发光增强)
    */
   private createRingInstancedMesh(radius: number, count: number, color: number): THREE.InstancedMesh {
-    const tubeGeometry = new THREE.TubeGeometry(this.horseshoeCurve, 64, Math.max(0.02, radius), 8, false);
+    // 关键修正：入参 radius 为管径 (Diameter)，需除以 2 转换为物理半径
+    const pipeRadius = Math.max(0.01, radius / 2.0);
+    const tubeGeometry = new THREE.TubeGeometry(this.horseshoeCurve, 64, pipeRadius, 8, false);
+    
     const material = new THREE.MeshStandardMaterial({
       color,
-      roughness: 0.4,
-      metalness: 0.3,
+      roughness: 0.3,
+      metalness: 0.4,
+      emissive: new THREE.Color(color).multiplyScalar(0.25), // 自发光强化微小盲管可见度
       clippingPlanes: []
     });
 

@@ -422,7 +422,8 @@ export class StressProbeManager {
     snapshot: any,
     tunnelRadius: number = 5.5,
     zPosition: number = 0,
-    tolSafetyFactor: number = 2.0
+    tolSafetyFactor: number = 2.0,
+    viewMode: 'original' | 'critical' = 'original'
   ): {
     colors: THREE.Color[];
     controlIdx: number;
@@ -430,53 +431,151 @@ export class StressProbeManager {
     controlN: number;
     minK: number;
     nodes: SectionNodeGeometry[];
+    chainageText: string;
   } {
     // 7.1 清理旧图层组
     this.disposeGroup(this.probeGroup);
     this.disposeGroup(this.diagramGroup);
 
-    const state = snapshot?.critical_state ?? snapshot?.original_state ?? {};
+    // 1. 严格依据 viewMode 选取状态字段
+    const isCriticalMode = viewMode === 'critical' && snapshot?.critical_state;
+    const state = isCriticalMode ? snapshot.critical_state : (snapshot?.original_state ?? {});
     const echart = snapshot?.results?.echart_data ?? snapshot?.echart_data ?? {};
-    const liningRes = snapshot?.critical_state
-      ? (echart.lining_res_critical ?? {})
-      : (echart.lining_res_original ?? {});
+    const liningRes = isCriticalMode ? (echart.lining_res_critical ?? {}) : (echart.lining_res_original ?? {});
 
-    const K_list: number[] = liningRes.K_list ?? state.K_list ?? echart.K_list ?? new Array(24).fill(3.5);
-    const M_list: number[] = liningRes.M_elem ?? liningRes.M_list ?? state.M_list ?? state.M_elem ?? echart.M_elem ?? new Array(24).fill(0);
-    const N_list: number[] = liningRes.N_elem ?? liningRes.N_list ?? state.N_list ?? state.N_elem ?? echart.N_elem ?? new Array(24).fill(0);
+    // 2. 100 节点到 24 单元重采样与索引映射
+    const rawIdx = state.control_idx ?? state.final_control_idx ?? 0;
+    const rawKList: number[] = liningRes.K_list ?? state.K_list ?? echart.K_list ?? new Array(100).fill(3.5);
+    const rawMList: number[] = liningRes.M_elem ?? liningRes.M_list ?? state.M_list ?? state.M_elem ?? echart.M_elem ?? new Array(100).fill(0);
+    const rawNList: number[] = liningRes.N_elem ?? liningRes.N_list ?? state.N_list ?? state.N_elem ?? echart.N_elem ?? new Array(100).fill(0);
 
-    const controlIdx = state.final_control_idx ?? state.control_idx ?? 0;
-    const controlM = state.final_control_M ?? state.control_M ?? M_list[controlIdx] ?? 0;
-    const controlN = state.final_control_N ?? state.control_N ?? N_list[controlIdx] ?? 0;
-    const minK = state.final_safety_factor ?? state.safety_factor ?? (K_list[controlIdx] ?? 2.5);
+    const K_24: number[] = [];
+    const M_24: number[] = [];
+    const N_24: number[] = [];
+
+    if (rawKList.length >= 24) {
+      for (let i = 0; i < 24; i++) {
+        const start = Math.floor((i / 24) * rawKList.length);
+        const end = Math.floor(((i + 1) / 24) * rawKList.length);
+        const chunkK = rawKList.slice(start, Math.max(start + 1, end));
+        const chunkM = rawMList.slice(start, Math.max(start + 1, end));
+        const chunkN = rawNList.slice(start, Math.max(start + 1, end));
+
+        K_24.push(Math.min(...chunkK));
+        M_24.push(chunkM[0] || 0);
+        N_24.push(chunkN[0] || 0);
+      }
+    } else {
+      for (let i = 0; i < 24; i++) {
+        K_24.push(rawKList[i % rawKList.length] ?? 3.5);
+        M_24.push(rawMList[i % rawMList.length] ?? 0);
+        N_24.push(rawNList[i % rawNList.length] ?? 0);
+      }
+    }
+
+    // 精准映射 24 单元索引
+    const controlIdx24 = rawKList.length > 0
+      ? Math.min(23, Math.floor((rawIdx / rawKList.length) * 24))
+      : 0;
+    const minK = K_24[controlIdx24] ?? (state.final_safety_factor ?? state.safety_factor ?? 2.5);
+
+    // 3. 构建里程字符串
+    const startChain = snapshot?.input_parameter?.start_chainage ?? snapshot?.params?.start_chainage ?? snapshot?.start_chainage ?? 0;
+    const endChain = snapshot?.input_parameter?.end_chainage ?? snapshot?.params?.end_chainage ?? snapshot?.end_chainage ?? 50;
+    const chainageText = `DK${startChain.toFixed(0)}+000 ~ DK${endChain.toFixed(0)}+000`;
 
     this.cachedMechanics = {
-      K_list,
-      M_list,
-      N_list,
-      control_idx: controlIdx,
-      control_M: controlM,
-      control_N: controlN,
+      K_list: K_24,
+      M_list: M_24,
+      N_list: N_24,
+      control_idx: controlIdx24,
+      control_M: state.control_M ?? state.final_control_M ?? 0,
+      control_N: state.control_N ?? state.final_control_N ?? 0,
       safety_factor: minK
     };
 
     const aspect_ratio = snapshot?.input_parameter?.aspect_ratio ?? snapshot?.params?.aspect_ratio ?? 0.7;
     const r2 = snapshot?.input_parameter?.r2 ?? snapshot?.params?.r2 ?? (tunnelRadius * 1.18);
 
-    const L = Math.abs(
-      (snapshot?.input_parameter?.end_chainage ?? snapshot?.params?.end_chainage ?? snapshot?.end_chainage ?? 50) -
-      (snapshot?.input_parameter?.start_chainage ?? snapshot?.params?.start_chainage ?? snapshot?.start_chainage ?? 0)
-    );
+    const L = Math.abs(endChain - startChain);
     const zPos = zPosition - L / 2;
 
-    // 7.2 计算 C1 连续 24 单元 3D 节点
-    const nodes = this.computeContinuousSectionNodes(tunnelRadius, aspect_ratio, r2, zPos);
-    const colors = this.generateColorSpectrum(K_list, tolSafetyFactor);
+    const tunnelType = snapshot?.input_parameter?.tunnel_type ?? snapshot?.params?.tunnel_type ?? snapshot?.tunnel_type ?? 'single';
+    const D_spacing = snapshot?.input_parameter?.D_spacing ?? snapshot?.params?.D_spacing ?? snapshot?.D_spacing ?? 30.0;
+    const isDouble = tunnelType === 'double';
+    const xOffsets = isDouble ? [-D_spacing / 2, D_spacing / 2] : [0];
 
-    // 7.3 构建各受力图层 Mesh 组
-    this.kGroup = this.buildSafetyFactorRing(nodes, colors);
-    this.mGroup = this.buildMomentDiagramMesh(nodes, M_list);
-    this.nGroup = this.buildAxialDiagramMesh(nodes, N_list);
+    const baseNodes = this.computeContinuousSectionNodes(tunnelRadius, aspect_ratio, r2, zPos);
+    const colors = this.generateColorSpectrum(K_24, tolSafetyFactor);
+
+    this.kGroup = new THREE.Group();
+    this.mGroup = new THREE.Group();
+    this.nGroup = new THREE.Group();
+
+    for (const xOff of xOffsets) {
+      const nodes = baseNodes.map(n => ({
+        ...n,
+        position: n.position.clone().add(new THREE.Vector3(xOff, 0, 0))
+      }));
+
+      const subKGroup = this.buildSafetyFactorRing(nodes, colors);
+      const subMGroup = this.buildMomentDiagramMesh(nodes, M_24);
+      const subNGroup = this.buildAxialDiagramMesh(nodes, N_24);
+
+      this.kGroup.add(subKGroup);
+      this.mGroup.add(subMGroup);
+      this.nGroup.add(subNGroup);
+
+      // 构建 3D 最不利探针
+      const controlNode = nodes[controlIdx24] || nodes[0];
+      const P_control = controlNode.position.clone();
+      const norm_control = controlNode.normal.clone();
+
+      const leaderOffset = 1.8;
+      const probePos = P_control.clone().add(norm_control.clone().multiplyScalar(leaderOffset));
+
+      const isCritical = minK <= tolSafetyFactor;
+      const activeColor = colors[controlIdx24] || (isCritical ? new THREE.Color(0xff0000) : new THREE.Color(0x00ff88));
+
+      const leaderGeo = new THREE.BufferGeometry().setFromPoints([P_control, probePos]);
+      const leaderMat = new THREE.LineDashedMaterial({
+        color: activeColor,
+        dashSize: 0.2,
+        gapSize: 0.1,
+        linewidth: 2
+      });
+      const leaderLine = new THREE.Line(leaderGeo, leaderMat);
+      leaderLine.computeLineDistances();
+      this.probeGroup.add(leaderLine);
+
+      const baseDotGeo = new THREE.SphereGeometry(0.12, 12, 12);
+      const baseDotMat = new THREE.MeshBasicMaterial({ color: activeColor });
+      const baseDot = new THREE.Mesh(baseDotGeo, baseDotMat);
+      baseDot.position.copy(P_control);
+      this.probeGroup.add(baseDot);
+
+      const ringGeo = new THREE.TorusGeometry(0.6, 0.08, 16, 32);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: activeColor,
+        wireframe: true
+      });
+      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+      ringMesh.position.copy(probePos);
+
+      const defaultUp = new THREE.Vector3(0, 0, 1);
+      ringMesh.quaternion.setFromUnitVectors(defaultUp, norm_control);
+      this.probeGroup.add(ringMesh);
+
+      const sphereGeo = new THREE.SphereGeometry(0.25, 16, 16);
+      const sphereMat = new THREE.MeshStandardMaterial({
+        color: activeColor,
+        emissive: activeColor.clone().multiplyScalar(0.5),
+        roughness: 0.2
+      });
+      const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
+      sphereMesh.position.copy(probePos);
+      this.probeGroup.add(sphereMesh);
+    }
 
     this.diagramGroup.add(this.kGroup);
     this.diagramGroup.add(this.mGroup);
@@ -484,69 +583,17 @@ export class StressProbeManager {
 
     this.updateVisibilityByMode();
 
-    // 7.4 构建 3D 最不利探针：增加 3D 空间法向引线 (Leader Line) 规避穿模
-    const controlNode = nodes[controlIdx] || nodes[0];
-    const P_control = controlNode.position.clone();
-    const norm_control = controlNode.normal.clone();
-
-    // 引线法向外扩位移
-    const leaderOffset = 1.8;
-    const probePos = P_control.clone().add(norm_control.clone().multiplyScalar(leaderOffset));
-
-    const isCritical = minK <= tolSafetyFactor;
-    const activeColor = colors[controlIdx] || (isCritical ? new THREE.Color(0xff0000) : new THREE.Color(0x00ff88));
-
-    // 法向空间引线 (3D Leader Line)
-    const leaderGeo = new THREE.BufferGeometry().setFromPoints([P_control, probePos]);
-    const leaderMat = new THREE.LineDashedMaterial({
-      color: activeColor,
-      dashSize: 0.2,
-      gapSize: 0.1,
-      linewidth: 2
-    });
-    const leaderLine = new THREE.Line(leaderGeo, leaderMat);
-    leaderLine.computeLineDistances();
-    this.probeGroup.add(leaderLine);
-
-    // 衬砌表面接合基点
-    const baseDotGeo = new THREE.SphereGeometry(0.12, 12, 12);
-    const baseDotMat = new THREE.MeshBasicMaterial({ color: activeColor });
-    const baseDot = new THREE.Mesh(baseDotGeo, baseDotMat);
-    baseDot.position.copy(P_control);
-    this.probeGroup.add(baseDot);
-
-    // 3D 探针高亮光环
-    const ringGeo = new THREE.TorusGeometry(0.6, 0.08, 16, 32);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: activeColor,
-      wireframe: true
-    });
-    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-    ringMesh.position.copy(probePos);
-    
-    // 正交姿态映射
-    const defaultUp = new THREE.Vector3(0, 0, 1);
-    ringMesh.quaternion.setFromUnitVectors(defaultUp, norm_control);
-    this.probeGroup.add(ringMesh);
-
-    // 指示高亮点
-    const sphereGeo = new THREE.SphereGeometry(0.25, 16, 16);
-    const sphereMat = new THREE.MeshStandardMaterial({
-      color: activeColor,
-      emissive: activeColor.clone().multiplyScalar(0.5),
-      roughness: 0.2
-    });
-    const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
-    sphereMesh.position.copy(probePos);
-    this.probeGroup.add(sphereMesh);
+    const rawMVal = state.control_M ?? state.final_control_M ?? (M_24[controlIdx24] ? M_24[controlIdx24] / 1000.0 : 0);
+    const rawNVal = state.control_N ?? state.final_control_N ?? (N_24[controlIdx24] ? N_24[controlIdx24] / 1000.0 : 0);
 
     return {
       colors,
-      controlIdx,
-      controlM,
-      controlN,
+      controlIdx: controlIdx24,
+      controlM: rawMVal,
+      controlN: rawNVal,
       minK,
-      nodes
+      nodes: baseNodes,
+      chainageText
     };
   }
 

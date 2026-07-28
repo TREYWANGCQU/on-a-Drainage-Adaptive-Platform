@@ -148,8 +148,8 @@ def run_calculation(data):
 
     nowK = min(K_list)
     control_idx = K_list.index(nowK)
-    control_N = N[control_idx]
-    control_M = M[control_idx]
+    control_N = N[control_idx] / 1000.0  # 转换为 kN
+    control_M = M[control_idx] / 1000.0  # 转换为 kN·m
 
     res['K_list'] = K_list
     res['nowK'] = nowK
@@ -223,8 +223,8 @@ def run_calculation(data):
 
             nowK = min(K_list)
             control_idx = K_list.index(nowK)
-            control_N = N[control_idx]
-            control_M = M[control_idx]
+            control_N = N[control_idx] / 1000.0  # 转换为 kN
+            control_M = M[control_idx] / 1000.0  # 转换为 kN·m
             res['K_list'] = K_list
             res['nowK'] = nowK
             res['control_idx'] = control_idx

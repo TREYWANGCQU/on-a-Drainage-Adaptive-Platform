@@ -285,23 +285,23 @@ export class Environment {
     const velocities = new Float32Array(particleCount * 3);
     
     const length = Math.abs(this.config.endChainage - this.config.startChainage);
-    const spreadX = this.config.tunnelType === 'double'
-      ? (this.config.dSpacing || 0) + this.config.tunnelRadius * 4
-      : this.config.tunnelRadius * 4;
+    const isDouble = this.config.tunnelType === 'double';
+    const xOffsets = isDouble ? [-(this.config.dSpacing || 30) / 2, (this.config.dSpacing || 30) / 2] : [0];
     
     for (let i = 0; i < particleCount; i++) {
-      // 360° 围绕隧道的极坐标分布
+      // 360° 围绕隧道的极坐标分布，支持双洞平移
       const theta = Math.random() * Math.PI * 2;
       const rDist = this.config.tunnelRadius * 1.5 + Math.random() * this.config.tunnelRadius * 3.5;
+      const xCenter = xOffsets[i % xOffsets.length]; // 交替锚定左右双洞轴心
       
-      positions[i * 3] = rDist * Math.cos(theta);
+      positions[i * 3] = xCenter + rDist * Math.cos(theta);
       positions[i * 3 + 1] = rDist * Math.sin(theta);
       positions[i * 3 + 2] = -this.config.startChainage - Math.random() * length;
       
       sizes[i] = Math.random() * 3 + 1;
       phases[i] = Math.random() * Math.PI * 2;
       
-      // 径向向隧道中心 (0, 0, Z) 的渗透速度矢量
+      // 径向向隧道中心 (xCenter, 0, Z) 的渗透速度矢量
       const speed = Math.random() * 1.2 + 0.4;
       velocities[i * 3] = -Math.cos(theta) * speed;
       velocities[i * 3 + 1] = -Math.sin(theta) * speed;
@@ -343,7 +343,7 @@ export class Environment {
   }
 
   /**
-   * 初始化流线可视化 (360° 辐射向隧道中心轴线收敛)
+   * 初始化流线可视化 (360° 辐射向双洞中心轴线收敛)
    */
   private initFlowLines(): void {
     const lineCount = 60;
@@ -354,8 +354,11 @@ export class Environment {
     const colors: number[] = [];
     
     const length = Math.abs(this.config.endChainage - this.config.startChainage);
+    const isDouble = this.config.tunnelType === 'double';
+    const xOffsets = isDouble ? [-(this.config.dSpacing || 30) / 2, (this.config.dSpacing || 30) / 2] : [0];
     
     for (let i = 0; i < lineCount; i++) {
+      const xCenter = xOffsets[i % xOffsets.length];
       const theta = (i / lineCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.1;
       const rOuter = this.config.tunnelRadius * 3.5;
       const rInner = this.config.tunnelRadius * 1.1;
@@ -368,11 +371,11 @@ export class Environment {
         const r1 = rOuter * (1 - t1) + rInner * t1;
         const r2 = rOuter * (1 - t2) + rInner * t2;
         
-        const x1 = r1 * Math.cos(theta);
+        const x1 = xCenter + r1 * Math.cos(theta);
         const y1 = r1 * Math.sin(theta);
         const z1 = startZ - t1 * 2;
         
-        const x2 = r2 * Math.cos(theta);
+        const x2 = xCenter + r2 * Math.cos(theta);
         const y2 = r2 * Math.sin(theta);
         const z2 = startZ - t2 * 2;
         

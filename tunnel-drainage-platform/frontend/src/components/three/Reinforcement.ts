@@ -133,25 +133,23 @@ export class ReinforcementManager {
     this.groutingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.groutingMesh.count = 0;
 
-    // 临界注浆圈（若存在临界状态，半透明橙色高亮）
-    if (groutingConfig.rg_crit !== undefined && groutingConfig.tg_crit !== undefined && groutingConfig.tg_crit > 0) {
-      const criticalMaterial = new THREE.MeshStandardMaterial({
-        color: 0xff6600,
-        roughness: 0.3,
-        metalness: 0.1,
-        transparent: true,
-        opacity: 0.35,
-        side: THREE.DoubleSide
-      });
-      this.criticalGroutingMesh = new THREE.InstancedMesh(
-        groutingGeom.clone(),
-        criticalMaterial,
-        this.nMaxGrouting
-      );
-      this.criticalGroutingMesh.frustumCulled = false;
-      this.criticalGroutingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      this.criticalGroutingMesh.count = 0;
-    }
+    // 临界注浆圈常驻初始化（支持动态解算结果注入与显隐切换）
+    const criticalMaterial = new THREE.MeshStandardMaterial({
+      color: 0xff6600,
+      roughness: 0.3,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.DoubleSide
+    });
+    this.criticalGroutingMesh = new THREE.InstancedMesh(
+      groutingGeom.clone(),
+      criticalMaterial,
+      this.nMaxGrouting
+    );
+    this.criticalGroutingMesh.frustumCulled = false;
+    this.criticalGroutingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.criticalGroutingMesh.count = 0;
   }
 
   /**

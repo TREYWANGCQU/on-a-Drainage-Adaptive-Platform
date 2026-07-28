@@ -6,7 +6,7 @@
       <div class="header-left">
         <el-icon class="icon"><Files /></el-icon>
         <h2>3D 多维双视角对比看板</h2>
-        <el-tag effect="dark" type="info" size="small">Stage 4 E2E</el-tag>
+        
       </div>
 
       <div class="header-center">

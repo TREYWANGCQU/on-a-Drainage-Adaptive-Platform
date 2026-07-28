@@ -59,14 +59,14 @@
           <span class="layer-label">隧道衬砌</span>
         </label>
         <label class="layer-item">
-          <input type="checkbox" v-model="layerVisibility.grouting" @change="updateLayerVisibility" />
-          <span class="layer-color-dot grouting-dot"></span>
-          <span class="layer-label">注浆加固圈</span>
+          <input type="checkbox" v-model="layerVisibility.initialGrouting" @change="updateLayerVisibility" />
+          <span class="layer-color-dot initial-grouting-dot"></span>
+          <span class="layer-label">初始注浆圈 (rg)</span>
         </label>
         <label class="layer-item">
-          <input type="checkbox" v-model="layerVisibility.bolts" @change="updateLayerVisibility" />
-          <span class="layer-color-dot bolts-dot"></span>
-          <span class="layer-label">系统锚杆</span>
+          <input type="checkbox" v-model="layerVisibility.criticalGrouting" @change="updateLayerVisibility" />
+          <span class="layer-color-dot critical-grouting-dot"></span>
+          <span class="layer-label">临界注浆加固圈 (tg_crit)</span>
         </label>
         <label class="layer-item">
           <input type="checkbox" v-model="layerVisibility.pipes" @change="updateLayerVisibility" />
@@ -127,7 +127,7 @@
     <div v-if="probeInfo && showOverlay" class="probe-tooltip glass-card">
       <div class="tooltip-header">
         <span class="pulse-dot" :class="{ danger: probeInfo.isCritical }"></span>
-        <span class="title">最不利受力单元 #{{ probeInfo.controlIdx }}</span>
+        <span class="title">最不利受力单元 #{{ probeInfo.controlIdx }} ({{ probeInfo.chainageText }})</span>
       </div>
       <div class="tooltip-body">
         <div class="metric-row">
@@ -136,11 +136,11 @@
         </div>
         <div class="metric-row">
           <span class="label">控制轴力 N:</span>
-          <span class="value">{{ probeInfo.controlN.toFixed(1) }} kN</span>
+          <span class="value">{{ (Math.abs(probeInfo.controlN) > 5000 ? probeInfo.controlN / 1000 : probeInfo.controlN).toFixed(1) }} kN</span>
         </div>
         <div class="metric-row">
           <span class="label">控制弯矩 M:</span>
-          <span class="value">{{ probeInfo.controlM.toFixed(1) }} kN·m</span>
+          <span class="value">{{ (Math.abs(probeInfo.controlM) > 5000 ? probeInfo.controlM / 1000 : probeInfo.controlM).toFixed(1) }} kN·m</span>
         </div>
       </div>
     </div>
@@ -186,7 +186,7 @@ import { useParameterStore } from '@/store/parameterStore';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 import { TunnelGenerator, TunnelType } from './TunnelGenerator';
-import { ReinforcementManager, RockBoltGenerator } from './Reinforcement';
+import { ReinforcementManager } from './Reinforcement';
 import { DrainagePipeGenerator } from './DrainagePipeGenerator';
 import { Environment } from './Environment';
 import { StressProbeManager, ForceDisplayMode } from './PostProcessing';
@@ -222,15 +222,14 @@ let probeManager: StressProbeManager | null = null;
 
 let tGenInstance: TunnelGenerator | null = null;
 let rManagerInstance: ReinforcementManager | null = null;
-let rBoltGenInstance: RockBoltGenerator | null = null;
 let pipeGenInstance: DrainagePipeGenerator | null = null;
 
 // 图层显隐控制状态
 const isLayerPanelOpen = ref(true);
 const layerVisibility = reactive({
   lining: true,
-  grouting: true,
-  bolts: true,
+  initialGrouting: true,
+  criticalGrouting: true,
   pipes: true,
   environment: true,
   probe: true
@@ -242,13 +241,8 @@ const updateLayerVisibility = () => {
   }
 
   if (rManagerInstance) {
-    rManagerInstance.getMeshes().forEach(mesh => {
-      mesh.visible = layerVisibility.grouting;
-    });
-  }
-
-  if (rBoltGenInstance?.mesh) {
-    rBoltGenInstance.mesh.visible = layerVisibility.bolts;
+    if (rManagerInstance.groutingMesh) rManagerInstance.groutingMesh.visible = layerVisibility.initialGrouting;
+    if (rManagerInstance.criticalGroutingMesh) rManagerInstance.criticalGroutingMesh.visible = layerVisibility.criticalGrouting;
   }
 
   if (pipeGenInstance) {
@@ -291,6 +285,7 @@ const probeInfo = ref<{
   controlN: number;
   minK: number;
   isCritical: boolean;
+  chainageText: string;
 } | null>(null);
 
 // 剖切分析交互状态
@@ -718,24 +713,6 @@ const renderSceneData = () => {
     });
     rManagerInstance = rManager;
 
-    const rBoltGen = new RockBoltGenerator({
-      bolts_per_ring: 12,
-      spacing_z: 1.0,
-      start_angle: -45,
-      end_angle: 225,
-      start_chainage,
-      end_chainage,
-      tunnel_radius: r,
-      tunnel_type,
-      D_spacing
-    });
-    rBoltGen.updateFromSnapshot(rawData);
-    rBoltGen.mesh.position.z = -start_chainage;
-    rBoltGen.mesh.frustumCulled = false;
-    scene.add(rBoltGen.mesh);
-    activeMeshes.push(rBoltGen.mesh);
-    rBoltGenInstance = rBoltGen;
-
     // 3. 排水管网生成器
     const pipeGen = new DrainagePipeGenerator({
       ringDiam: extractSnapshotValue(rawData, 'ring_diam_recommend', 0.05),
@@ -772,14 +749,16 @@ const renderSceneData = () => {
 
     // 5. 受力云图与探针挂载
     if (probeManager) {
-      const probeRes = probeManager.updateFromSnapshot(rawData, r, -start_chainage, 2.0);
+      const targetViewMode = props.mode === 'all' ? 'original' : props.mode;
+      const probeRes = probeManager.updateFromSnapshot(rawData, r, -start_chainage, 2.0, targetViewMode);
       probeManager.setForceMode(currentForceMode.value);
       probeInfo.value = {
         controlIdx: probeRes.controlIdx,
         controlM: probeRes.controlM,
         controlN: probeRes.controlN,
         minK: probeRes.minK,
-        isCritical: probeRes.minK <= 2.0
+        isCritical: probeRes.minK <= 2.0,
+        chainageText: probeRes.chainageText
       };
     }
   });
@@ -848,7 +827,7 @@ canvas {
 
 .probe-tooltip {
   position: absolute;
-  top: 16px;
+  top: 56px;
   right: 16px;
   padding: 12px 16px;
   color: #e0e6ed;
@@ -909,7 +888,7 @@ canvas {
 /* 3D 剖切控制面板样式 */
 .clipping-panel {
   position: absolute;
-  top: 16px;
+  top: 46px;
   left: 16px;
   padding: 12px 16px;
   color: #e0e6ed;
@@ -1072,8 +1051,8 @@ input:checked + .switch-slider:before {
 }
 
 .lining-dot { background-color: #808080; }
-.grouting-dot { background-color: #00ffff; }
-.bolts-dot { background-color: #8a8a8a; }
+.initial-grouting-dot { background-color: #00ffff; }
+.critical-grouting-dot { background-color: #ff6600; }
 .pipes-dot { background-color: #2ecc71; }
 .env-dot { background-color: #1a5276; }
 .probe-dot { background-color: #00ff88; }
