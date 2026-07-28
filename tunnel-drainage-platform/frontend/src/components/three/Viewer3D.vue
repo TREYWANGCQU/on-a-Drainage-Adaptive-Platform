@@ -264,14 +264,48 @@ let controls: OrbitControls;
 // 相机投影模式状态
 const cameraMode = ref<'perspective' | 'orthographic'>('perspective');
 
-// 粒子动态控制状态
-const isWaterParticleAnimated = ref(true);
+// 粒子动态控制状态 (默认冻结)
+const isWaterParticleAnimated = ref(false);
+let particleAnimFrameId: number | null = null;
+
+const updateParticleAnimationLoop = () => {
+  const shouldAnimate = isWaterParticleAnimated.value && 
+                        layerVisibility.environment && 
+                        layerVisibility.waterParticles && 
+                        envInstance !== null;
+
+  if (shouldAnimate) {
+    if (particleAnimFrameId === null) {
+      const animLoop = () => {
+        if (!isWaterParticleAnimated.value || 
+            !layerVisibility.environment || 
+            !layerVisibility.waterParticles || 
+            !envInstance) {
+          particleAnimFrameId = null;
+          return;
+        }
+        envInstance.update(0.016);
+        if (renderer && scene && camera) {
+          renderer.render(scene, camera);
+        }
+        particleAnimFrameId = requestAnimationFrame(animLoop);
+      };
+      particleAnimFrameId = requestAnimationFrame(animLoop);
+    }
+  } else {
+    if (particleAnimFrameId !== null) {
+      cancelAnimationFrame(particleAnimFrameId);
+      particleAnimFrameId = null;
+    }
+  }
+};
 
 const toggleWaterParticleAnimation = () => {
   isWaterParticleAnimated.value = !isWaterParticleAnimated.value;
   if (envInstance) {
     envInstance.setAnimationEnabled(isWaterParticleAnimated.value);
   }
+  updateParticleAnimationLoop();
   scheduleRender();
 };
 
@@ -331,6 +365,7 @@ const updateLayerVisibility = () => {
     probeManager.diagramGroup.visible = layerVisibility.probe;
   }
 
+  updateParticleAnimationLoop();
   scheduleRender();
 };
 
@@ -876,6 +911,7 @@ const renderSceneData = () => {
       dSpacing: D_spacing,
       tunnelType: tunnel_type
     });
+    envInstance.setAnimationEnabled(isWaterParticleAnimated.value);
     envInstance.updateFromSnapshot(rawData);
     envInstance.getMeshes().forEach(mesh => {
       activeMeshes.push(mesh);
@@ -956,6 +992,7 @@ onBeforeUnmount(() => {
   canvasRef.value?.removeEventListener('click', handleCanvasClick);
   if (cameraAnimFrameId !== null) cancelAnimationFrame(cameraAnimFrameId);
   if (renderFrameId !== null) cancelAnimationFrame(renderFrameId);
+  if (particleAnimFrameId !== null) cancelAnimationFrame(particleAnimFrameId);
   if (envInstance) envInstance.dispose();
   if (probeManager) probeManager.dispose();
   renderer?.dispose();

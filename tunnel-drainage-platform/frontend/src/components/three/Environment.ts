@@ -55,7 +55,7 @@ export class Environment {
   private particleUniforms!: { [key: string]: THREE.IUniform };
   private flowUniforms!: { [key: string]: THREE.IUniform };
   private clock: THREE.Clock;
-  private isAnimated: boolean = true; // 粒子流动与水面波纹动画使能标志
+  private isAnimated: boolean = false; // 粒子流动与水面波纹动画使能标志 (默认冻结)
   
   // 着色器代码
   private readonly waterVertexShader = `
