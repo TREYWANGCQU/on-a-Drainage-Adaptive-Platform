@@ -133,7 +133,9 @@ const PARAM_META_DICT: Record<string, ParamMeta> = {
 
   // 2. 水文与地质参数
   K: { label: '岩体渗透系数', unit: 'm/d', comment: '围岩天然地层水理渗透传导能力，决定地下水渗流补给速率' },
+  k_r: { label: '围岩渗透系数', unit: 'm/d', comment: '标准别名(k_r)，围岩天然地层水理渗透传导能力' },
   h: { label: '初始地下水头', unit: 'm', comment: '隧道轴线上方未受开挖扰动的初始水头高度' },
+  H: { label: '初始地下水头(H)', unit: 'm', comment: '标准别名(H)，初始地下水头高度' },
   ha: { label: '下边界水头', unit: 'm', comment: '双洞结构下方含水层边界水头（双洞模式特有，单洞模式下取0）' },
   p_mm: { label: '年降雨量', unit: 'mm', comment: '工程所在区域地表降水补给水文指标' },
   cn_condition: { label: '灌溉条件', unit: '-', comment: '地表农业灌溉水补给条件（SCS-CN查表依据：灌溉良好/灌溉较差）' },
@@ -143,22 +145,30 @@ const PARAM_META_DICT: Record<string, ParamMeta> = {
 
   // 3. 防排水与衬砌渗透系数
   Kg: { label: '注浆圈渗透系数', unit: 'm/d', comment: '围岩注浆加固止水圈防渗隔水性能' },
+  k_g: { label: '注浆圈渗透系数', unit: 'm/d', comment: '标准别名(k_g)，注浆加固止水圈渗透参数' },
   K1: { label: '初期支护渗透系数', unit: 'm/d', comment: '喷射混凝土初支结构的渗透传导系数' },
+  k_p: { label: '初支渗透系数', unit: 'm/d', comment: '标准别名(k_p)，喷射混凝土初支渗透参数' },
   K2: { label: '二次衬砌渗透系数', unit: 'm/d', comment: '模筑混凝土二衬结构的防渗抗渗能力' },
+  k_s: { label: '二衬渗透系数', unit: 'm/d', comment: '标准别名(k_s)，模筑混凝土二衬渗透参数' },
 
   // 4. 断面结构与几何尺寸参数
   r: { label: '隧道等效内半径', unit: 'm', comment: '隧道内部开挖净空截面的等效圆半径' },
+  r_0: { label: '二衬内半径(r_0)', unit: 'm', comment: '标准别名(r_0)，二衬内边界半径' },
   r1: { label: '二衬外半径', unit: 'm', comment: '二次衬砌外轮廓与初支交界面的等效半径' },
+  r_s: { label: '二衬外半径(r_s)', unit: 'm', comment: '标准别名(r_s)，二衬外边界半径' },
   r2: { label: '初支外半径', unit: 'm', comment: '初期支护外轮廓与注浆圈交界面的等效半径' },
+  r_p: { label: '初支外半径(r_p)', unit: 'm', comment: '标准别名(r_p)，初支外边界半径' },
   rg: { label: '注浆圈外半径', unit: 'm', comment: '注浆加固止水圈外边界的等效半径' },
+  r_g: { label: '注浆圈外半径(r_g)', unit: 'm', comment: '标准别名(r_g)，注浆加固圈外边界半径' },
   c: { label: '隧道埋深', unit: 'm', comment: '隧道轴线距离地表垂直深度' },
-  aspect_ratio: { label: '隧道高宽比', unit: '-', comment: '隧道断面高度与宽度之比例系数 (h/w)' },
+  h_1: { label: '隧道中心埋深(h_1)', unit: 'm', comment: '标准别名(h_1)，隧道中心垂直埋深' },
+  aspect_ratio: { label: '隧道高宽比', unit: '-', comment: '隧道断面高度与宽度之比例系数 (仅3D视口建模使用)' },
   D_spacing: { label: '双洞中心间距', unit: 'm', comment: '双洞隧道两洞心轴线间的水平距离（双洞特有，单洞模式下取0）' },
 
   // 5. 材料与结构配筋参数
   concrete_grade: { label: '混凝土标号', unit: '-', comment: '二次衬砌混凝土抗压强度等级（如C35、C40）' },
-  rebar_type: { label: '钢筋类型', unit: '-', comment: '衬砌结构主筋材料屈服强度等级（如HRB400）' },
-  Ag: { label: '配筋面积', unit: 'm²', comment: '衬砌截面单位长度主筋截面积' },
+  rebar_type: { label: '钢筋类型', unit: '-', comment: '衬砌结构主筋材料屈服强度等级（物理引擎统一HRB400）' },
+  Ag: { label: '配筋面积', unit: 'mm²', comment: '衬砌截面单位长度主筋截面积' },
   as_mm: { label: '钢筋保护层厚度', unit: 'mm', comment: '衬砌主筋外侧混凝土保护层厚度（默认50mm）' },
   P_crit: { label: '临界控制水压力', unit: 'kPa', comment: '衬砌结构所能安全承载的最大水压力上限' },
   tol_safety_factor: { label: '容许安全系数', unit: '-', comment: '衬砌结构承载能力极限状态安全储备指标（默认2.0）' },

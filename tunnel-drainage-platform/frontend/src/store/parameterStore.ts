@@ -72,11 +72,11 @@ export const useParameterStore = defineStore('parameter', {
     // 单洞状态机初始化 (包含规范推荐默认物理数值)
     singleParams: {
       tunnel_type: 'single',
-      K: 0.15, h: 30.0, p_mm: 1000.0, Kg: 0.00864, K1: 0.00864, K2: 0.000864,
+      K: 0.15, h: 120.0, p_mm: 1000.0, Kg: 0.00864, K1: 0.00864, K2: 0.000864,
       cn_condition: '灌溉良好', land_use: '居住地', grades: 4,
-      r: 7.95, r1: 8.35, r2: 8.57, rg: 8.57, c: 50.0, aspect_ratio: 0.7,
+      r: 7.95, r1: 8.35, r2: 8.57, rg: 8.57, c: 130.0, aspect_ratio: 0.7,
       start_chainage: 0, end_chainage: 47,
-      concrete_grade: 'C35', rebar_type: 'HRB400', Ag: 0.002,
+      concrete_grade: 'C35', rebar_type: 'HRB400', Ag: 1000.0,
       P_crit: 500.0,
       I_long: 0.02, double_side: true,
       ...defaultAdvancedSettings
@@ -85,12 +85,12 @@ export const useParameterStore = defineStore('parameter', {
     // 双洞状态机初始化
     doubleParams: {
       tunnel_type: 'double',
-      K: 0.15, h: 30.0, ha: 0.0, p_mm: 1000.0, Kg: 0.00864, K1: 0.00864, K2: 0.000864,
+      K: 0.15, h: 120.0, ha: 0.0, p_mm: 1000.0, Kg: 0.00864, K1: 0.00864, K2: 0.000864,
       cn_condition: '灌溉良好', land_use: '居住地', grades: 4,
-      r: 7.95, r1: 8.35, r2: 8.57, rg: 8.57, c: 50.0, aspect_ratio: 0.7,
+      r: 7.95, r1: 8.35, r2: 8.57, rg: 8.57, c: 130.0, aspect_ratio: 0.7,
       start_chainage: 0, end_chainage: 47,
-      concrete_grade: 'C35', rebar_type: 'HRB400', Ag: 0.002,
-      D_spacing: 43.0, P_crit: 500.0,
+      concrete_grade: 'C35', rebar_type: 'HRB400', Ag: 1000.0,
+      D_spacing: 40.0, P_crit: 500.0,
       I_long: 0.02, double_side: true,
       ...defaultAdvancedSettings
     } as DoubleTubeParams

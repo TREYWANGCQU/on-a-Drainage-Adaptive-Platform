@@ -114,7 +114,7 @@
           </el-row>
           <el-row :gutter="20">
             <el-col :span="12">
-              <el-form-item label="隧道高宽比(h/w)">
+              <el-form-item label="高宽比(3D建模专用)">
                 <el-input-number :model-value="formData.aspect_ratio" @change="(val) => paramStore.updateParam('aspect_ratio', val)" :step="0.1" />
               </el-form-item>
             </el-col>
@@ -145,15 +145,15 @@
             <el-col :span="12">
               <el-form-item label="钢筋类型">
                 <el-select :model-value="formData.rebar_type" @change="(val) => paramStore.updateParam('rebar_type', val)">
+                  <el-option label="HRB400 (引擎基准)" value="HRB400" />
                   <el-option label="HRB300" value="HRB300" />
-                  <el-option label="HRB400" value="HRB400" />
                   <el-option label="HRB500" value="HRB500" />
                 </el-select>
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="配筋面积(m²)">
-                <el-input-number :model-value="formData.Ag" @change="(val) => paramStore.updateParam('Ag', val)" :step="0.001" />
+              <el-form-item label="配筋面积(mm²)">
+                <el-input-number :model-value="formData.Ag" @change="(val) => paramStore.updateParam('Ag', val)" :step="100" />
               </el-form-item>
             </el-col>
           </el-row>

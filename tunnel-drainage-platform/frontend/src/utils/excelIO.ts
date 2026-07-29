@@ -66,16 +66,16 @@ export const downloadTemplate = () => {
     // Schema 中硬编码的默认参数
     if (key === 'aspect_ratio') return 0.7;
     if (key === 'I_long') return 0.02;
-    if (key === 'D_spacing') return 43.0;
+    if (key === 'D_spacing') return 40.0;
     if (key === 'ha') return 0.0;
     if (key === 'P_crit') return 500.0;
 
     // 其它需要防呆的水文与几何参数占位符 (防止计算引擎因 0 溢出)
     const placeholders: Record<string, number> = {
-      'K': 0.15, 'h': 30.0, 'p_mm': 1000.0,
+      'K': 0.15, 'h': 120.0, 'p_mm': 1000.0,
       'Kg': 0.00864, 'K1': 0.00864, 'K2': 0.000864,
       'r': 7.95, 'r1': 8.35, 'r2': 8.57, 'rg': 8.57,
-      'c': 50.0, 'Ag': 0.002
+      'c': 130.0, 'Ag': 1000.0
     };
 
     return placeholders[key] ?? 0.0;

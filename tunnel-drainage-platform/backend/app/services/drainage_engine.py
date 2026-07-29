@@ -47,28 +47,24 @@ def run_calculation(data):
     # 实例化并配置 TunnelParamsHc (与 optimizedDesign 保持一致)
     parHc = hc.TunnelParamsHc()
 
-    # 映射入参到 TunnelParamsHc
-    parHc.k_r = get_val('K', parHc.k_r)
-    parHc.H = get_val('h', parHc.H)
-    parHc.r_0 = get_val('r', parHc.r_0)
-    parHc.r_s = get_val('r1', parHc.r_s)
-    parHc.r_p = get_val('r2', parHc.r_p)
-    parHc.r_g = get_val('rg', parHc.r_g)
-    parHc.k_s = get_val('K2', parHc.k_s)
-    parHc.k_p = get_val('K1', parHc.k_p)
-    parHc.k_g = get_val('Kg', parHc.k_g)
+    # 映射入参到 TunnelParamsHc (兼容新标准字段与旧别名)
+    parHc.k_r = get_val('k_r', get_val('K', parHc.k_r))
+    parHc.H = get_val('H', get_val('h', parHc.H))
+    parHc.r_0 = get_val('r_0', get_val('r', parHc.r_0))
+    parHc.r_s = get_val('r_s', get_val('r1', parHc.r_s))
+    parHc.r_p = get_val('r_p', get_val('r2', parHc.r_p))
+    parHc.r_g = get_val('r_g', get_val('rg', parHc.r_g))
+    parHc.k_s = get_val('k_s', get_val('K2', parHc.k_s))
+    parHc.k_p = get_val('k_p', get_val('K1', parHc.k_p))
+    parHc.k_g = get_val('k_g', get_val('Kg', parHc.k_g))
     parHc.start_chainage = get_val('start_chainage', parHc.start_chainage)
     parHc.end_chainage = get_val('end_chainage', parHc.end_chainage)
     parHc.P_crit = get_val('P_crit', parHc.P_crit)
 
-    # 工况开关
+    # 隧道中心埋深 h_1
     parHc.tunnel_type = get_val('tunnel_type', parHc.tunnel_type)
-    ha_val = get_val('ha', 0.0)
-    c_val = get_val('c', get_val('depth', 50.0))
-    if parHc.tunnel_type == "double" and ha_val > 0:
-        parHc.h_1 = ha_val
-    else:
-        parHc.h_1 = c_val
+    c_val = get_val('h_1', get_val('c', get_val('depth', get_val('ha', 130.0))))
+    parHc.h_1 = c_val
     parHc.D_spacing = get_val('D_spacing', parHc.D_spacing)
 
     # 降雨与下垫面
@@ -95,16 +91,12 @@ def run_calculation(data):
     parHc.d_ring0 = get_val('d_ring_default', get_val('d_ring0', parHc.d_ring0))
     parHc.d_lat0 = get_val('d_lat_default', get_val('d_lat0', parHc.d_lat0))
 
-    # 实例化并配置 TunnelParamsMc (与 optimizedDesign 完全对应)
+    # 实例化并配置 TunnelParamsMc (严格与 parConPre 推导机制对齐)
     parMc = mc.TunnelParamsMc()
     parMc.ww = parHc.r_s + parHc.r_0
-    aspect_ratio = get_val('aspect_ratio', 1.0)
-    if aspect_ratio != 1.0 and aspect_ratio > 0:
-        parMc.hh = parMc.ww * aspect_ratio
-    else:
-        parMc.hh = parHc.r_s + parHc.r_0
+    parMc.hh = parHc.r_s + parHc.r_0  # 彻底去除 aspect_ratio 改变 hh 的物理力学计算分支
     parMc.tt = parHc.r_s - parHc.r_0
-    parMc.depth = c_val
+    parMc.depth = parHc.h_1 - (parHc.r_s + parHc.r_0) / 2.0  # 拱顶埋深由中心埋深 h_1 自动导出
     parMc.grades = get_val('grades', parMc.grades)
     parMc.concrete_grade = get_val('concrete_grade', parMc.concrete_grade)
     
@@ -118,7 +110,7 @@ def run_calculation(data):
 
     parMc.as_mm = get_val('as_mm', parMc.as_mm)
     parMc.tol_safety_factor = get_val('tol_safety_factor', parMc.tol_safety_factor)
-    rebar_type = get_val('rebar_type', 'HRB400')
+    rebar_type = "HRB400"  # 硬编码固定为 HRB400 钢筋
 
     # ===== Part1: 材料与围岩/结构参数计算 =====
     Ec, vc, mmc = mc.get_concrete_parameters(parMc.concrete_grade)
