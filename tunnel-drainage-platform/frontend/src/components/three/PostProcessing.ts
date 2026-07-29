@@ -511,7 +511,7 @@ export class StressProbeManager {
     };
 
     const aspect_ratio = snapshot?.input_parameter?.aspect_ratio ?? snapshot?.params?.aspect_ratio ?? 0.7;
-    const r2 = snapshot?.input_parameter?.r2 ?? snapshot?.params?.r2 ?? (tunnelRadius * 1.18);
+    const r2 = snapshot?.input_parameter?.r_p ?? snapshot?.params?.r_p ?? snapshot?.input_parameter?.r2 ?? snapshot?.params?.r2 ?? (tunnelRadius * 1.18);
 
     const zPos = -controlChainageOffset;
 

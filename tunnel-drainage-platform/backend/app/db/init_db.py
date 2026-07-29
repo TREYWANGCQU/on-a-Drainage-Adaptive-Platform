@@ -23,31 +23,27 @@ async def init_models():
             # 构造基准工程参数，确保符合 schemas 严格校验
             demo_params = DoubleTubeSchema(
                 tunnel_type="double",
-                K=0.15,
-                h=120.0,
+                k_r=0.15,
+                H=120.0,
                 p_mm=1000.0,
-                Kg=0.00864,
-                K1=0.00864,
-                K2=0.000864,
-                ha=0.0,
+                k_g=0.00864,
+                k_p=0.00864,
+                k_s=0.000864,
                 cn_condition="灌溉良好",
                 land_use="居住地",
                 grades=4,
-                r=7.95,
+                r_0=7.95,
                 aspect_ratio=0.7,
-                r1=8.35,
-                r2=8.57,
-                rg=8.57,
-                c=130.0,
+                r_s=8.35,
+                r_p=8.57,
+                r_g=8.57,
+                h_1=130.0,
                 start_chainage=0.0,
                 end_chainage=47.0,
                 concrete_grade="C35",
-                rebar_type="HRB400",
                 Ag=1000.0,
                 D_spacing=40.0,
-                P_crit=500.0,
-                I_long=0.02,
-                double_side=True
+                I_long=0.02
             )
 
             demo_project = TunnelParameter(

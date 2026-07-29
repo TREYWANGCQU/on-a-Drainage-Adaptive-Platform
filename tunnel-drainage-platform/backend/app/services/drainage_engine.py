@@ -163,10 +163,13 @@ def run_calculation(data):
     res['control_N'] = control_N
     res['control_M'] = control_M
 
+    deprecated_keys = {'c', 'depth', 'ha', 'K', 'h', 'r', 'r1', 'r2', 'rg', 'K1', 'K2', 'Kg', 'beta2', 'rebar_type', 'double_side', 'P_crit'}
+    clean_input_data = {k: v for k, v in input_data.items() if k not in deprecated_keys}
+
     # ===== Part3: 临界水头与反算判断 =====
     if nowK > parMc.tol_safety_factor:
         raw_result = {
-            "input_parameter": input_data,
+            "input_parameter": clean_input_data,
             "original_state": {
                 "waterHead": waterHead,
                 "safety_factor": nowK,
@@ -210,7 +213,7 @@ def run_calculation(data):
 
         nowK = 10000
         nowi = 0
-        while (nowK > parMc.tol_safety_factor + 0.001) and (maxHead > waterHead) and (nowi < 1000):
+        while (nowK > parMc.tol_safety_factor + 0.001) and (maxHead > waterHead) and (nowi < 5000):
             waterHead += waterHeadStep
             if waterHead <= Hq:
                 p = (ms - 1000) * 9.8 * waterHead + ms * 9.8 * (Hq - waterHead)
@@ -263,7 +266,7 @@ def run_calculation(data):
         P_crit_input = parHc.P_crit
 
         raw_result = {
-            "input_parameter": input_data,
+            "input_parameter": clean_input_data,
             "original_state": {
                 "waterHead": water_head_original,
                 "safety_factor": original_safety_factor,
@@ -317,4 +320,4 @@ def run_calculation(data):
             }
         }
 
-        return make_serializable(raw_result)
+        return make_serializable(raw_result)

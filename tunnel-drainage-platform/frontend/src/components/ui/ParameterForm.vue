@@ -31,13 +31,13 @@
 
           <el-row :gutter="20">
             <el-col :span="12">
-              <el-form-item label="岩体渗透系数(m/d)">
-                <el-input-number :model-value="formData.K" @change="(val) => paramStore.updateParam('K', val)" :step="0.1" />
+              <el-form-item label="围岩渗透系数(m/d)">
+                <el-input-number :model-value="formData.k_r" @change="(val) => paramStore.updateParam('k_r', val)" :step="0.1" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
               <el-form-item label="初始地下水头(m)">
-                <el-input-number :model-value="formData.h" @change="(val) => paramStore.updateParam('h', val)" :step="1" />
+                <el-input-number :model-value="formData.H" @change="(val) => paramStore.updateParam('H', val)" :step="1" />
               </el-form-item>
             </el-col>
           </el-row>
@@ -48,22 +48,22 @@
                 <el-input-number :model-value="formData.p_mm" @change="(val) => paramStore.updateParam('p_mm', val)" :step="100" />
               </el-form-item>
             </el-col>
-            <el-col :span="12" v-if="formData.tunnel_type === 'double'">
-              <el-form-item label="下边界水头(m)">
-                <el-input-number :model-value="formData.ha" @change="(val) => paramStore.updateParam('ha', val)" :step="0.5" />
+            <el-col :span="12">
+              <el-form-item label="隧道中心埋深 h_1(m)">
+                <el-input-number :model-value="formData.h_1" @change="(val) => paramStore.updateParam('h_1', val)" :step="1" />
               </el-form-item>
             </el-col>
           </el-row>
 
           <el-row :gutter="20">
             <el-col :span="12">
-              <el-form-item label="隧道埋深(m)">
-                <el-input-number :model-value="formData.c" @change="(val) => paramStore.updateParam('c', val)" :step="1" />
+              <el-form-item label="围岩级别(1-6)">
+                <el-input-number :model-value="formData.grades" @change="(val) => paramStore.updateParam('grades', val)" :min="1" :max="6" :step="1" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="围岩级别(1-6)">
-                <el-input-number :model-value="formData.grades" @change="(val) => paramStore.updateParam('grades', val)" :min="1" :max="6" :step="1" />
+              <el-form-item label="配筋面积(mm²)">
+                <el-input-number :model-value="formData.Ag" @change="(val) => paramStore.updateParam('Ag', val)" :step="100" />
               </el-form-item>
             </el-col>
           </el-row>
@@ -90,25 +90,25 @@
         <el-collapse-item title="📏 结构尺寸参数" name="2">
           <el-row :gutter="20">
             <el-col :span="12">
-              <el-form-item label="隧道等效内半径(m)">
-                <el-input-number :model-value="formData.r" @change="(val) => paramStore.updateParam('r', val)" :step="0.5" />
+              <el-form-item label="二衬内半径 r_0(m)">
+                <el-input-number :model-value="formData.r_0" @change="(val) => paramStore.updateParam('r_0', val)" :step="0.5" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="二衬外半径(m)">
-                <el-input-number :model-value="formData.r1" @change="(val) => paramStore.updateParam('r1', val)" :step="0.5" />
+              <el-form-item label="二衬外半径 r_s(m)">
+                <el-input-number :model-value="formData.r_s" @change="(val) => paramStore.updateParam('r_s', val)" :step="0.5" />
               </el-form-item>
             </el-col>
           </el-row>
           <el-row :gutter="20">
             <el-col :span="12">
-              <el-form-item label="初支外半径(m)">
-                <el-input-number :model-value="formData.r2" @change="(val) => paramStore.updateParam('r2', val)" :step="0.5" />
+              <el-form-item label="初支外半径 r_p(m)">
+                <el-input-number :model-value="formData.r_p" @change="(val) => paramStore.updateParam('r_p', val)" :step="0.5" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="注浆圈外半径(m)">
-                <el-input-number :model-value="formData.rg" @change="(val) => paramStore.updateParam('rg', val)" :step="0.5" />
+              <el-form-item label="注浆圈外半径 r_g(m)">
+                <el-input-number :model-value="formData.r_g" @change="(val) => paramStore.updateParam('r_g', val)" :step="0.5" />
               </el-form-item>
             </el-col>
           </el-row>
@@ -136,24 +136,8 @@
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="双侧排水设置">
-                <el-switch :model-value="formData.double_side" @change="(val) => paramStore.updateParam('double_side', val)" active-text="双侧" inactive-text="单侧" />
-              </el-form-item>
-            </el-col>
-          </el-row>
-          <el-row :gutter="20">
-            <el-col :span="12">
-              <el-form-item label="钢筋类型">
-                <el-select :model-value="formData.rebar_type" @change="(val) => paramStore.updateParam('rebar_type', val)">
-                  <el-option label="HRB400 (引擎基准)" value="HRB400" />
-                  <el-option label="HRB300" value="HRB300" />
-                  <el-option label="HRB500" value="HRB500" />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="配筋面积(mm²)">
-                <el-input-number :model-value="formData.Ag" @change="(val) => paramStore.updateParam('Ag', val)" :step="100" />
+              <el-form-item label="主筋材料级别">
+                <el-tag type="info" size="large">HRB400 (计算引擎硬编码基准)</el-tag>
               </el-form-item>
             </el-col>
           </el-row>
@@ -161,12 +145,12 @@
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="注浆圈渗透系数(m/d)">
-                <el-input-number :model-value="formData.Kg" @change="(val) => paramStore.updateParam('Kg', val)" :step="0.01" />
+                <el-input-number :model-value="formData.k_g" @change="(val) => paramStore.updateParam('k_g', val)" :step="0.01" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
               <el-form-item label="初支渗透系数(m/d)">
-                <el-input-number :model-value="formData.K1" @change="(val) => paramStore.updateParam('K1', val)" :step="0.001" />
+                <el-input-number :model-value="formData.k_p" @change="(val) => paramStore.updateParam('k_p', val)" :step="0.001" />
               </el-form-item>
             </el-col>
           </el-row>
@@ -174,7 +158,7 @@
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="二衬渗透系数(m/d)">
-                <el-input-number :model-value="formData.K2" @change="(val) => paramStore.updateParam('K2', val)" :step="0.001" />
+                <el-input-number :model-value="formData.k_s" @change="(val) => paramStore.updateParam('k_s', val)" :step="0.001" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
@@ -331,24 +315,25 @@ const validateChainage = (rule: any, value: any, callback: any) => {
   }
 };
 
-// 自定义几何半径级联校验规则：r < r1 < r2 <= rg
+// 自定义几何半径级联校验规则：r_0 < r_s < r_p <= r_g
 const validateRadius = (rule: any, value: any, callback: any) => {
-  const { r, r1, r2, rg } = formData.value;
-  if (r >= r1) {
-    callback(new Error('二衬内半径 r 必须小于二衬外半径 r1'));
-  } else if (r1 >= r2) {
-    callback(new Error('二衬外半径 r1 必须小于初支外半径 r2'));
-  } else if (r2 > rg) {
-    callback(new Error('初支外半径 r2 不能大于注浆圈外半径 rg'));
+  const { r_0, r_s, r_p, r_g } = formData.value;
+  if (r_0 >= r_s) {
+    callback(new Error('二衬内半径 r_0 必须小于二衬外半径 r_s'));
+  } else if (r_s >= r_p) {
+    callback(new Error('二衬外半径 r_s 必须小于初支外半径 r_p'));
+  } else if (r_p > r_g) {
+    callback(new Error('初支外半径 r_p 不能大于注浆圈外半径 r_g'));
   } else {
     callback();
   }
 };
 
-// 自定义地下水头与埋深校验：h <= c
+// 自定义地下水头与中心埋深校验：H <= h_1
 const validateWaterHead = (rule: any, value: any, callback: any) => {
-  if (formData.value.h > formData.value.c) {
-    callback(new Error('初始地下水头 h 不宜超过隧道埋深 c'));
+  const depthVal = formData.value.h_1;
+  if (formData.value.H > depthVal) {
+    callback(new Error('初始地下水头 H 不宜超过隧道中心埋深 h_1'));
   } else {
     callback();
   }
@@ -360,11 +345,11 @@ const formRules = ref<FormRules>({
     { required: true, message: '请输入终点里程', trigger: 'blur' },
     { validator: validateChainage, trigger: 'blur' }
   ],
-  r: [{ validator: validateRadius, trigger: 'change' }],
-  r1: [{ validator: validateRadius, trigger: 'change' }],
-  r2: [{ validator: validateRadius, trigger: 'change' }],
-  rg: [{ validator: validateRadius, trigger: 'change' }],
-  h: [{ validator: validateWaterHead, trigger: 'change' }]
+  r_0: [{ validator: validateRadius, trigger: 'change' }],
+  r_s: [{ validator: validateRadius, trigger: 'change' }],
+  r_p: [{ validator: validateRadius, trigger: 'change' }],
+  r_g: [{ validator: validateRadius, trigger: 'change' }],
+  H: [{ validator: validateWaterHead, trigger: 'change' }]
 });
 
 // ==========================================

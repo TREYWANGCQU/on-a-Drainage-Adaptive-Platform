@@ -487,9 +487,9 @@ export class Environment {
     const state = snapshot.critical_state ?? snapshot.original_state ?? {};
     const params = snapshot.input_parameter ?? snapshot.params ?? {};
 
-    const waterHead = state.final_waterHead ?? state.waterHead ?? params.h ?? (this.config.burialDepth * 0.6);
+    const waterHead = state.final_waterHead ?? state.waterHead ?? params.H ?? params.h ?? (this.config.burialDepth * 0.6);
     const leakageQ = state.Q ?? state.q ?? 0;
-    const burialDepth = params.c ?? params.depth ?? this.config.burialDepth;
+    const burialDepth = params.h_1 ?? params.c ?? params.depth ?? this.config.burialDepth;
 
     this.currentState.waterHead = waterHead;
     this.currentState.totalLeakage = leakageQ;

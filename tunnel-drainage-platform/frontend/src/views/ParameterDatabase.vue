@@ -124,7 +124,7 @@ interface ParamMeta {
   comment: string;
 }
 
-// 各参数项元数据及简单注释说明字典（覆盖全部 39 项工程及水力学参数）
+// 各参数项元数据及简单注释说明字典（归一化标准 Key 覆盖全量 38 项工程及水力学参数）
 const PARAM_META_DICT: Record<string, ParamMeta> = {
   // 1. 定位与隧道标识
   start_chainage: { label: '分区起点里程', unit: 'm', comment: '隧道工程计算分段的起点里程桩号' },
@@ -132,11 +132,8 @@ const PARAM_META_DICT: Record<string, ParamMeta> = {
   tunnel_type: { label: '隧道类型', unit: '-', comment: '区分单洞(single)或双洞(double)隧道水力与结构计算模式' },
 
   // 2. 水文与地质参数
-  K: { label: '岩体渗透系数', unit: 'm/d', comment: '围岩天然地层水理渗透传导能力，决定地下水渗流补给速率' },
-  k_r: { label: '围岩渗透系数', unit: 'm/d', comment: '标准别名(k_r)，围岩天然地层水理渗透传导能力' },
-  h: { label: '初始地下水头', unit: 'm', comment: '隧道轴线上方未受开挖扰动的初始水头高度' },
-  H: { label: '初始地下水头(H)', unit: 'm', comment: '标准别名(H)，初始地下水头高度' },
-  ha: { label: '下边界水头', unit: 'm', comment: '双洞结构下方含水层边界水头（双洞模式特有，单洞模式下取0）' },
+  k_r: { label: '围岩渗透系数', unit: 'm/d', comment: '围岩天然地层水理渗透传导能力，决定地下水渗流补给速率' },
+  H: { label: '初始地下水头', unit: 'm', comment: '隧道轴线上方未受开挖扰动的初始水头高度' },
   p_mm: { label: '年降雨量', unit: 'mm', comment: '工程所在区域地表降水补给水文指标' },
   cn_condition: { label: '灌溉条件', unit: '-', comment: '地表农业灌溉水补给条件（SCS-CN查表依据：灌溉良好/灌溉较差）' },
   land_use: { label: '土地利用类型', unit: '-', comment: '地表覆盖类型及生态环境敏感度划分（SCS-CN查表依据）' },
@@ -144,33 +141,23 @@ const PARAM_META_DICT: Record<string, ParamMeta> = {
   gamma: { label: '水的重度', unit: 'kN/m³', comment: '地下水介质物理容重常数（标准物理常数，默认10.0 kN/m³）' },
 
   // 3. 防排水与衬砌渗透系数
-  Kg: { label: '注浆圈渗透系数', unit: 'm/d', comment: '围岩注浆加固止水圈防渗隔水性能' },
-  k_g: { label: '注浆圈渗透系数', unit: 'm/d', comment: '标准别名(k_g)，注浆加固止水圈渗透参数' },
-  K1: { label: '初期支护渗透系数', unit: 'm/d', comment: '喷射混凝土初支结构的渗透传导系数' },
-  k_p: { label: '初支渗透系数', unit: 'm/d', comment: '标准别名(k_p)，喷射混凝土初支渗透参数' },
-  K2: { label: '二次衬砌渗透系数', unit: 'm/d', comment: '模筑混凝土二衬结构的防渗抗渗能力' },
-  k_s: { label: '二衬渗透系数', unit: 'm/d', comment: '标准别名(k_s)，模筑混凝土二衬渗透参数' },
+  k_g: { label: '注浆圈渗透系数', unit: 'm/d', comment: '围岩注浆加固止水圈渗透传导参数' },
+  k_p: { label: '初支渗透系数', unit: 'm/d', comment: '喷射混凝土初支结构的渗透传导系数' },
+  k_s: { label: '二衬渗透系数', unit: 'm/d', comment: '模筑混凝土二衬结构的防渗抗渗能力' },
 
   // 4. 断面结构与几何尺寸参数
-  r: { label: '隧道等效内半径', unit: 'm', comment: '隧道内部开挖净空截面的等效圆半径' },
-  r_0: { label: '二衬内半径(r_0)', unit: 'm', comment: '标准别名(r_0)，二衬内边界半径' },
-  r1: { label: '二衬外半径', unit: 'm', comment: '二次衬砌外轮廓与初支交界面的等效半径' },
-  r_s: { label: '二衬外半径(r_s)', unit: 'm', comment: '标准别名(r_s)，二衬外边界半径' },
-  r2: { label: '初支外半径', unit: 'm', comment: '初期支护外轮廓与注浆圈交界面的等效半径' },
-  r_p: { label: '初支外半径(r_p)', unit: 'm', comment: '标准别名(r_p)，初支外边界半径' },
-  rg: { label: '注浆圈外半径', unit: 'm', comment: '注浆加固止水圈外边界的等效半径' },
-  r_g: { label: '注浆圈外半径(r_g)', unit: 'm', comment: '标准别名(r_g)，注浆加固圈外边界半径' },
-  c: { label: '隧道埋深', unit: 'm', comment: '隧道轴线距离地表垂直深度' },
-  h_1: { label: '隧道中心埋深(h_1)', unit: 'm', comment: '标准别名(h_1)，隧道中心垂直埋深' },
+  r_0: { label: '二衬内半径(r_0)', unit: 'm', comment: '二衬内边界半径，参与推导隧道高宽与衬砌厚度' },
+  r_s: { label: '二衬外半径(r_s)', unit: 'm', comment: '二次衬砌外轮廓与初支交界面的等效半径' },
+  r_p: { label: '初支外半径(r_p)', unit: 'm', comment: '初期支护外轮廓与注浆圈交界面的等效半径' },
+  r_g: { label: '注浆圈外半径(r_g)', unit: 'm', comment: '注浆加固圈外边界半径，解算临界注浆半径' },
+  h_1: { label: '隧道中心埋深', unit: 'm', comment: '标准物理参数(h_1)，隧道中心轴线垂直埋深' },
   aspect_ratio: { label: '隧道高宽比', unit: '-', comment: '隧道断面高度与宽度之比例系数 (仅3D视口建模使用)' },
   D_spacing: { label: '双洞中心间距', unit: 'm', comment: '双洞隧道两洞心轴线间的水平距离（双洞特有，单洞模式下取0）' },
 
   // 5. 材料与结构配筋参数
   concrete_grade: { label: '混凝土标号', unit: '-', comment: '二次衬砌混凝土抗压强度等级（如C35、C40）' },
-  rebar_type: { label: '钢筋类型', unit: '-', comment: '衬砌结构主筋材料屈服强度等级（物理引擎统一HRB400）' },
   Ag: { label: '配筋面积', unit: 'mm²', comment: '衬砌截面单位长度主筋截面积' },
   as_mm: { label: '钢筋保护层厚度', unit: 'mm', comment: '衬砌主筋外侧混凝土保护层厚度（默认50mm）' },
-  P_crit: { label: '临界控制水压力', unit: 'kPa', comment: '衬砌结构所能安全承载的最大水压力上限' },
   tol_safety_factor: { label: '容许安全系数', unit: '-', comment: '衬砌结构承载能力极限状态安全储备指标（默认2.0）' },
 
   // 6. 排水管网与水力学参数 (曼宁粗糙度、坡降与管径)
@@ -184,8 +171,7 @@ const PARAM_META_DICT: Record<string, ParamMeta> = {
   I_lat: { label: '横向管水力坡降', unit: '-', comment: '横向排水引水管沿程水力坡降率（默认0.01）' },
   d_lat_default: { label: '横向管默认内径', unit: 'm', comment: '横向排水引水管标准管径设计值（默认0.08m即80mm）' },
   S_code_max: { label: '规范最大盲管间距', unit: 'm', comment: '工程规范规定的环向盲管最大允许安装间距上限（默认10m）' },
-  S_min: { label: '工程最小盲管间距', unit: 'm', comment: '施工工艺限制的盲管最小安装间距下限（默认3m）' },
-  double_side: { label: '是否双侧排水', unit: '-', comment: '排水系统配置（双侧排水 / 单侧排水）' }
+  S_min: { label: '工程最小盲管间距', unit: 'm', comment: '施工工艺限制的盲管最小安装间距下限（默认3m）' }
 };
 
 const getParamMeta = (key: string): ParamMeta => {
@@ -197,18 +183,19 @@ const formatParamValue = (key: string, val: any): string => {
   if (key === 'tunnel_type') {
     return val === 'single' ? '单洞' : val === 'double' ? '双洞' : String(val);
   }
-  if (key === 'double_side') {
-    return val ? '双侧排水' : '单侧排水';
-  }
   return String(val);
 };
 
 const compareKeys = computed(() => {
   if (selectedRows.value.length === 0) return [];
-  // 提取第一个勾选项的所有 Key 作为基准目录，并清洗废弃字段
+  // 提取第一个勾选项的所有 Key 作为基准目录，并清洗废弃字段与旧别名
   const baseParams = parseJSON(selectedRows.value[0].parameters_json);
+  const deprecatedKeys = new Set([
+    'beta2', 'ha', 'rebar_type', 'double_side', 'P_crit', 'c',
+    'K', 'h', 'r', 'r1', 'r2', 'rg', 'K1', 'K2', 'Kg'
+  ]);
   return Object.keys(baseParams)
-    .filter(key => key !== 'beta2')
+    .filter(key => !deprecatedKeys.has(key))
     .map(key => ({ key }));
 });
 

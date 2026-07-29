@@ -179,8 +179,8 @@ const origMetrics = computed(() => {
   const params = snap?.params ?? {};
   return {
     minK: orig.safety_factor ?? 2.0,
-    waterHead: orig.waterHead ?? params.h ?? 30.0,
-    tg: Math.max(0, (params.rg ?? 8.0) - (params.r2 ?? 6.5)),
+    waterHead: orig.waterHead ?? params.H ?? params.h ?? 30.0,
+    tg: Math.max(0, (params.r_g ?? params.rg ?? 8.57) - (params.r_p ?? params.r2 ?? 8.57)),
     ringSpacing: orig.ring_spacing_recommend ?? 5.0
   };
 });
@@ -191,8 +191,8 @@ const critMetrics = computed(() => {
   const params = snap?.params ?? {};
   return {
     minK: crit.final_safety_factor ?? crit.safety_factor ?? 2.5,
-    waterHead: crit.final_waterHead ?? crit.waterHead ?? params.h ?? 30.0,
-    tg: crit.tg_crit ?? Math.max(0, (params.rg ?? 8.0) - (params.r2 ?? 6.5)),
+    waterHead: crit.final_waterHead ?? crit.waterHead ?? params.H ?? params.h ?? 30.0,
+    tg: crit.tg_crit ?? Math.max(0, (params.r_g ?? params.rg ?? 8.57) - (params.r_p ?? params.r2 ?? 8.57)),
     ringSpacing: crit.ring_spacing_recommend ?? 3.0
   };
 });

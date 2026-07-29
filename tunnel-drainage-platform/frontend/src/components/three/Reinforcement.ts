@@ -287,8 +287,8 @@ export class ReinforcementManager {
 
     // 构建注浆圈配置（强制降级规范）
     const groutingConfig: GroutingConfig = {
-      rg: params.rg ?? snapshot.rg ?? 8.0,
-      r2: params.r2 ?? snapshot.r2 ?? 6.5,
+      rg: params.r_g ?? params.rg ?? snapshot.r_g ?? snapshot.rg ?? 8.57,
+      r2: params.r_p ?? params.r2 ?? snapshot.r_p ?? snapshot.r2 ?? 8.57,
       rg_crit: critical.rg_crit,
       tg_crit: critical.tg_crit,
       start_chainage: params.start_chainage ?? snapshot.start_chainage ?? 0,
@@ -365,7 +365,7 @@ export class RockBoltGenerator {
     const params = snapshot.input_parameter ?? snapshot.params ?? {};
 
     // 更新配置（降级取值）
-    this.config.tunnel_radius = params.r ?? this.config.tunnel_radius;
+    this.config.tunnel_radius = params.r_0 ?? params.r ?? this.config.tunnel_radius;
     this.config.start_chainage = params.start_chainage ?? this.config.start_chainage;
     this.config.end_chainage = params.end_chainage ?? this.config.end_chainage;
     this.config.tunnel_type = params.tunnel_type ?? snapshot.tunnel_type ?? this.config.tunnel_type ?? 'single';

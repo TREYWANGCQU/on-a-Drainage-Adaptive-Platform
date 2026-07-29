@@ -946,11 +946,11 @@ const renderSceneData = () => {
 
     const start_chainage = extractSnapshotValue(rawData, 'start_chainage', 0);
     const end_chainage = extractSnapshotValue(rawData, 'end_chainage', 50);
-    const r = extractSnapshotValue(rawData, 'r', 5.5);
-    const r1 = extractSnapshotValue(rawData, 'r1', 6.0);
-    const r2 = extractSnapshotValue(rawData, 'r2', 6.5);
-    const rg = extractSnapshotValue(rawData, 'rg', 8.0);
-    const c = extractSnapshotValue(rawData, 'c', 50.0);
+    const r = extractSnapshotValue(rawData, 'r_0', extractSnapshotValue(rawData, 'r', 7.95));
+    const r1 = extractSnapshotValue(rawData, 'r_s', extractSnapshotValue(rawData, 'r1', 8.35));
+    const r2 = extractSnapshotValue(rawData, 'r_p', extractSnapshotValue(rawData, 'r2', 8.57));
+    const rg = extractSnapshotValue(rawData, 'r_g', extractSnapshotValue(rawData, 'rg', 8.57));
+    const c = extractSnapshotValue(rawData, 'h_1', extractSnapshotValue(rawData, 'c', 130.0));
     const tunnel_type = extractSnapshotValue<string>(rawData, 'tunnel_type', 'single') as 'single' | 'double';
     const aspect_ratio = extractSnapshotValue(rawData, 'aspect_ratio', 0.7);
     const D_spacing = extractSnapshotValue(rawData, 'D_spacing', 30.0);
