@@ -53,6 +53,22 @@
         <span class="collapse-icon">{{ isLayerPanelOpen ? '▲' : '▼' }}</span>
       </div>
       <div v-if="isLayerPanelOpen" class="panel-body layer-body">
+        <div class="layer-action-header">
+          <label class="layer-item select-all-item">
+            <input 
+              ref="selectAllCheckboxRef"
+              type="checkbox" 
+              :checked="isAllLayersVisible" 
+              @change="toggleAllLayersVisibility" 
+            />
+            <span class="layer-label select-all-title">全选 / 全不选</span>
+          </label>
+          <div class="quick-btn-group">
+            <button class="layer-btn" @click="setAllLayersVisibility(true)" title="一键开启所有图层">全选</button>
+            <button class="layer-btn" @click="setAllLayersVisibility(false)" title="一键隐藏所有图层">全不选</button>
+          </div>
+        </div>
+        <div class="layer-divider"></div>
         <label class="layer-item">
           <input type="checkbox" v-model="layerVisibility.lining" @change="updateLayerVisibility" />
           <span class="layer-color-dot lining-dot"></span>
@@ -107,10 +123,11 @@
       </div>
     </div>
     
-    <!-- 受力表达模式切换器 (K | M | N | 综合受力) -->
+    <!-- 受力表达模式切换器 (K | M | N | 综合受力) 及 可折叠数值图例 -->
     <div v-if="layerVisibility.probe" class="force-mode-panel glass-card">
-      <div class="panel-header">
+      <div class="panel-header" @click="isLegendPanelCollapsed = !isLegendPanelCollapsed" style="cursor: pointer;">
         <span class="panel-title">受力表达模式</span>
+        <span class="collapse-icon">{{ isLegendPanelCollapsed ? '▼' : '▲' }}</span>
       </div>
       <div class="btn-group force-btn-group">
         <button 
@@ -142,15 +159,71 @@
           综合受力
         </button>
       </div>
+
+      <!-- 数值图例面板 (可折叠打开) -->
+      <div v-if="!isLegendPanelCollapsed" class="legend-container">
+        <!-- 1. 安全系数 K 图例 -->
+        <div v-if="currentForceMode === 'K'" class="legend-section">
+          <div class="legend-bar-wrapper">
+            <div class="color-bar k-gradient-bar"></div>
+            <div class="legend-ticks-row">
+              <span class="tick danger">&lt;1.0 危险</span>
+              <span class="tick warning">1.0-2.0 预警</span>
+              <span class="tick safe">&ge;2.0 安全</span>
+            </div>
+          </div>
+          <div class="legend-range-row">
+            <span>最小 K: <strong :class="{ danger: probeInfo?.isCritical }">{{ probeInfo?.minK ? probeInfo.minK.toFixed(2) : '2.00' }}</strong></span>
+            <span>截面范围: {{ probeRanges.minK.toFixed(2) }} ~ {{ probeRanges.maxK.toFixed(2) }}</span>
+          </div>
+        </div>
+
+        <!-- 2. 弯矩图 M 图例 -->
+        <div v-if="currentForceMode === 'M'" class="legend-section">
+          <div class="legend-bar-wrapper">
+            <div class="color-bar m-gradient-bar"></div>
+            <div class="legend-scale-row">
+              <span>{{ probeRanges.minM.toFixed(1) }}</span>
+              <span>{{ ((probeRanges.minM + probeRanges.maxM) / 2).toFixed(1) }}</span>
+              <span>{{ probeRanges.maxM.toFixed(1) }} kN·m</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. 轴力图 N 图例 -->
+        <div v-if="currentForceMode === 'N'" class="legend-section">
+          <div class="legend-bar-wrapper">
+            <div class="color-bar n-gradient-bar"></div>
+            <div class="legend-scale-row">
+              <span>{{ probeRanges.minN.toFixed(1) }}</span>
+              <span>{{ ((probeRanges.minN + probeRanges.maxN) / 2).toFixed(1) }}</span>
+              <span>{{ probeRanges.maxN.toFixed(1) }} kN</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. 综合受力 COMBINED 图例 -->
+        <div v-if="currentForceMode === 'COMBINED'" class="legend-section">
+          <div class="legend-bar-wrapper">
+            <div class="color-bar combined-gradient-bar"></div>
+            <div class="legend-ticks-row">
+              <span class="tick safe">低应力</span>
+              <span class="tick warning">中等包络</span>
+              <span class="tick danger">控制峰值</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     
-    <!-- 顶层 Overlay 标量看板/探针悬浮框 -->
-    <div v-if="probeInfo && showOverlay" class="probe-tooltip glass-card">
-      <div class="tooltip-header">
+    <!-- 顶层 Overlay 标量看板/探针悬浮框 (默认折叠: isProbeTooltipCollapsed=true) -->
+    <div v-if="probeInfo && showOverlay" class="probe-tooltip glass-card" :class="{ collapsed: isProbeTooltipCollapsed }">
+      <div class="tooltip-header" @click="isProbeTooltipCollapsed = !isProbeTooltipCollapsed" style="cursor: pointer;">
         <span class="pulse-dot" :class="{ danger: probeInfo.isCritical }"></span>
         <span class="title">最不利受力单元 #{{ probeInfo.controlIdx }} ({{ probeInfo.chainageText }})</span>
+        <span class="collapse-icon">{{ isProbeTooltipCollapsed ? '▲' : '▼' }}</span>
       </div>
-      <div class="tooltip-body">
+      <div v-if="!isProbeTooltipCollapsed" class="tooltip-body">
         <div class="metric-row">
           <span class="label">最小安全系数 K:</span>
           <span class="value" :class="{ danger: probeInfo.isCritical }">{{ probeInfo.minK.toFixed(2) }}</span>
@@ -222,7 +295,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount, watch, toRaw } from 'vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, toRaw } from 'vue';
 import * as THREE from 'three';
 import { useSnapshotStore, extractSnapshotValue, Snapshot } from '@/store/snapshotStore';
 import { useParameterStore } from '@/store/parameterStore';
@@ -369,8 +442,56 @@ const updateLayerVisibility = () => {
   scheduleRender();
 };
 
+// 全选/全不选 计算属性与控制函数
+const isAllLayersVisible = computed(() => {
+  const keys = Object.keys(layerVisibility) as (keyof typeof layerVisibility)[];
+  return keys.every(key => layerVisibility[key]);
+});
+
+const isSomeLayersVisible = computed(() => {
+  const keys = Object.keys(layerVisibility) as (keyof typeof layerVisibility)[];
+  return keys.some(key => layerVisibility[key]);
+});
+
+const selectAllCheckboxRef = ref<HTMLInputElement | null>(null);
+
+watch([isAllLayersVisible, isSomeLayersVisible, isLayerPanelOpen], () => {
+  if (selectAllCheckboxRef.value) {
+    selectAllCheckboxRef.value.indeterminate = isSomeLayersVisible.value && !isAllLayersVisible.value;
+  }
+}, { flush: 'post' });
+
+const setAllLayersVisibility = (visible: boolean) => {
+  const keys = Object.keys(layerVisibility) as (keyof typeof layerVisibility)[];
+  keys.forEach(key => {
+    layerVisibility[key] = visible;
+  });
+  updateLayerVisibility();
+};
+
+const toggleAllLayersVisibility = (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  setAllLayersVisibility(target.checked);
+};
+
 // 受力表达模式状态与切换器
 const currentForceMode = ref<ForceDisplayMode>('K');
+
+// 【最不利受力单元】看板折叠状态 (默认折叠: true)
+const isProbeTooltipCollapsed = ref(true);
+
+// 数值图例面板折叠状态 (默认展开: false)
+const isLegendPanelCollapsed = ref(false);
+
+// 截面受力范围 (用于数值图例)
+const probeRanges = ref<{
+  minK: number;
+  maxK: number;
+  minM: number;
+  maxM: number;
+  minN: number;
+  maxN: number;
+}>({ minK: 1.0, maxK: 5.0, minM: 0, maxM: 100, minN: -1000, maxN: 5000 });
 
 const setForceMode = (mode: ForceDisplayMode) => {
   currentForceMode.value = mode;
@@ -930,6 +1051,9 @@ const renderSceneData = () => {
         isCritical: probeRes.minK <= 2.0,
         chainageText: probeRes.chainageText
       };
+      if (probeRes.ranges) {
+        probeRanges.value = probeRes.ranges;
+      }
     }
   });
 
@@ -1227,6 +1351,51 @@ input:checked + .switch-slider:before {
   margin-top: 4px;
 }
 
+.layer-action-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 2px;
+}
+
+.select-all-item {
+  font-weight: 600;
+}
+
+.select-all-title {
+  font-weight: 600;
+  color: #00ff88;
+}
+
+.quick-btn-group {
+  display: flex;
+  gap: 4px;
+}
+
+.layer-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cfd8dc;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.layer-btn:hover {
+  background: rgba(0, 255, 136, 0.2);
+  border-color: #00ff88;
+  color: #ffffff;
+}
+
+.layer-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 2px 0 4px 0;
+}
+
 .layer-item {
   display: flex;
   align-items: center;
@@ -1389,7 +1558,7 @@ input:checked + .switch-slider:before {
 /* 受力表达模式面板样式 */
 .force-mode-panel {
   position: absolute;
-  top: 470px;
+  top: 500px;
   left: 16px;
   padding: 10px 14px;
   color: #e0e6ed;
@@ -1428,5 +1597,73 @@ input:checked + .switch-slider:before {
   color: #ffffff;
   border-color: #42a5f5;
   box-shadow: 0 0 10px rgba(30, 136, 229, 0.6);
+}
+
+/* 数值图例与折叠面板扩展样式 */
+.legend-container {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.legend-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.legend-bar-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.color-bar {
+  height: 8px;
+  border-radius: 4px;
+  width: 100%;
+}
+
+.k-gradient-bar {
+  background: linear-gradient(to right, #ff4d4f 0%, #ff4d4f 33%, #faad14 33%, #faad14 66%, #52c41a 66%, #52c41a 100%);
+}
+
+.m-gradient-bar {
+  background: linear-gradient(to right, #1890ff, #faad14, #ff5533);
+}
+
+.n-gradient-bar {
+  background: linear-gradient(to right, #0050b3, #13c2c2, #fa8c16, #f5222d);
+}
+
+.combined-gradient-bar {
+  background: linear-gradient(to right, #00aaff, #38ef7d, #f12711);
+}
+
+.legend-ticks-row, .legend-scale-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: #a0aec0;
+}
+
+.legend-ticks-row .tick.danger { color: #ff4d4f; }
+.legend-ticks-row .tick.warning { color: #faad14; }
+.legend-ticks-row .tick.safe { color: #52c41a; }
+
+.legend-range-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #cbd5e1;
+  margin-top: 2px;
+}
+
+.probe-tooltip.collapsed {
+  padding: 8px 12px;
 }
 </style>

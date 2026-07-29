@@ -432,6 +432,14 @@ export class StressProbeManager {
     minK: number;
     nodes: SectionNodeGeometry[];
     chainageText: string;
+    ranges: {
+      minK: number;
+      maxK: number;
+      minM: number;
+      maxM: number;
+      minN: number;
+      maxN: number;
+    };
   } {
     // 7.1 清理旧图层组
     this.disposeGroup(this.probeGroup);
@@ -593,6 +601,17 @@ export class StressProbeManager {
     const rawMVal = state.control_M ?? state.final_control_M ?? (M_24[controlIdx24] ? M_24[controlIdx24] / 1000.0 : 0);
     const rawNVal = state.control_N ?? state.final_control_N ?? (N_24[controlIdx24] ? N_24[controlIdx24] / 1000.0 : 0);
 
+    const minKVal = K_24.length > 0 ? Math.min(...K_24) : minK;
+    const maxKVal = K_24.length > 0 ? Math.max(...K_24) : minK;
+
+    const M_converted = M_24.map(v => Math.abs(v) > 5000 ? v / 1000 : v);
+    const minMVal = M_converted.length > 0 ? Math.min(...M_converted) : 0;
+    const maxMVal = M_converted.length > 0 ? Math.max(...M_converted) : 0;
+
+    const N_converted = N_24.map(v => Math.abs(v) > 5000 ? v / 1000 : v);
+    const minNVal = N_converted.length > 0 ? Math.min(...N_converted) : 0;
+    const maxNVal = N_converted.length > 0 ? Math.max(...N_converted) : 0;
+
     return {
       colors,
       controlIdx: controlIdx24,
@@ -600,7 +619,15 @@ export class StressProbeManager {
       controlN: rawNVal,
       minK,
       nodes: baseNodes,
-      chainageText
+      chainageText,
+      ranges: {
+        minK: minKVal,
+        maxK: maxKVal,
+        minM: minMVal,
+        maxM: maxMVal,
+        minN: minNVal,
+        maxN: maxNVal
+      }
     };
   }
 
