@@ -511,9 +511,12 @@ const layerVisibility = reactive({
 });
 
 const updateLayerVisibility = () => {
-  // 1. 衬砌
+  // 1. 衬砌 (含二衬、内部路面板与水沟槽)
   tGenInstances.forEach(tGen => {
-    if (tGen.mesh) tGen.mesh.visible = layerVisibility.lining;
+    const meshes = tGen.getMeshes();
+    meshes.forEach(m => {
+      m.visible = layerVisibility.lining;
+    });
   });
 
   // 2. 注浆加固圈（支持原始与临界）

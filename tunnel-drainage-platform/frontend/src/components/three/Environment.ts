@@ -157,7 +157,7 @@ export class Environment {
     #include <clipping_planes_pars_vertex>
     uniform float uTime;
     uniform float uSpeed;
-    uniform float uWaterHead;
+    uniform float uTunnelRadius;
     
     attribute float aSize;
     attribute float aPhase;
@@ -166,24 +166,21 @@ export class Environment {
     varying float vAlpha;
     
     void main() {
-      // 粒子随时间流动
       vec3 pos = position;
       float timeOffset = uTime * uSpeed + aPhase;
       
-      // 垂直方向流动
-      pos.y = uWaterHead - mod(timeOffset * 2.0, 5.0);
+      // 粒子向隧道中心径向收敛流动
+      vec2 dir = normalize(pos.xy);
+      pos.xy -= dir * mod(timeOffset * 0.5, 1.2); 
       
-      // 水平扩散
-      pos.x += sin(timeOffset + aPhase * 2.0) * 0.5;
-      pos.z += cos(timeOffset + aPhase * 3.0) * 0.3;
-      
-      // 透明度随深度衰减
-      vAlpha = smoothstep(uWaterHead - 5.0, uWaterHead, pos.y) * 
-               smoothstep(uWaterHead - 10.0, uWaterHead - 5.0, pos.y);
+      // 基于马蹄形拓扑求实际离衬砌外壁防线的相对距离
+      float distToCenter = length(pos.xy);
+      float rLiningBoundary = uTunnelRadius * (pos.y < 0.0 ? 1.05 : 1.18); // 拱顶与仰拱非圆差异化边界
+      vAlpha = smoothstep(rLiningBoundary, rLiningBoundary + 1.2, distToCenter);
       
       vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
       #include <clipping_planes_vertex>
-      gl_PointSize = aSize * (300.0 / -mvPosition.z);
+      gl_PointSize = aSize * (250.0 / -mvPosition.z);
       gl_Position = projectionMatrix * mvPosition;
     }
   `;
@@ -387,6 +384,7 @@ export class Environment {
       uTime: { value: 0 },
       uSpeed: { value: this.calculateFlowSpeed(this.currentState.totalLeakage) },
       uWaterHead: { value: this.currentState.waterHead },
+      uTunnelRadius: { value: this.config.tunnelRadius },
       uColorStart: { value: new THREE.Color(0x004488) },
       uColorEnd: { value: new THREE.Color(0x0088ff) }
     };
@@ -419,11 +417,12 @@ export class Environment {
    */
   private initFlowLines(): void {
     this.flowLines = new THREE.Group();
-    const lineCount = 20;
+    const lineCount = 24;
     const length = Math.abs(this.config.endChainage - this.config.startChainage);
     const isDouble = this.config.tunnelType === 'double';
     const xOffsets = isDouble ? [-(this.config.dSpacing || 30) / 2, (this.config.dSpacing || 30) / 2] : [0];
-    const rSeep = Math.min(Math.max(2.5 * this.config.tunnelRadius, 12.0), 20.0);
+    const rNearStart = 1.40 * this.config.tunnelRadius; // 近场起点 (约 7.7m)
+    const rNearEnd = 1.05 * this.config.tunnelRadius;   // 收敛终点 (约 5.8m)
 
     const tubeMaterial = new THREE.ShaderMaterial({
       vertexShader: this.flowTubeVertexShader,
@@ -436,20 +435,22 @@ export class Environment {
 
     for (let i = 0; i < lineCount; i++) {
       const xCenter = xOffsets[i % xOffsets.length];
-      const angle = (i / (lineCount - 1)) * Math.PI;
-      const startX = xCenter + Math.cos(angle) * rSeep;
-      const startY = this.currentState.waterHead;
-      const targetX = xCenter + Math.cos(angle) * (this.config.tunnelRadius + 0.1);
-      const targetY = Math.sin(angle) * (this.config.tunnelRadius + 0.1);
-      const zSegment = -this.config.startChainage - (i / lineCount) * length;
-      
+      const angle = (i / (lineCount - 1)) * Math.PI; // 拱顶至边墙弧度
+      const startX = xCenter + Math.cos(angle) * rNearStart;
+      const startY = Math.sin(angle) * rNearStart;
+      const targetX = xCenter + Math.cos(angle) * rNearEnd;
+      const targetY = Math.sin(angle) * rNearEnd;
+      const zStart = -this.config.startChainage - (i / lineCount) * length;
+      const zEnd = zStart - 1.5; // 沿 Z 轴纵向倾斜 1.5m 汇入纵向盲管
+
+      // 三维倾斜贝塞尔曲线
       const curve = new THREE.QuadraticBezierCurve3(
-        new THREE.Vector3(startX, startY, zSegment),
-        new THREE.Vector3((startX + targetX) * 0.5, (startY + targetY) * 0.5 + 1.5, zSegment),
-        new THREE.Vector3(targetX, targetY, zSegment)
+        new THREE.Vector3(startX, startY, zStart),
+        new THREE.Vector3((startX + targetX) * 0.5, (startY + targetY) * 0.5 + 0.3, (zStart + zEnd) * 0.5),
+        new THREE.Vector3(targetX, targetY, zEnd)
       );
-      
-      const tubeGeo = new THREE.TubeGeometry(curve, 32, 0.06, 8, false);
+
+      const tubeGeo = new THREE.TubeGeometry(curve, 16, 0.05, 8, false);
       const tubeMesh = new THREE.Mesh(tubeGeo, tubeMaterial);
       this.flowLines.add(tubeMesh);
     }

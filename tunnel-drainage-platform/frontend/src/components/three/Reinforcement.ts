@@ -199,7 +199,7 @@ export class ReinforcementManager {
   }
 
   /**
-   * 内部：更新注浆圈环状体实例（支持双洞平移阵列）
+   * 内部：更新注浆圈环状体实例（支持双洞 Shape 几何与 5mm 防闪烁隙缝）
    */
   private updateGroutingRing(
     mesh: THREE.InstancedMesh,
@@ -214,13 +214,22 @@ export class ReinforcementManager {
     D_spacing: number = 30.0
   ): void {
     const isDouble = tunnelType === 'double';
-    const totalInstances = isDouble ? segments * 2 : segments;
+    const totalInstances = segments;
     mesh.count = Math.min(totalInstances, mesh.instanceMatrix.count);
 
     if (rOuter > rInner) {
-      const r_base = rInner ? rInner / 1.18 : 5.5;
-      const horseshoeShape = buildHorseshoeShape(r_base, rOuter, rInner, 0, 0.7);
-      const newGeom = new THREE.ExtrudeGeometry(horseshoeShape, { depth: 1.0, bevelEnabled: false, curveSegments: 32 });
+      const rInnerFit = rInner + 0.005; // 5mm 防闪烁隙缝
+      const tunnelRadius = rInner ? rInner / 1.18 : 5.5;
+      const shapes: THREE.Shape[] = [];
+
+      if (isDouble) {
+        shapes.push(buildHorseshoeShape(tunnelRadius, rOuter, rInnerFit, -D_spacing / 2, 0.7));
+        shapes.push(buildHorseshoeShape(tunnelRadius, rOuter, rInnerFit, D_spacing / 2, 0.7));
+      } else {
+        shapes.push(buildHorseshoeShape(tunnelRadius, rOuter, rInnerFit, 0, 0.7));
+      }
+
+      const newGeom = new THREE.ExtrudeGeometry(shapes, { depth: 1.0, bevelEnabled: false, curveSegments: 32 });
       if (mesh.geometry) mesh.geometry.dispose();
       mesh.geometry = newGeom;
     }
@@ -230,18 +239,12 @@ export class ReinforcementManager {
     const scale = new THREE.Vector3(1, 1, segmentLength);
     const quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0));
 
-    let idx = 0;
     for (let i = 0; i < segments; i++) {
       const z = -(i * segmentLength + segmentLength / 2);
-      const xOffsets = isDouble ? [-D_spacing / 2, D_spacing / 2] : [0];
-
-      for (const xOff of xOffsets) {
-        if (idx >= mesh.count) break;
-        position.set(xOff, 0, z);
-        matrix.compose(position, quaternion, scale);
-        mesh.setMatrixAt(idx, matrix);
-        idx++;
-      }
+      if (i >= mesh.count) break;
+      position.set(0, 0, z);
+      matrix.compose(position, quaternion, scale);
+      mesh.setMatrixAt(i, matrix);
     }
 
     mesh.instanceMatrix.needsUpdate = true;

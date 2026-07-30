@@ -84,7 +84,7 @@ export class TunnelGenerator {
   }
 
   /**
-   * 构建独立内部沥青路面与水沟槽 Mesh
+   * 构建精确贴合仰拱内壁、带三沟凹槽切割与双洞偏移的路面与三沟组合几何体
    */
   private createInternalRoadAndDitchGeometry(
     type: TunnelType,
@@ -94,22 +94,75 @@ export class TunnelGenerator {
     nMax: number
   ): void {
     const R3_base = 1.80 * r;
-    const dx = 0.4 * r;
-    const dy = Math.sqrt(Math.max(0, Math.pow(R3_base - 0.65 * r, 2) - Math.pow(dx, 2)));
-    const w = 2.1 * r;
-    const h = w * aspect_ratio;
-    const H_side = Math.max(0.0, h - 1.05 * r + dy - R3_base);
-    const invertCenterY = -H_side + dy;
-
     const ditchH = 0.8;
     const dy_road = R3_base - ditchH;
     const halfRoadW = Math.sqrt(Math.max(0, R3_base * R3_base - dy_road * dy_road));
+
+    const w = 2.1 * r;
+    const h = w * aspect_ratio;
+    const R1_base = 1.05 * r;
+    const R2_base = 0.65 * r;
+    const dx_offset = R1_base - R2_base;
+    const dy_offset = Math.sqrt(Math.max(0, Math.pow(R3_base - R2_base, 2) - Math.pow(dx_offset, 2)));
+    const H_side = Math.max(0.0, h - R1_base + dy_offset - R3_base);
+    const invertCenterY = -H_side + dy_offset;
     const roadY = invertCenterY - dy_road;
 
-    // 1. 沥青路面 Mesh (高对比度深色沥青)
-    const roadWidth = halfRoadW * 1.8;
-    const roadGeo = new THREE.BoxGeometry(roadWidth, 0.12, 0.999);
-    roadGeo.translate(0, roadY + 0.06, 0);
+    // 根据单/双洞确定 X 轴偏移数组
+    const offsets = type === TunnelType.DOUBLE ? [-spacing / 2, spacing / 2] : [0];
+    const roadShapes: THREE.Shape[] = [];
+    const ditchShapes: THREE.Shape[] = [];
+
+    offsets.forEach(ox => {
+      // 1. 路面 Shape (顶部切割三沟凹槽，底部沿 R3 弧线相切)
+      const roadShape = new THREE.Shape();
+      roadShape.moveTo(-halfRoadW + ox, roadY);
+      
+      // 右侧沟槽凹槽 (x: halfRoadW - 0.4 -> halfRoadW)
+      roadShape.lineTo(halfRoadW - 0.4 + ox, roadY);
+      roadShape.lineTo(halfRoadW - 0.4 + ox, roadY - 0.3);
+      roadShape.lineTo(halfRoadW + ox, roadY - 0.3);
+      roadShape.lineTo(halfRoadW + ox, roadY);
+
+      // 中央沟槽凹槽 (x: -0.35 -> 0.35)
+      roadShape.lineTo(0.35 + ox, roadY);
+      roadShape.lineTo(0.35 + ox, roadY - 0.4);
+      roadShape.lineTo(-0.35 + ox, roadY - 0.4);
+      roadShape.lineTo(-0.35 + ox, roadY);
+
+      // 左侧沟槽凹槽 (x: -halfRoadW -> -halfRoadW + 0.4)
+      roadShape.lineTo(-halfRoadW + 0.4 + ox, roadY);
+      roadShape.lineTo(-halfRoadW + 0.4 + ox, roadY - 0.3);
+      roadShape.lineTo(-halfRoadW + ox, roadY - 0.3);
+      roadShape.lineTo(-halfRoadW + ox, roadY);
+
+      // 底部沿仰拱圆弧切合
+      const steps = 16;
+      for (let i = steps; i >= 0; i--) {
+        const x = -halfRoadW + (i / steps) * (2 * halfRoadW);
+        const y = invertCenterY - Math.sqrt(Math.max(0, R3_base * R3_base - x * x));
+        roadShape.lineTo(x + ox, y);
+      }
+      roadShapes.push(roadShape);
+
+      // 2. 独立三沟 Shape 数组构造 (防 Earcut 三角剖分自交)
+      const createBoxShape = (xMin: number, xMax: number, yTop: number, yBot: number) => {
+        const s = new THREE.Shape();
+        s.moveTo(xMin + ox, yTop);
+        s.lineTo(xMax + ox, yTop);
+        s.lineTo(xMax + ox, yBot);
+        s.lineTo(xMin + ox, yBot);
+        s.closePath();
+        return s;
+      };
+      ditchShapes.push(createBoxShape(-0.35, 0.35, roadY, roadY - 0.4)); // 中央沟槽
+      ditchShapes.push(createBoxShape(-halfRoadW, -halfRoadW + 0.4, roadY, roadY - 0.3)); // 左侧沟槽
+      ditchShapes.push(createBoxShape(halfRoadW - 0.4, halfRoadW, roadY, roadY - 0.3)); // 右侧沟槽
+    });
+
+    const extrudeSettings = { depth: 0.999, bevelEnabled: false };
+    const roadGeo = new THREE.ExtrudeGeometry(roadShapes, extrudeSettings);
+    const ditchGeo = new THREE.ExtrudeGeometry(ditchShapes, extrudeSettings);
 
     const roadMat = new THREE.MeshStandardMaterial({
       color: 0x242830,
@@ -118,21 +171,17 @@ export class TunnelGenerator {
       side: THREE.DoubleSide
     });
 
+    const ditchMat = new THREE.MeshStandardMaterial({
+      color: 0x475569,
+      roughness: 0.3,
+      metalness: 0.2,
+      side: THREE.DoubleSide
+    });
+
     this.roadMesh = new THREE.InstancedMesh(roadGeo, roadMat, nMax);
     this.roadMesh.frustumCulled = false;
     this.roadMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.roadMesh.count = 0;
-
-    // 2. 混凝土排水沟槽 Mesh
-    const ditchGeo = new THREE.BoxGeometry(0.5, 0.35, 0.999);
-    ditchGeo.translate(0, roadY - 0.15, 0);
-
-    const ditchMat = new THREE.MeshStandardMaterial({
-      color: 0x475569,
-      roughness: 0.25,
-      metalness: 0.1,
-      side: THREE.DoubleSide
-    });
 
     this.ditchMesh = new THREE.InstancedMesh(ditchGeo, ditchMat, nMax);
     this.ditchMesh.frustumCulled = false;
