@@ -605,23 +605,50 @@ export class DrainagePipeGenerator {
     // 1. 环向盲管标注
     const ringDiamMm = Math.round(this.config.ringDiam * 1000);
     const ringSpacingM = this.config.ringSpacing.toFixed(1);
-    const ringText = `${prefix}环向盲管: Φ${ringDiamMm}mm @ ${ringSpacingM}m`;
+    const ringText = `${prefix}环向盲管: Φ${ringDiamMm}mm @ ${ringSpacingM}m 🔍`;
     const ringSprite = this.createTextSprite(ringText, labelColor);
     ringSprite.position.set(mainXOffset, r2 + 0.6, -this.config.startChainage);
+    ringSprite.userData = {
+      pipeCategory: 'ring',
+      name: '环向排水盲管',
+      diameter: ringDiamMm,
+      spacing: parseFloat(ringSpacingM),
+      permeability: '1.2×10⁻² cm/s',
+      flowRate: '0.15 L/s',
+      status: '自流通畅'
+    };
     this.annotationGroup.add(ringSprite);
 
     // 2. 纵向排水管标注
     const longDiamMm = Math.round(this.config.longDiam * 1000);
-    const longText = `${prefix}纵向排水管: Φ${longDiamMm}mm`;
+    const longText = `${prefix}纵向排水管: Φ${longDiamMm}mm 🔍`;
     const longSprite = this.createTextSprite(longText, '#2ecc71');
     longSprite.position.set(mainXOffset + ditchGeo.sideDitchX, ditchGeo.sideDitchBottomY + 0.5, -this.config.startChainage - length * 0.4);
+    longSprite.userData = {
+      pipeCategory: 'longitudinal',
+      name: '纵向主排水管',
+      diameter: longDiamMm,
+      spacing: 50.0,
+      permeability: '2.5×10⁻² cm/s',
+      flowRate: '0.45 L/s',
+      status: '主干自流'
+    };
     this.annotationGroup.add(longSprite);
 
     // 3. 横向排水管标注
     const latDiamMm = Math.round(this.config.latDiam * 1000);
-    const latText = `${prefix}横向排水管: Φ${latDiamMm}mm`;
+    const latText = `${prefix}横向排水管: Φ${latDiamMm}mm 🔍`;
     const latSprite = this.createTextSprite(latText, '#e74c3c');
     latSprite.position.set(mainXOffset + ditchGeo.sideDitchX / 2, (ditchGeo.sideDitchBottomY + ditchGeo.ditchBottomY) / 2 + 0.5, -this.config.startChainage - length * 0.2);
+    latSprite.userData = {
+      pipeCategory: 'lateral',
+      name: '横向连通排水管',
+      diameter: latDiamMm,
+      spacing: parseFloat(ringSpacingM) * 2,
+      permeability: '1.8×10⁻² cm/s',
+      flowRate: '0.28 L/s',
+      status: '倾斜自流 (3%)'
+    };
     this.annotationGroup.add(latSprite);
 
     // 4. 【径向排水管】文本标注已彻底移除

@@ -1,4 +1,3 @@
-<!-- frontend/src/components/three/MagnifierPIP.vue -->
 <template>
   <div v-if="active" class="pip-magnifier-container glass-card">
     <div class="pip-header">
@@ -6,7 +5,7 @@
         <span class="pip-icon">🔍</span>
         <span class="pip-title">微观防排水结构放大镜 (8.0x)</span>
       </div>
-      <button class="pip-close-btn" @click="emit('close')">✕</button>
+      <button class="pip-close-btn" @click="emit('close')" title="关闭放大镜头 (ESC / 点击空白区)">✕</button>
     </div>
     
     <!-- PIP 画中画 3D 渲染视图容器 -->
@@ -22,7 +21,7 @@
           <span class="pip-metric-value highlight">{{ pipeData?.name || '环向盲管' }}</span>
         </div>
         <div class="pip-metric-item">
-          <span class="pip-metric-label">管径 (d_lat)</span>
+          <span class="pip-metric-label">管径 (d)</span>
           <span class="pip-metric-value">Φ{{ pipeData?.diameter || 100 }} mm</span>
         </div>
         <div class="pip-metric-item">
@@ -31,15 +30,15 @@
         </div>
         <div class="pip-metric-item">
           <span class="pip-metric-label">透水土工布</span>
-          <span class="pip-metric-value">400g/m² 无纺包覆</span>
+          <span class="pip-metric-value">{{ pipeData?.pipeCategory === 'longitudinal' ? '集水沉渣槽包覆' : '400g/m² 无纺包覆' }}</span>
         </div>
         <div class="pip-metric-item">
           <span class="pip-metric-label">滤层渗透系数</span>
-          <span class="pip-metric-value">1.2×10⁻² cm/s</span>
+          <span class="pip-metric-value">{{ pipeData?.permeability || '1.2×10⁻² cm/s' }}</span>
         </div>
         <div class="pip-metric-item">
           <span class="pip-metric-label">排水分流状态</span>
-          <span class="pip-metric-value status-good">自流通畅 (0.15 L/s)</span>
+          <span class="pip-metric-value status-good">{{ pipeData?.status || '自流通畅' }} ({{ pipeData?.flowRate || '0.15 L/s' }})</span>
         </div>
       </div>
     </div>
@@ -54,6 +53,7 @@ const props = withDefaults(defineProps<{
   active: boolean;
   pipeData?: {
     name?: string;
+    pipeCategory?: 'ring' | 'longitudinal' | 'lateral';
     diameter?: number;
     spacing?: number;
     permeability?: string;

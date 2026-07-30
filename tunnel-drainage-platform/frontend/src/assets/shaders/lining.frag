@@ -129,71 +129,20 @@ void main() {
     else {
        
         // ==================== 2. 隧道侧壁与内表面渲染 ====================
-        float x_orig = vLocalPosition.x;
-        float center_x = 0.0;
-        if (spacing > 0.1) { center_x = sign(x_orig) * (spacing * 0.5); }
-        float xl = x_orig - center_x;
+        // 衬砌侧壁与拱顶：纯净高透明物理玻璃 / 影棚透视质感
+        float reff_wall = calculateHorseshoeRadius(vLocalPosition.xy);
+        float mid_r = (r + r2) * 0.5;
+    
+        float fresnel = pow(1.0 - max(0.0, dot(normal_view, viewDir)), uFresnelPower);
+        vec3 baseTone = (reff_wall < mid_r) ? uBaseColor * vInstanceColor : mix(uBaseColor, vec3(0.18, 0.22, 0.28), 0.5);
+        finalColor = mix(baseTone, uFresnelColor, fresnel * 0.75);
+        roughness = 0.08;
+        alpha = clamp(uOpacity + fresnel * 0.6, 0.08, 0.85);
 
-        // 补充细节：根据同心拓扑推算仰拱最低处的绝对高度边界与路面绝对高度
-        float dy_u = sqrt(max(0.01, (1.80 - 0.65) * (1.80 - 0.65) - (1.05 - 0.65) * (1.05 - 0.65))) * r;
-        float H_side_u = max(0.0, 2.1 * r * aspect - 1.05 * r + dy_u - 1.80 * r);
-        float arc_y_bottom = -H_side_u + dy_u - 1.80 * r;
-        
-        float dy_road = 1.80 * r - 0.8;
-        float halfRoadW = sqrt(max(0.0, 1.80 * r * 1.80 * r - dy_road * dy_road));
-        float roadY = arc_y_bottom + 0.8;
-
-        // 空间区域严格分类判定
-        bool isCenterDitch = (r > 5.0 && abs(xl) <= 0.305 && vLocalPosition.y < roadY);
-        bool isSideDitch = (abs(xl) >= (halfRoadW - 0.305) && abs(xl) <= (halfRoadW + 0.01) && vLocalPosition.y < roadY);
-        bool isRoadSurface = (vLocalNormal.y > 0.9 && abs(vLocalPosition.y - roadY)<0.05);
-
-        if (isCenterDitch) {
-            // 对于 r > r_threshold(5.0)，中心水沟严格保留并涂装
-            finalColor = vec3(0.12, 0.14, 0.16); 
-            roughness = 0.2;
-            emit = 0.0;
-        }
-        else if (isSideDitch) {
-            // 增加两侧边沟的演示效果设置
-            // 两侧边沟取消流动条纹，改用均匀深色防渗涂装
-            finalColor = vec3(0.12, 0.15, 0.18); 
-            roughness = 0.3;
-            emit = 0.0;
-        }
-        else if (isRoadSurface) {
-            // 回填层路面设置为半透明材质，以便查看后期隐藏的排水管线
-            roughness = 0.2;
-            metallic = 0.4;
-            
-            // 计算当前点到路面中心的相对距离比例 (0.0 为中心，1.0 为最外侧边沟沿)
-            float edgeFactor = abs(xl) / halfRoadW;
-            
-            // 采用高幂次曲线，让透明度在中心快速收敛至极低，在边缘处陡峭上升
-            float borderGlow = pow(edgeFactor, 4.0);
-            
-            // 调色：中心淡蓝色，边缘高亮深蓝
-            finalColor = mix(vec3(0.05, 0.1, 0.15), vec3(0.0, 0.6, 1.0), borderGlow);
-            emit = borderGlow * 0.3;
-            
-            // 透明度控制：中心留出 0.15 的极高透明度查看管网，边缘上升到 0.6 锁定轮廓
-            alpha = mix(0.15, 0.60, borderGlow);
-        }
-        else {
-            // 衬砌侧壁与拱顶：高透明科技玻璃/影棚玻璃质感
-            float reff_wall = calculateHorseshoeRadius(vLocalPosition.xy);
-            float mid_r = (r + r2) * 0.5;
-        
-            float fresnel = pow(1.0 - max(0.0, dot(normal_view, viewDir)), uFresnelPower);
-            vec3 baseTone = (reff_wall < mid_r) ? uBaseColor * vInstanceColor : mix(uBaseColor, vec3(0.18, 0.22, 0.28), 0.5);
-            finalColor = mix(baseTone, uFresnelColor, fresnel * 0.7);
-            roughness = 0.1;
-            alpha = clamp(uOpacity + fresnel * 0.6, 0.1, 0.9);
-
-            if (uShowGrid > 0.5) {
-                float gridPattern = step(0.96, fract(vWorldPosition.z * 1.0)) + step(0.96, fract(vUv.x * 20.0));
-                finalColor += uFresnelColor * clamp(gridPattern, 0.0, 1.0) * 0.35;
-            }
+        // 仅在赛博模式开启低频纵向科技切片环，彻底消除高频 UV 离散条纹摩尔伪影
+        if (uShowGrid > 0.5) {
+            float gridPattern = step(0.98, fract(vWorldPosition.z * 1.0));
+            finalColor += uFresnelColor * gridPattern * 0.3;
         }
     }
     

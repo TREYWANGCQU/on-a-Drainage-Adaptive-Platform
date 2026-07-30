@@ -753,9 +753,66 @@ const initWebGL = () => {
   dirLight.shadow.normalBias = 0.05;
   scene.add(dirLight);
 
+  // PMREMGenerator 动态生成 3 点影棚柔光 HDRI 光照贴图，赋予金属与玻璃逼真反射
+  try {
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    pmremGenerator.compileEquirectangularShader();
+    const envScene = new THREE.Scene();
+    envScene.background = new THREE.Color(0xf3f4f6);
+    const studioLight1 = new THREE.DirectionalLight(0xffffff, 3.0);
+    studioLight1.position.set(10, 20, 15);
+    envScene.add(studioLight1);
+    const studioLight2 = new THREE.DirectionalLight(0x38bdf8, 1.5);
+    studioLight2.position.set(-10, 10, -10);
+    envScene.add(studioLight2);
+    const studioLight3 = new THREE.DirectionalLight(0xffb800, 1.0);
+    studioLight3.position.set(0, -10, 10);
+    envScene.add(studioLight3);
+
+    const envTarget = pmremGenerator.fromScene(envScene);
+    scene.environment = envTarget.texture;
+    pmremGenerator.dispose();
+  } catch (e) {
+    console.warn('PMREM Studio Environment generation fallback:', e);
+  }
+
   probeManager = new StressProbeManager(scene);
   scene.add(measureGroup);
   scheduleRender();
+};
+
+/**
+ * 悬停 Raycasting 检测，实现 3D 悬浮卡片与管网 Hover 光标 pointer 提示
+ */
+const handleCanvasPointerMove = (event: MouseEvent) => {
+  if (!canvasRef.value || !camera) return;
+
+  const rect = canvasRef.value.getBoundingClientRect();
+  mouseVec.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  mouseVec.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+  raycaster.setFromCamera(mouseVec, camera);
+  const intersects = raycaster.intersectObjects(activeMeshes, true);
+
+  if (intersects.length > 0) {
+    const hit = intersects[0].object;
+    if (hit && hit.userData && (hit.userData.pipeCategory || hit.userData.name)) {
+      canvasRef.value.style.cursor = 'pointer';
+      return;
+    }
+  }
+  if (!isMeasuring.value) {
+    canvasRef.value.style.cursor = 'default';
+  }
+};
+
+/**
+ * 键盘按键监听 (ESC 退出 PIP 画中画)
+ */
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && isPipActive.value) {
+    isPipActive.value = false;
+  }
 };
 
 /**
@@ -1000,13 +1057,19 @@ const handleCanvasClick = (event: MouseEvent) => {
     return;
   }
 
-  // 非测距模式：检测是否点击了排水管网，激活 PIP 微观局部放大镜
+  // 非测距模式：检测是否点击了排水管网或 3D 悬浮文字卡片，激活 PIP 微观局部放大镜
   if (intersects.length > 0) {
     const hit = intersects[0].object;
-    if (hit && hit.userData && hit.userData.pipeCategory) {
+    if (hit && hit.userData && (hit.userData.pipeCategory || hit.userData.name)) {
       pipPipeData.value = { ...hit.userData };
       isPipActive.value = true;
+      return;
     }
+  }
+
+  // 点击 3D 画布空白区域，自动平滑收起 PIP 画中画镜头
+  if (isPipActive.value) {
+    isPipActive.value = false;
   }
 };
 
@@ -1051,13 +1114,13 @@ const renderSceneData = () => {
   envInstances = [];
 
   tGenInstances.forEach(tGen => {
-    if (tGen.mesh) {
-      tGen.mesh.geometry?.dispose();
-      if (tGen.mesh.material) {
-        if (Array.isArray(tGen.mesh.material)) tGen.mesh.material.forEach((m: any) => m.dispose());
-        else (tGen.mesh.material as any).dispose();
+    tGen.getMeshes().forEach(mesh => {
+      if ((mesh as any).geometry) (mesh as any).geometry.dispose();
+      if ((mesh as any).material) {
+        if (Array.isArray((mesh as any).material)) (mesh as any).material.forEach((m: any) => m.dispose());
+        else ((mesh as any).material as any).dispose();
       }
-    }
+    });
   });
   tGenInstances = [];
 
@@ -1108,23 +1171,28 @@ const renderSceneData = () => {
 
     const tType = tunnel_type === 'double' ? TunnelType.DOUBLE : TunnelType.SINGLE;
 
-    // 1. 隧道主洞体生成
+    // 1. 隧道主洞体与路面水沟生成
     const tGen = new TunnelGenerator(tType, start_chainage, end_chainage, r, aspect_ratio, D_spacing, r1, r2, rg, c);
-    tGen.mesh.castShadow = false;
-    tGen.mesh.receiveShadow = false;
-    tGen.mesh.frustumCulled = false;
+    tGen.setVisualParadigm(visualParadigm.value);
+    tGen.getMeshes().forEach(mesh => {
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
+      mesh.frustumCulled = false;
+    });
 
     const spacingZ = 1.0;
     const nCurrent = Math.ceil((end_chainage - start_chainage) / spacingZ);
     if (nCurrent > 0) {
       tGen.updateInstanceData(nCurrent, spacingZ, 1.0, r, 0);
     }
-    tGen.mesh.position.z = -start_chainage;
-    scene.add(tGen.mesh);
-    activeMeshes.push(tGen.mesh);
+    tGen.getMeshes().forEach(mesh => {
+      mesh.position.z = -start_chainage;
+      scene.add(mesh);
+      activeMeshes.push(mesh);
+    });
     tGenInstances.push(tGen);
 
-    // 2. 加固注浆圈 (去除超前小导管)
+    // 2. 加固注浆圈
     const rManager = new ReinforcementManager({
       rg,
       r2,
@@ -1135,6 +1203,7 @@ const renderSceneData = () => {
       tunnel_type,
       D_spacing
     });
+    rManager.setVisualParadigm(visualParadigm.value);
     rManager.updateFromSnapshot(rawData);
     rManager.getMeshes().forEach(mesh => {
       mesh.position.z = -start_chainage;
@@ -1158,6 +1227,7 @@ const renderSceneData = () => {
       outerRadius: r2,
       dSpacing: D_spacing
     });
+    pipeGen.setVisualParadigm(visualParadigm.value);
     pipeGen.updateFromSnapshot(rawData, props.mode);
     pipeGen.getMeshes().forEach(mesh => {
       mesh.position.z = -start_chainage;
@@ -1199,7 +1269,7 @@ const renderSceneData = () => {
         minK: probeRes.minK,
         isCritical: probeRes.minK <= 2.0,
         chainageText: probeRes.chainageText,
-        stateTag: targetViewMode === 'critical' ? '[临界自适应态]' : '[原始超限态]'
+        stateTag: targetViewMode === 'original' ? '[原始超限态]' : '[临界加固态]'
       };
       if (probeRes.ranges) {
         probeRanges.value = probeRes.ranges;

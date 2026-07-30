@@ -136,10 +136,10 @@ export class ReinforcementManager {
     if (this.criticalGroutingMesh) {
       const mat = this.criticalGroutingMesh.material as THREE.MeshStandardMaterial;
       if (mode === 'studio') {
-        mat.color.setHex(0xd4af37); // 抛光黄铜 / 金色金属漆
-        mat.metalness = 0.9;
-        mat.roughness = 0.15;
-        mat.opacity = 0.65;
+        mat.color.setHex(0xd4af37); // 抛光黄铜 / 金色金属漆 (100% 对齐附图跑车美学)
+        mat.metalness = 0.95;
+        mat.roughness = 0.12;
+        mat.opacity = 0.85;
         mat.emissive.setHex(0x332200);
       } else {
         mat.color.setHex(0xff6600); // 炽热半透明荧光橙

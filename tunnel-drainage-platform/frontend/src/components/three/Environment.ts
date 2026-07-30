@@ -44,7 +44,7 @@ export class Environment {
   public waterPlane!: THREE.Mesh;
   public groundPlane!: THREE.Mesh;
   public waterParticles!: THREE.Points;
-  public flowLines!: THREE.LineSegments;
+  public flowLines!: THREE.Group;
   public depthIndicator!: THREE.Group;
   
   private scene: THREE.Scene;
@@ -56,6 +56,42 @@ export class Environment {
   private flowUniforms!: { [key: string]: THREE.IUniform };
   private clock: THREE.Clock;
   private isAnimated: boolean = false; // 粒子流动与水面波纹动画使能标志 (默认冻结)
+
+  // 3D 动水脉冲流线管束 Fragment Shader
+  private readonly flowTubeFragmentShader = `
+    #include <common>
+    #include <clipping_planes_pars_fragment>
+    uniform float uTime;
+    uniform vec3 uColorStart;
+    uniform vec3 uColorEnd;
+    varying vec2 vUv;
+    
+    void main() {
+      #include <clipping_planes_fragment>
+      // 沿流线弧长方向的能量脉冲波纹 (0 -> 1)
+      float pulse = sin(vUv.x * 30.0 - uTime * 8.0) * 0.5 + 0.5;
+      pulse = pow(pulse, 3.0);
+      
+      vec3 color = mix(uColorStart, uColorEnd, vUv.x);
+      color += vec3(0.8, 1.0, 1.0) * pulse * 0.6; // 脉冲亮斑
+      
+      float alpha = smoothstep(0.0, 0.1, vUv.x) * (0.4 + pulse * 0.5);
+      gl_FragColor = vec4(color, alpha);
+    }
+  `;
+
+  // 3D 动水脉冲流线管束 Vertex Shader
+  private readonly flowTubeVertexShader = `
+    #include <common>
+    #include <clipping_planes_pars_vertex>
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      #include <clipping_planes_vertex>
+      gl_Position = projectionMatrix * mvPosition;
+    }
+  `;
   
   // 着色器代码
   private readonly waterVertexShader = `
@@ -134,8 +170,8 @@ export class Environment {
       vec3 pos = position;
       float timeOffset = uTime * uSpeed + aPhase;
       
-      // 垂直方向波动
-      pos.y = uWaterHead - mod(timeOffset * 2.0, 5.0); // 向下流动
+      // 垂直方向流动
+      pos.y = uWaterHead - mod(timeOffset * 2.0, 5.0);
       
       // 水平扩散
       pos.x += sin(timeOffset + aPhase * 2.0) * 0.5;
@@ -159,16 +195,15 @@ export class Environment {
     
     void main() {
       #include <clipping_planes_fragment>
-      // 圆形粒子
       vec2 coord = gl_PointCoord - vec2(0.5);
       float dist = length(coord);
       if (dist > 0.5) discard;
       
-      // 径向渐变
+      // 柔和蓝青色粒子, 结合 NormalBlending 避免多粒子叠加爆光成白斑
       float glow = 1.0 - smoothstep(0.0, 0.5, dist);
-      vec3 color = vec3(0.3, 0.6, 1.0) * glow;
+      vec3 color = vec3(0.0, 0.55, 1.0) * glow;
       
-      gl_FragColor = vec4(color, vAlpha * glow);
+      gl_FragColor = vec4(color, vAlpha * glow * 0.65);
     }
   `;
 
@@ -177,9 +212,8 @@ export class Environment {
     this.config = config;
     this.clock = new THREE.Clock();
     
-    // 初始化默认状态
     this.currentState = {
-      waterHead: config.burialDepth * 0.6, // 默认水位为埋深的60%
+      waterHead: config.burialDepth * 0.6,
       totalLeakage: 0,
       unitLeakage: 0,
       rockGrade: 4,
@@ -194,7 +228,7 @@ export class Environment {
   }
 
   /**
-   * 获取所有水文环境 3D 网格对象 (用于剖切与显隐控制)
+   * 获取所有水文环境 3D 网格对象
    */
   public getMeshes(): THREE.Object3D[] {
     const meshes: THREE.Object3D[] = [];
@@ -207,7 +241,6 @@ export class Environment {
 
   /**
    * 初始化动态水位面
-   * 基于 waterHead / final_waterHead 驱动Y轴高度
    */
   private initWaterPlane(): void {
     const length = this.config.endChainage - this.config.startChainage;
@@ -221,7 +254,7 @@ export class Environment {
       uTime: { value: 0 },
       uSpeed: { value: 1.0 },
       uWaterHead: { value: this.currentState.waterHead },
-      uOpacity: { value: 0.25 }, // 全息网格水面透明度设为 0.25
+      uOpacity: { value: 0.25 },
       uColorDeep: { value: new THREE.Color(0x004488) },
       uColorShallow: { value: new THREE.Color(0x00ffff) }
     };
@@ -244,10 +277,9 @@ export class Environment {
 
   /**
    * 解算对数景深高程压缩 (Equation 2.3)
-   * Y_render = Y_crown + h0 * ln(1.0 + (Y_real - Y_crown) / h0)
    */
   public getCompressedGroundY(realDepth: number, tunnelCrownY: number = this.config.tunnelRadius * 1.4): number {
-    const h0 = 15.0; // 基准缩放系数 15.0m
+    const h0 = 15.0;
     if (realDepth <= 30.0) {
       return tunnelCrownY + realDepth;
     }
@@ -255,7 +287,7 @@ export class Environment {
   }
 
   /**
-   * 初始化地面基准面 (结合对数景深高程压缩)
+   * 初始化地面基准面
    */
   private initGroundPlane(): void {
     const length = Math.abs(this.config.endChainage - this.config.startChainage);
@@ -265,7 +297,6 @@ export class Environment {
     
     const geometry = new THREE.PlaneGeometry(width, length);
     
-    // 创建全息质感地表纹理
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 512;
@@ -278,7 +309,6 @@ export class Environment {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 512, 512);
     
-    // 全息网格线条
     ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
     ctx.lineWidth = 2;
     for (let i = 0; i <= 512; i += 32) {
@@ -312,11 +342,10 @@ export class Environment {
   }
 
   /**
-   * 初始化水流粒子系统
-   * 基于 Q (totalLeakage) 控制动画速率
+   * 初始化地下水粒子系统 (近场渗流包络区 R_seep + NormalBlending 消除 130m 爆光)
    */
   private initWaterParticles(): void {
-    const particleCount = 2000;
+    const particleCount = 1500;
     const geometry = new THREE.BufferGeometry();
     
     const positions = new Float32Array(particleCount * 3);
@@ -328,22 +357,25 @@ export class Environment {
     const isDouble = this.config.tunnelType === 'double';
     const xOffsets = isDouble ? [-(this.config.dSpacing || 30) / 2, (this.config.dSpacing || 30) / 2] : [0];
     
+    // 近场渗流包络圈空间约束: R_seep = clamp(2.5 * r, 12m, 20m)
+    const rSeep = Math.min(Math.max(2.5 * this.config.tunnelRadius, 12.0), 20.0);
+
     for (let i = 0; i < particleCount; i++) {
       const theta = Math.random() * Math.PI * 2;
-      const rDist = this.config.tunnelRadius * 1.5 + Math.random() * this.config.tunnelRadius * 3.5;
+      const rDist = this.config.tunnelRadius * 1.05 + Math.random() * (rSeep - this.config.tunnelRadius);
       const xCenter = xOffsets[i % xOffsets.length];
       
       positions[i * 3] = xCenter + rDist * Math.cos(theta);
       positions[i * 3 + 1] = rDist * Math.sin(theta);
       positions[i * 3 + 2] = -this.config.startChainage - Math.random() * length;
       
-      sizes[i] = Math.random() * 3 + 1;
+      sizes[i] = Math.random() * 2.5 + 1.0;
       phases[i] = Math.random() * Math.PI * 2;
       
-      const speed = Math.random() * 1.2 + 0.4;
+      const speed = Math.random() * 1.0 + 0.3;
       velocities[i * 3] = -Math.cos(theta) * speed;
       velocities[i * 3 + 1] = -Math.sin(theta) * speed;
-      velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.3;
+      velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.2;
     }
     
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -354,7 +386,9 @@ export class Environment {
     this.flowUniforms = {
       uTime: { value: 0 },
       uSpeed: { value: this.calculateFlowSpeed(this.currentState.totalLeakage) },
-      uWaterHead: { value: this.currentState.waterHead }
+      uWaterHead: { value: this.currentState.waterHead },
+      uColorStart: { value: new THREE.Color(0x004488) },
+      uColorEnd: { value: new THREE.Color(0x0088ff) }
     };
     
     const material = new THREE.ShaderMaterial({
@@ -364,7 +398,7 @@ export class Environment {
       transparent: true,
       clipping: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending
+      blending: THREE.NormalBlending // 改为 NormalBlending，杜绝像素高密度相加爆光
     });
     
     this.waterParticles = new THREE.Points(geometry, material);
@@ -373,7 +407,6 @@ export class Environment {
 
   /**
    * 计算流速系数
-   * 基于总渗漏量 Q 动态调整：Q越大，流速越快
    */
   private calculateFlowSpeed(leakageQ: number): number {
     const baseSpeed = 0.5;
@@ -382,22 +415,29 @@ export class Environment {
   }
 
   /**
-   * 初始化基于达西渗流势场的收敛流线 (Convergent Streamlines)
+   * 初始化 3D 能量脉冲动水流线管束 (Animated 3D Flow Tubes)
    */
   private initFlowLines(): void {
-    const lineCount = 36;
-    const geometry = new THREE.BufferGeometry();
-    const positions: number[] = [];
-    const colors: number[] = [];
-    
+    this.flowLines = new THREE.Group();
+    const lineCount = 20;
     const length = Math.abs(this.config.endChainage - this.config.startChainage);
     const isDouble = this.config.tunnelType === 'double';
     const xOffsets = isDouble ? [-(this.config.dSpacing || 30) / 2, (this.config.dSpacing || 30) / 2] : [0];
-    
+    const rSeep = Math.min(Math.max(2.5 * this.config.tunnelRadius, 12.0), 20.0);
+
+    const tubeMaterial = new THREE.ShaderMaterial({
+      vertexShader: this.flowTubeVertexShader,
+      fragmentShader: this.flowTubeFragmentShader,
+      uniforms: this.flowUniforms,
+      transparent: true,
+      clipping: true,
+      side: THREE.DoubleSide
+    });
+
     for (let i = 0; i < lineCount; i++) {
       const xCenter = xOffsets[i % xOffsets.length];
-      const angle = (i / (lineCount - 1)) * Math.PI; // 0 到 Math.PI，对称覆盖拱顶与双侧墙
-      const startX = xCenter + Math.cos(angle) * (this.config.tunnelRadius * 4.0);
+      const angle = (i / (lineCount - 1)) * Math.PI;
+      const startX = xCenter + Math.cos(angle) * rSeep;
       const startY = this.currentState.waterHead;
       const targetX = xCenter + Math.cos(angle) * (this.config.tunnelRadius + 0.1);
       const targetY = Math.sin(angle) * (this.config.tunnelRadius + 0.1);
@@ -405,36 +445,15 @@ export class Environment {
       
       const curve = new THREE.QuadraticBezierCurve3(
         new THREE.Vector3(startX, startY, zSegment),
-        new THREE.Vector3((startX + targetX) * 0.5, (startY + targetY) * 0.5 + 2.0, zSegment),
+        new THREE.Vector3((startX + targetX) * 0.5, (startY + targetY) * 0.5 + 1.5, zSegment),
         new THREE.Vector3(targetX, targetY, zSegment)
       );
       
-      const curvePoints = curve.getPoints(20);
-      for (let j = 0; j < curvePoints.length - 1; j++) {
-        const pt1 = curvePoints[j];
-        const pt2 = curvePoints[j + 1];
-        positions.push(pt1.x, pt1.y, pt1.z, pt2.x, pt2.y, pt2.z);
-        
-        const t1 = j / curvePoints.length;
-        const t2 = (j + 1) / curvePoints.length;
-        
-        // 渐变色彩由深蓝到亮青
-        colors.push(0.0, 0.2 + 0.75 * t1, 0.6 + 0.4 * t1);
-        colors.push(0.0, 0.2 + 0.75 * t2, 0.6 + 0.4 * t2);
-      }
+      const tubeGeo = new THREE.TubeGeometry(curve, 32, 0.06, 8, false);
+      const tubeMesh = new THREE.Mesh(tubeGeo, tubeMaterial);
+      this.flowLines.add(tubeMesh);
     }
-    
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    
-    const material = new THREE.LineBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.75,
-      blending: THREE.AdditiveBlending
-    });
-    
-    this.flowLines = new THREE.LineSegments(geometry, material);
+
     this.scene.add(this.flowLines);
   }
 
@@ -576,8 +595,16 @@ export class Environment {
     }
     if (this.flowLines) {
       this.scene.remove(this.flowLines);
-      this.flowLines.geometry.dispose();
-      (this.flowLines.material as THREE.Material).dispose();
+      this.flowLines.children.forEach(child => {
+        if ((child as any).geometry) (child as any).geometry.dispose();
+        if ((child as any).material) {
+          if (Array.isArray((child as any).material)) {
+            (child as any).material.forEach((m: any) => m.dispose());
+          } else {
+            (child as any).material.dispose();
+          }
+        }
+      });
     }
     if (this.depthIndicator) {
       this.scene.remove(this.depthIndicator);

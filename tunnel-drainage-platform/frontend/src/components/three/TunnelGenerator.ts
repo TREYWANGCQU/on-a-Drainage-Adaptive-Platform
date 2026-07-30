@@ -11,6 +11,8 @@ export enum TunnelType {
 
 export class TunnelGenerator {
   public mesh: THREE.InstancedMesh;
+  public roadMesh?: THREE.InstancedMesh;
+  public ditchMesh?: THREE.InstancedMesh;
   public groundMesh: THREE.Mesh;
   private readonly L_max: number;      // 最大里程纵深
   private readonly delta_l_min: number; // 最小排布间距 (单位长度1m)
@@ -36,24 +38,22 @@ export class TunnelGenerator {
     // 构建带有多层解算拓扑的二维截面，并执行拉伸
     const geometry = this.createHorseshoeBase(type, r, r2, D_spacing, aspect_ratio);
 
-    //const material = new THREE.MeshStandardMaterial({ color: 0x808080, side: THREE.DoubleSide });// 替换为自定义着色器材质，支持基于半径和间距的动态纹理映射
     // 材质挂载与 Uniform 参数暴露
     const material = new THREE.ShaderMaterial({
       vertexShader: liningVert,
       fragmentShader: liningFrag,
       side: THREE.DoubleSide,
-      clipping: true,           // 新增：使能 Three.js 材质剖切机制
-      glslVersion: THREE.GLSL3, // 新增：强制采用 GLSL 3.00 ES 规范编译
-      transparent: true,        // 新增：激活透明混合，用于后期查看排水管
+      clipping: true,
+      glslVersion: THREE.GLSL3,
+      transparent: true,
       uniforms: {
         r: { value: r },
         r1: { value: r1 },
         r2: { value: r2 },
         rg: { value: rg },
-        // 新增：动态传入真实的双洞间距，若是单洞则传 0
         spacing: { value: type === TunnelType.DOUBLE ? D_spacing : 0.0 },
-        aspect: { value: aspect_ratio }, // 新增：传入长宽比参数，支持非等比例隧道截面纹理适配
-        totalLength: { value: this.L_max }, // 新增：传入隧道总长度，用于着色器内部端面切片剔除
+        aspect: { value: aspect_ratio },
+        totalLength: { value: this.L_max },
         uBaseColor: { value: new THREE.Color(0x1e2e40) },
         uFresnelColor: { value: new THREE.Color(0x00f3ff) },
         uOpacity: { value: 0.35 },
@@ -61,15 +61,16 @@ export class TunnelGenerator {
         uShowGrid: { value: 1.0 }
       }
     });
-    // 极值计算：N_max = ceil(L_max / delta_l_min) * C_ring
-    // 规避运行时高频内存垃圾回收(GC)，一次性向 GPU 申请最大连续显存空间 BufferAttribute
+
     const nMax = Math.ceil(this.L_max / this.delta_l_min) * this.c_ring;
     this.mesh = new THREE.InstancedMesh(geometry, material, nMax);
     this.mesh.frustumCulled = false;
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-
-    // 动态控制初始化渲染实例数为 0，避免冗余网格绘制
     this.mesh.count = 0;
+
+    // 创建独立 PBR 沥青路面与防渗混凝土水沟槽 Mesh
+    this.createInternalRoadAndDitchGeometry(type, r, aspect_ratio, D_spacing, nMax);
+
     // 地表平面生成与埋深推演
     geometry.computeBoundingBox();
     const Y_crown = geometry.boundingBox ? geometry.boundingBox.max.y : (1.05 * r);
@@ -78,40 +79,95 @@ export class TunnelGenerator {
     const groundGeo = new THREE.PlaneGeometry(1000, 1000);
     const groundMat = new THREE.MeshBasicMaterial({ color: 0x88cc88, side: THREE.DoubleSide });
     this.groundMesh = new THREE.Mesh(groundGeo, groundMat);
-    // 矫正地表朝向并定位到目标埋深
     this.groundMesh.rotation.x = -Math.PI / 2;
     this.groundMesh.position.y = Y_ground;
   }
+
   /**
-     * 构建单/双洞组合基准几何体
-     */
+   * 构建独立内部沥青路面与水沟槽 Mesh
+   */
+  private createInternalRoadAndDitchGeometry(
+    type: TunnelType,
+    r: number,
+    aspect_ratio: number,
+    spacing: number,
+    nMax: number
+  ): void {
+    const R3_base = 1.80 * r;
+    const dx = 0.4 * r;
+    const dy = Math.sqrt(Math.max(0, Math.pow(R3_base - 0.65 * r, 2) - Math.pow(dx, 2)));
+    const w = 2.1 * r;
+    const h = w * aspect_ratio;
+    const H_side = Math.max(0.0, h - 1.05 * r + dy - R3_base);
+    const invertCenterY = -H_side + dy;
+
+    const ditchH = 0.8;
+    const dy_road = R3_base - ditchH;
+    const halfRoadW = Math.sqrt(Math.max(0, R3_base * R3_base - dy_road * dy_road));
+    const roadY = invertCenterY - dy_road;
+
+    // 1. 沥青路面 Mesh (高对比度深色沥青)
+    const roadWidth = halfRoadW * 1.8;
+    const roadGeo = new THREE.BoxGeometry(roadWidth, 0.12, 0.999);
+    roadGeo.translate(0, roadY + 0.06, 0);
+
+    const roadMat = new THREE.MeshStandardMaterial({
+      color: 0x242830,
+      roughness: 0.85,
+      metalness: 0.1,
+      side: THREE.DoubleSide
+    });
+
+    this.roadMesh = new THREE.InstancedMesh(roadGeo, roadMat, nMax);
+    this.roadMesh.frustumCulled = false;
+    this.roadMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.roadMesh.count = 0;
+
+    // 2. 混凝土排水沟槽 Mesh
+    const ditchGeo = new THREE.BoxGeometry(0.5, 0.35, 0.999);
+    ditchGeo.translate(0, roadY - 0.15, 0);
+
+    const ditchMat = new THREE.MeshStandardMaterial({
+      color: 0x475569,
+      roughness: 0.25,
+      metalness: 0.1,
+      side: THREE.DoubleSide
+    });
+
+    this.ditchMesh = new THREE.InstancedMesh(ditchGeo, ditchMat, nMax);
+    this.ditchMesh.frustumCulled = false;
+    this.ditchMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.ditchMesh.count = 0;
+  }
+
+  /**
+   * 构建单/双洞组合基准几何体 (解耦路面 Shader, 恢复纯净二衬)
+   */
   private createHorseshoeBase(type: TunnelType, r: number, r2: number, spacing: number, aspect_ratio: number): THREE.BufferGeometry {
     const shapes: THREE.Shape[] = [];
 
-    // 根据隧道类型动态推演二维组合面域
     if (type === TunnelType.DOUBLE) {
-      shapes.push(this.createHorseshoeShape(r, r2, -spacing / 2, aspect_ratio));
-      shapes.push(this.createHorseshoeShape(r, r2, spacing / 2, aspect_ratio));
+      shapes.push(buildHorseshoeShape(r, r2, r, -spacing / 2, aspect_ratio));
+      shapes.push(buildHorseshoeShape(r, r2, r, spacing / 2, aspect_ratio));
     } else {
-      shapes.push(this.createHorseshoeShape(r, r2, 0, aspect_ratio));
+      shapes.push(buildHorseshoeShape(r, r2, r, 0, aspect_ratio));
     }
 
-    // 约束条件：Three.js 默认的 curveSegments (12) 会导致大半径曲面（仰拱和边墙）产生严重锯齿，且使水沟精确交点悬空
-    // 实现方式：将曲线离散段数提升至 64
-    // 影响范围：显著提升马蹄形内/外轮廓平滑度，确保排水沟直角结构与仰拱弧面的几何相交精确闭合
     const settings = { depth: 0.999, bevelEnabled: false, curveSegments: 64 };
     const geometry = new THREE.ExtrudeGeometry(shapes, settings);
     geometry.computeVertexNormals();
 
-
-
     return geometry;
   }
+
   /**
-   * 细部截面拓扑生成核心：引入 offsetX 支持空间横向偏移解算
+   * 获取所有子网格对象 (用于 Viewer3D 注册与显隐控制)
    */
-  private createHorseshoeShape(r: number, r2: number, offsetX: number, aspect_ratio: number): THREE.Shape {
-    return createHorseshoeLiningShape(r, r2, offsetX, aspect_ratio);
+  public getMeshes(): THREE.Object3D[] {
+    const meshes: THREE.Object3D[] = [this.mesh];
+    if (this.roadMesh) meshes.push(this.roadMesh);
+    if (this.ditchMesh) meshes.push(this.ditchMesh);
+    return meshes;
   }
 
   /**
@@ -119,22 +175,34 @@ export class TunnelGenerator {
    */
   public setVisualParadigm(mode: 'studio' | 'cyber'): void {
     const mat = this.mesh.material as THREE.ShaderMaterial;
-    if (!mat || !mat.uniforms) return;
-
-    if (mode === 'studio') {
-      mat.uniforms.uBaseColor.value.setHex(0xd0d5dd);
-      mat.uniforms.uFresnelColor.value.setHex(0xffffff);
-      mat.uniforms.uOpacity.value = 0.2; // 极高透明玻璃
-      mat.uniforms.uFresnelPower.value = 5.0;
-      mat.uniforms.uShowGrid.value = 0.0;
-    } else {
-      mat.uniforms.uBaseColor.value.setHex(0x1e2e40);
-      mat.uniforms.uFresnelColor.value.setHex(0x00f3ff);
-      mat.uniforms.uOpacity.value = 0.35;
-      mat.uniforms.uFresnelPower.value = 3.0;
-      mat.uniforms.uShowGrid.value = 1.0;
+    if (mat && mat.uniforms) {
+      if (mode === 'studio') {
+        mat.uniforms.uBaseColor.value.setHex(0xd0d5dd);
+        mat.uniforms.uFresnelColor.value.setHex(0xffffff);
+        mat.uniforms.uOpacity.value = 0.15; // 极高透明影棚玻璃
+        mat.uniforms.uFresnelPower.value = 5.0;
+        mat.uniforms.uShowGrid.value = 0.0;
+      } else {
+        mat.uniforms.uBaseColor.value.setHex(0x1e2e40);
+        mat.uniforms.uFresnelColor.value.setHex(0x00f3ff);
+        mat.uniforms.uOpacity.value = 0.35;
+        mat.uniforms.uFresnelPower.value = 3.0;
+        mat.uniforms.uShowGrid.value = 1.0;
+      }
+      mat.needsUpdate = true;
     }
-    mat.needsUpdate = true;
+
+    if (this.roadMesh) {
+      const roadMat = this.roadMesh.material as THREE.MeshStandardMaterial;
+      if (mode === 'studio') {
+        roadMat.color.setHex(0x1f2937);
+        roadMat.roughness = 0.9;
+      } else {
+        roadMat.color.setHex(0x0f172a);
+        roadMat.roughness = 0.5;
+      }
+      roadMat.needsUpdate = true;
+    }
   }
 
   /**
@@ -143,6 +211,15 @@ export class TunnelGenerator {
   public updateCount(nCurrent: number): void {
     this.mesh.count = Math.min(nCurrent, this.mesh.instanceMatrix.count);
     this.mesh.instanceMatrix.needsUpdate = true;
+
+    if (this.roadMesh) {
+      this.roadMesh.count = Math.min(nCurrent, this.roadMesh.instanceMatrix.count);
+      this.roadMesh.instanceMatrix.needsUpdate = true;
+    }
+    if (this.ditchMesh) {
+      this.ditchMesh.count = Math.min(nCurrent, this.ditchMesh.instanceMatrix.count);
+      this.ditchMesh.instanceMatrix.needsUpdate = true;
+    }
   }
 
   /**
@@ -172,6 +249,8 @@ export class TunnelGenerator {
       matrix.compose(position, quaternion, scale);
 
       this.mesh.setMatrixAt(i, matrix);
+      if (this.roadMesh) this.roadMesh.setMatrixAt(i, matrix);
+      if (this.ditchMesh) this.ditchMesh.setMatrixAt(i, matrix);
 
       if (stateColors && stateColors[i]) {
         this.mesh.setColorAt(i, stateColors[i]);
@@ -179,6 +258,8 @@ export class TunnelGenerator {
     }
 
     this.mesh.instanceMatrix.needsUpdate = true;
+    if (this.roadMesh) this.roadMesh.instanceMatrix.needsUpdate = true;
+    if (this.ditchMesh) this.ditchMesh.instanceMatrix.needsUpdate = true;
 
     if (stateColors) {
       if (this.mesh.instanceColor === null) {
