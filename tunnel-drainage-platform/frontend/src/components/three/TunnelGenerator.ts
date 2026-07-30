@@ -13,6 +13,7 @@ export class TunnelGenerator {
   public mesh: THREE.InstancedMesh;
   public roadMesh?: THREE.InstancedMesh;
   public ditchMesh?: THREE.InstancedMesh;
+  public ditchEdgeMesh?: THREE.InstancedMesh;
   public groundMesh: THREE.Mesh;
   private readonly L_max: number;      // 最大里程纵深
   private readonly delta_l_min: number; // 最小排布间距 (单位长度1m)
@@ -187,25 +188,33 @@ export class TunnelGenerator {
       ditchShapes.push(createUShape(sideRightXInner, sideRightX, roadY, yBot_side, 0.05)); // 右侧沟槽
     });
 
-    const extrudeSettings = { depth: 0.999, bevelEnabled: false };
+    // 1.0m 精确拉伸，消除 1m 实例衔接隙缝 (WBS 1.4)
+    const extrudeSettings = { depth: 1.0, bevelEnabled: false };
     let roadGeo: THREE.BufferGeometry = new THREE.ExtrudeGeometry(roadShapes, extrudeSettings);
     let ditchGeo: THREE.BufferGeometry = new THREE.ExtrudeGeometry(ditchShapes, extrudeSettings);
 
-    // 剔除前后封顶面，消除纵向排布时的横向梯子条纹与水沟内部封闭隔板 (WBS 5)
+    // 剔除前后封顶面，消除纵向排布时的横向梯子条纹与水沟内部封闭隔板 (WBS 1.4)
     roadGeo = removeExtrudeEndCaps(roadGeo);
     ditchGeo = removeExtrudeEndCaps(ditchGeo);
 
+    // 沥青路面材质升级：高透透视与 Depth-Test 渲染顺序解耦 (WBS 2.2)
     const roadMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      roughness: 0.8,
-      metalness: 0.2,
+      color: 0x0f172a,
+      roughness: 0.6,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: true,
       side: THREE.FrontSide
     });
 
+    // 排水沟材质升级：三层内壁冰蓝自发光与高对比度着色 (WBS 2.1)
     const ditchMat = new THREE.MeshStandardMaterial({
-      color: 0x475569,
-      roughness: 0.4,
-      metalness: 0.3,
+      color: 0x0e3a5a,
+      emissive: new THREE.Color(0x00f3ff),
+      emissiveIntensity: 0.6,
+      roughness: 0.3,
+      metalness: 0.2,
       side: THREE.FrontSide,
       polygonOffset: true,
       polygonOffsetFactor: 1,
@@ -216,11 +225,27 @@ export class TunnelGenerator {
     this.roadMesh.frustumCulled = false;
     this.roadMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.roadMesh.count = 0;
+    this.roadMesh.renderOrder = 20; // 保证在水沟及管网后绘制，避免深度裁切 (Reviewer Warning Fixed)
 
     this.ditchMesh = new THREE.InstancedMesh(ditchGeo, ditchMat, nMax);
     this.ditchMesh.frustumCulled = false;
     this.ditchMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.ditchMesh.count = 0;
+    this.ditchMesh.renderOrder = 10;
+
+    // U 型水沟顶沿 3D 悬浮发光轮廓线 (WBS 2.3)
+    const edgesGeo = new THREE.EdgesGeometry(ditchGeo, 15);
+    const ditchEdgeMat = new THREE.LineBasicMaterial({
+      color: 0x00f3ff,
+      linewidth: 2,
+      transparent: true,
+      opacity: 0.95
+    });
+    this.ditchEdgeMesh = new THREE.InstancedMesh(edgesGeo, ditchEdgeMat, nMax);
+    this.ditchEdgeMesh.frustumCulled = false;
+    this.ditchEdgeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.ditchEdgeMesh.count = 0;
+    this.ditchEdgeMesh.renderOrder = 15;
   }
 
   /**
@@ -236,7 +261,7 @@ export class TunnelGenerator {
       shapes.push(buildHorseshoeShape(r, r2, r, 0, aspect_ratio));
     }
 
-    const settings = { depth: 0.999, bevelEnabled: false, curveSegments: 64 };
+    const settings = { depth: 1.0, bevelEnabled: false, curveSegments: 64 };
     const geometry = new THREE.ExtrudeGeometry(shapes, settings);
     geometry.computeVertexNormals();
 
@@ -250,6 +275,7 @@ export class TunnelGenerator {
     const meshes: THREE.Object3D[] = [this.mesh];
     if (this.roadMesh) meshes.push(this.roadMesh);
     if (this.ditchMesh) meshes.push(this.ditchMesh);
+    if (this.ditchEdgeMesh) meshes.push(this.ditchEdgeMesh);
     return meshes;
   }
 
@@ -279,9 +305,11 @@ export class TunnelGenerator {
       const roadMat = this.roadMesh.material as THREE.MeshStandardMaterial;
       if (mode === 'studio') {
         roadMat.color.setHex(0x334155);
+        roadMat.opacity = 0.65;
         roadMat.roughness = 0.85;
       } else {
         roadMat.color.setHex(0x0f172a);
+        roadMat.opacity = 0.55;
         roadMat.roughness = 0.6;
       }
       roadMat.needsUpdate = true;
@@ -290,13 +318,29 @@ export class TunnelGenerator {
     if (this.ditchMesh) {
       const ditchMat = this.ditchMesh.material as THREE.MeshStandardMaterial;
       if (mode === 'studio') {
-        ditchMat.color.setHex(0x64748b);
+        ditchMat.color.setHex(0x0284c7);
+        ditchMat.emissive.setHex(0x0284c7);
+        ditchMat.emissiveIntensity = 0.4;
         ditchMat.roughness = 0.5;
       } else {
-        ditchMat.color.setHex(0x1e293b);
-        ditchMat.roughness = 0.4;
+        ditchMat.color.setHex(0x0e3a5a);
+        ditchMat.emissive.setHex(0x00f3ff);
+        ditchMat.emissiveIntensity = 0.6;
+        ditchMat.roughness = 0.3;
       }
       ditchMat.needsUpdate = true;
+    }
+
+    if (this.ditchEdgeMesh) {
+      const edgeMat = this.ditchEdgeMesh.material as THREE.LineBasicMaterial;
+      if (mode === 'studio') {
+        edgeMat.color.setHex(0x0284c7);
+        edgeMat.opacity = 0.7;
+      } else {
+        edgeMat.color.setHex(0x00f3ff);
+        edgeMat.opacity = 0.95;
+      }
+      edgeMat.needsUpdate = true;
     }
   }
 
@@ -314,6 +358,10 @@ export class TunnelGenerator {
     if (this.ditchMesh) {
       this.ditchMesh.count = Math.min(nCurrent, this.ditchMesh.instanceMatrix.count);
       this.ditchMesh.instanceMatrix.needsUpdate = true;
+    }
+    if (this.ditchEdgeMesh) {
+      this.ditchEdgeMesh.count = Math.min(nCurrent, this.ditchEdgeMesh.instanceMatrix.count);
+      this.ditchEdgeMesh.instanceMatrix.needsUpdate = true;
     }
   }
 
@@ -346,6 +394,7 @@ export class TunnelGenerator {
       this.mesh.setMatrixAt(i, matrix);
       if (this.roadMesh) this.roadMesh.setMatrixAt(i, matrix);
       if (this.ditchMesh) this.ditchMesh.setMatrixAt(i, matrix);
+      if (this.ditchEdgeMesh) this.ditchEdgeMesh.setMatrixAt(i, matrix);
 
       if (stateColors && stateColors[i]) {
         this.mesh.setColorAt(i, stateColors[i]);
@@ -355,6 +404,7 @@ export class TunnelGenerator {
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.roadMesh) this.roadMesh.instanceMatrix.needsUpdate = true;
     if (this.ditchMesh) this.ditchMesh.instanceMatrix.needsUpdate = true;
+    if (this.ditchEdgeMesh) this.ditchEdgeMesh.instanceMatrix.needsUpdate = true;
 
     if (stateColors) {
       if (this.mesh.instanceColor === null) {

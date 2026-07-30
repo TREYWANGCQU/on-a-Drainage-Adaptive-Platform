@@ -719,15 +719,15 @@ const initWebGL = () => {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1d24);
 
-  // 1. 初始化透视相机
-  perspectiveCamera = new THREE.PerspectiveCamera(45, aspect, 0.1, 10000);
+  // 1. 初始化透视相机 (压缩 near/far 优化 Z-Buffer 深度精度，根治 Z-Fighting) (WBS 1.3)
+  perspectiveCamera = new THREE.PerspectiveCamera(45, aspect, 0.5, 2000);
   perspectiveCamera.position.set(0, 25, 60);
 
   // 2. 初始化正交相机
   const initD = perspectiveCamera.position.distanceTo(new THREE.Vector3(0, 0, -20));
   const halfH = initD * Math.tan((45 * Math.PI) / 360);
   const halfW = halfH * aspect;
-  orthographicCamera = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, 10000);
+  orthographicCamera = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.5, 2000);
   orthographicCamera.position.copy(perspectiveCamera.position);
 
   activeCamera = cameraMode.value === 'orthographic' ? orthographicCamera : perspectiveCamera;
@@ -752,8 +752,8 @@ const initWebGL = () => {
   const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
   dirLight.position.set(30, 60, 40);
   dirLight.castShadow = true;
-  dirLight.shadow.bias = 0.0001;
-  dirLight.shadow.normalBias = 0.05;
+  dirLight.shadow.bias = 0.0005;
+  dirLight.shadow.normalBias = 0.08;
   scene.add(dirLight);
 
   // PMREMGenerator 动态生成 3 点影棚柔光 HDRI 光照贴图，赋予金属与玻璃逼真反射

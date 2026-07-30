@@ -139,10 +139,16 @@ void main() {
         roughness = 0.08;
         alpha = clamp(uOpacity + fresnel * 0.6, 0.08, 0.85);
 
-        // 仅在赛博模式开启低频纵向科技切片环，彻底消除高频 UV 离散条纹摩尔伪影
+        // 升级 fwidth() 屏幕空间导数抗锯齿网格模型，解决旋转与极远距离下的莫尔纹走样 (WBS 1.1)
         if (uShowGrid > 0.5) {
-            float gridPattern = step(0.98, fract(vWorldPosition.z * 1.0));
-            finalColor += uFresnelColor * gridPattern * 0.3;
+            float scale = 1.0;
+            float grid_z = fract(vWorldPosition.z * scale);
+            float w = fwidth(vWorldPosition.z * scale);
+            float line_pattern = clamp(1.0 - abs(grid_z - 0.5) / max(w, 0.001), 0.0, 1.0);
+            float dist = length(vViewPosition);
+            float lod_factor = clamp(1.0 - (dist - 15.0) / (70.0 - 15.0), 0.0, 1.0);
+            float finalGrid = line_pattern * lod_factor;
+            finalColor += uFresnelColor * finalGrid * 0.35;
         }
     }
     
