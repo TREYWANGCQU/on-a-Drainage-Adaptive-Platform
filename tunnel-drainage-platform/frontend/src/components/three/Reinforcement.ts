@@ -283,7 +283,7 @@ export class ReinforcementManager {
   public updateFromSnapshot(snapshot: any): void {
     if (!snapshot) return;
     const params = snapshot.input_parameter ?? snapshot.params ?? {};
-    const critical = snapshot.critical_state ?? {};
+    const critical = snapshot.results?.critical_state ?? snapshot.critical_state ?? {};
 
     // 构建注浆圈配置（强制降级规范）
     const groutingConfig: GroutingConfig = {

@@ -51,7 +51,7 @@
           <div class="arrow">➔</div>
           <div class="side crit">
             <span class="tag">临界加固</span>
-            <span class="val success">{{ critMetrics.minK.toFixed(2) }}</span>
+            <span class="val success">{{ critMetrics.minKStr }}</span>
           </div>
         </div>
       </div>
@@ -66,7 +66,7 @@
           <div class="arrow">➔</div>
           <div class="side crit">
             <span class="tag">临界水头</span>
-            <span class="val highlight">{{ critMetrics.waterHead.toFixed(1) }}</span>
+            <span class="val highlight">{{ critMetrics.waterHeadStr }}</span>
           </div>
         </div>
       </div>
@@ -81,7 +81,7 @@
           <div class="arrow">➔</div>
           <div class="side crit">
             <span class="tag">临界注浆</span>
-            <span class="val highlight">{{ critMetrics.tg.toFixed(2) }}</span>
+            <span class="val highlight">{{ critMetrics.tgStr }}</span>
           </div>
         </div>
       </div>
@@ -96,7 +96,7 @@
           <div class="arrow">➔</div>
           <div class="side crit">
             <span class="tag">自适应推荐</span>
-            <span class="val success">{{ critMetrics.ringSpacing.toFixed(1) }}</span>
+            <span class="val success">{{ critMetrics.ringSpacingStr }}</span>
           </div>
         </div>
       </div>
@@ -108,7 +108,7 @@
       <div class="viewport-pane left-pane glass-card">
         <div class="pane-badge danger-badge">
           <span>原始解算态 (超限红区)</span>
-          <span v-if="!activeSnapshot?.hasCriticalState" class="sub-tip">已达安全标准</span>
+          <span v-if="!hasCriticalState" class="sub-tip">已达安全标准</span>
         </div>
         <Viewer3D
           ref="leftViewerRef"
@@ -122,7 +122,15 @@
       <div class="viewport-pane right-pane glass-card">
         <div class="pane-badge success-badge">
           <span>临界加固态 (自适应安全区)</span>
-          <span v-if="activeSnapshot?.hasCriticalState" class="sub-tip">已执行水头降深 & 注浆增厚</span>
+          <span v-if="hasCriticalState" class="sub-tip">已执行水头降深 & 注浆增厚</span>
+          <span v-else class="sub-tip">工况安全，无需增厚加固</span>
+        </div>
+        <div v-if="!hasCriticalState" class="empty-critical-overlay">
+          <div class="empty-card">
+            <div class="empty-icon">🛡️</div>
+            <div class="empty-title">当前工况结构安全储备充足</div>
+            <div class="empty-desc">原始状态最小安全系数 K ≥ 2.0，无需执行水头降深与注浆增厚</div>
+          </div>
         </div>
         <Viewer3D
           ref="rightViewerRef"
@@ -167,9 +175,15 @@ const activeSnapshot = computed<Snapshot | null>(() => {
     start_chainage: parameterStore.currentPayload.start_chainage || 0,
     end_chainage: parameterStore.currentPayload.end_chainage || 50,
     params: parameterStore.currentPayload,
-    results: parameterStore.currentResults,
-    hasCriticalState: parameterStore.hasCriticalState
+    results: parameterStore.currentResults
   };
+});
+
+// 判断是否存在临界加固解
+const hasCriticalState = computed(() => {
+  const snap = activeSnapshot.value;
+  if (!snap || !snap.results) return false;
+  return !!snap.results.critical_state && Object.keys(snap.results.critical_state).length > 0;
 });
 
 // 计算左右定量指标
@@ -187,13 +201,23 @@ const origMetrics = computed(() => {
 
 const critMetrics = computed(() => {
   const snap = activeSnapshot.value;
-  const crit = snap?.results?.critical_state ?? snap?.results?.original_state ?? {};
+  const crit = snap?.results?.critical_state;
   const params = snap?.params ?? {};
+  if (!crit || Object.keys(crit).length === 0) {
+    return {
+      hasCrit: false,
+      minKStr: '≥ 2.0 (已达标)',
+      waterHeadStr: '--',
+      tgStr: '--',
+      ringSpacingStr: '--'
+    };
+  }
   return {
-    minK: crit.final_safety_factor ?? crit.safety_factor ?? 2.5,
-    waterHead: crit.final_waterHead ?? crit.waterHead ?? params.H ?? params.h ?? 30.0,
-    tg: crit.tg_crit ?? Math.max(0, (params.r_g ?? params.rg ?? 8.57) - (params.r_p ?? params.r2 ?? 8.57)),
-    ringSpacing: crit.ring_spacing_recommend ?? 3.0
+    hasCrit: true,
+    minKStr: (crit.final_safety_factor ?? crit.safety_factor ?? 2.5).toFixed(2),
+    waterHeadStr: (crit.final_waterHead ?? crit.waterHead ?? params.H ?? params.h ?? 30.0).toFixed(1),
+    tgStr: (crit.tg_crit ?? Math.max(0, (params.r_g ?? params.rg ?? 8.57) - (params.r_p ?? params.r2 ?? 8.57))).toFixed(2),
+    ringSpacingStr: (crit.ring_spacing_recommend ?? 3.0).toFixed(1)
   };
 });
 
@@ -381,5 +405,47 @@ onMounted(() => {
   font-size: 10px;
   opacity: 0.8;
   font-weight: normal;
+}
+
+.empty-critical-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 18, 24, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  background: rgba(23, 28, 38, 0.9);
+  border: 1px solid rgba(82, 196, 26, 0.4);
+  border-radius: 12px;
+  padding: 32px 48px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 48px;
+}
+
+.empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #52c41a;
+}
+
+.empty-desc {
+  font-size: 13px;
+  color: #8c9ba5;
 }
 </style>

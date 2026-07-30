@@ -41,19 +41,19 @@
               <div class="res-grid">
                 <div class="res-cell">
                   <span class="lbl">环向间距建议设计值</span>
-                  <span class="val">{{ getRec(snap, 'ring_spacing_recommend')?.toFixed(2) || '-' }} m</span>
+                  <span class="val">{{ getOrigMetric(snap, 'ring_spacing_recommend')?.toFixed(2) || '-' }} m</span>
                 </div>
                 <div class="res-cell">
-                  <span class="lbl">环向孔径议设计值</span>
-                  <span class="val">{{ (getRec(snap, 'ring_diam_recommend') * 1000).toFixed(0) || '-' }} mm</span>
+                  <span class="lbl">环向孔径建议设计值</span>
+                  <span class="val">{{ getOrigMetric(snap, 'ring_diam_recommend') != null ? (getOrigMetric(snap, 'ring_diam_recommend') * 1000).toFixed(0) : '-' }} mm</span>
                 </div>
                 <div class="res-cell">
                   <span class="lbl">横向管径建议设计值</span>
-                  <span class="val">{{ (getRec(snap, 'lateral_diam_recommend') * 1000).toFixed(0) || '-' }} mm</span>
+                  <span class="val">{{ getOrigMetric(snap, 'lateral_diam_recommend') != null ? (getOrigMetric(snap, 'lateral_diam_recommend') * 1000).toFixed(0) : '-' }} mm</span>
                 </div>
                 <div class="res-cell">
                   <span class="lbl">渗漏量 Q</span>
-                  <span class="val">{{ getRec(snap, 'Q')?.toFixed(2) || '-' }} m³/d</span>
+                  <span class="val">{{ (getOrigMetric(snap, 'Q') ?? snap.results.original_state?.q_drain)?.toFixed(2) || '-' }} m³/d</span>
                 </div>
               </div>
                <div class="main-metric critical-metrics" v-if="snap.results.critical_state">
@@ -64,19 +64,19 @@
               <div class="res-grid critical-rec-grid" v-if="snap.results.critical_state">
                 <div class="res-cell">
                   <span class="lbl">临界环向间距建议设计值</span>
-                  <span class="val">{{ getRec(snap, 'ring_spacing_recommend')?.toFixed(2) || '-' }} m</span>
+                  <span class="val">{{ getCritMetric(snap, 'ring_spacing_recommend')?.toFixed(2) || '-' }} m</span>
                 </div>
                 <div class="res-cell">
-                  <span class="lbl">临界环向孔径议设计值</span>
-                  <span class="val">{{ (getRec(snap, 'ring_diam_recommend') * 1000).toFixed(0) || '-' }} mm</span>
+                  <span class="lbl">临界环向孔径建议设计值</span>
+                  <span class="val">{{ getCritMetric(snap, 'ring_diam_recommend') != null ? (getCritMetric(snap, 'ring_diam_recommend') * 1000).toFixed(0) : '-' }} mm</span>
                 </div>
                 <div class="res-cell">
                   <span class="lbl">临界横向管径建议设计值</span>
-                  <span class="val">{{ (getRec(snap, 'lateral_diam_recommend') * 1000).toFixed(0) || '-' }} mm</span>
+                  <span class="val">{{ getCritMetric(snap, 'lateral_diam_recommend') != null ? (getCritMetric(snap, 'lateral_diam_recommend') * 1000).toFixed(0) : '-' }} mm</span>
                 </div>
                 <div class="res-cell">
                   <span class="lbl">临界渗漏量 Q</span>
-                  <span class="val">{{ getRec(snap, 'Q')?.toFixed(2) || '-' }} m³/d</span>
+                  <span class="val">{{ (getCritMetric(snap, 'Q') ?? snap.results.critical_state?.final_Q)?.toFixed(2) || '-' }} m³/d</span>
                 </div>
               </div>
             </div>
@@ -123,9 +123,18 @@ const getChainage = (snap: any, type: 'start' | 'end') => {
 
 
 
-const getRec = (snap: any, key: string) => {
+// 提取原始状态指标
+const getOrigMetric = (snap: any, key: string) => {
   if (!snap.results) return null;
-  return snap.results.critical_state?.[key] ?? snap.results.original_state?.[key];
+  const orig = snap.results.original_state;
+  return orig?.[key] ?? snap.results?.input_parameter?.[key] ?? null;
+};
+
+// 提取临界状态指标
+const getCritMetric = (snap: any, key: string) => {
+  if (!snap.results || !snap.results.critical_state) return null;
+  const crit = snap.results.critical_state;
+  return crit?.[key] ?? null;
 };
 
 const getFsClass = (fs: number) => {

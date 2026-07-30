@@ -205,15 +205,29 @@ export class DrainagePipeGenerator {
   public updateFromSnapshot(snapshot: any, viewMode: 'original' | 'critical' | 'all' = 'original'): void {
     if (!snapshot) return;
 
-    let targetState = snapshot.original_state ?? snapshot.results?.original_state ?? {};
-    let isCriticalEmpty = false;
+    const critState = snapshot.critical_state ?? snapshot.results?.critical_state;
+    const hasCrit = critState && Object.keys(critState).length > 0;
 
-    if (viewMode === 'critical') {
-      const critState = snapshot.critical_state ?? snapshot.results?.critical_state;
-      if (critState && Object.keys(critState).length > 0) {
+    let targetState: any = {};
+    let isCriticalEmpty = false;
+    let activeStateTag: 'original' | 'critical' | 'critical_empty' = 'original';
+
+    if (viewMode === 'original') {
+      targetState = snapshot.original_state ?? snapshot.results?.original_state ?? {};
+      activeStateTag = 'original';
+    } else {
+      // viewMode === 'critical' 或 'all'：优先表达【临界状态】，若无临界状态则自动降级为【原始状态】
+      if (hasCrit) {
         targetState = critState;
+        activeStateTag = 'critical';
       } else {
-        isCriticalEmpty = true;
+        targetState = snapshot.original_state ?? snapshot.results?.original_state ?? {};
+        if (viewMode === 'critical') {
+          isCriticalEmpty = true;
+          activeStateTag = 'critical_empty';
+        } else {
+          activeStateTag = 'original';
+        }
       }
     }
 
@@ -267,8 +281,8 @@ export class DrainagePipeGenerator {
       if (this.leftLatMesh) this.updateLatPipes(subXOffset, this.leftLatMesh);
     }
 
-    // 刷新排水管网数值参数标注 (传入视图模式与空状态标志)
-    this.updateAnnotations(snapshot, viewMode, isCriticalEmpty);
+    // 刷新排水管网数值参数标注 (传入活跃状态标签)
+    this.updateAnnotations(snapshot, activeStateTag);
   }
 
   /**
@@ -483,20 +497,37 @@ export class DrainagePipeGenerator {
   }
 
   /**
-   * 创建高性能 Canvas Texture Sprite 标注
+   * 创建高性能 Canvas Texture Sprite 标注 (含动态字号防溢出自适应)
    */
   private createTextSprite(text: string, color = '#38bdf8'): THREE.Sprite {
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 128;
+    const canvasWidth = 512;
+    const canvasHeight = 128;
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
     const ctx = canvas.getContext('2d')!;
+
+    // 动态字号自适应计算，防长文本超出边框
+    let fontSize = 34;
+    ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+    let textWidth = ctx.measureText(text).width;
+    const maxAllowedWidth = 460; // 边框内最大有效文本宽度
+
+    if (textWidth > maxAllowedWidth) {
+      fontSize = Math.max(18, Math.floor(fontSize * (maxAllowedWidth / textWidth)));
+      ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
+    }
 
     // 背景圆角框
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    const margin = 8;
+    const boxW = canvasWidth - margin * 2;
+    const boxH = canvasHeight - margin * 2;
+
     if (typeof (ctx as any).roundRect === 'function') {
-      (ctx as any).roundRect(8, 8, 496, 112, 12);
+      (ctx as any).roundRect(margin, margin, boxW, boxH, 12);
     } else {
-      ctx.rect(8, 8, 496, 112);
+      ctx.rect(margin, margin, boxW, boxH);
     }
     ctx.fill();
     ctx.strokeStyle = color;
@@ -504,11 +535,10 @@ export class DrainagePipeGenerator {
     ctx.stroke();
 
     // 绘制文本
-    ctx.font = 'bold 36px "Segoe UI", sans-serif';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, 256, 64);
+    ctx.fillText(text, canvasWidth / 2, canvasHeight / 2);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
@@ -523,9 +553,9 @@ export class DrainagePipeGenerator {
   }
 
   /**
-   * 依据快照数据动态更新管网标注 (支持原始/临界状态区分与空值降级)
+   * 依据快照数据动态更新管网标注 (支持原始/临界状态优先区分与空值降级)
    */
-  public updateAnnotations(_snapshot: any, viewMode: 'original' | 'critical' | 'all' = 'original', isCriticalEmpty: boolean = false): void {
+  public updateAnnotations(_snapshot: any, activeStateTag: 'original' | 'critical' | 'critical_empty' = 'original'): void {
     // 清空现有标注
     while (this.annotationGroup.children.length > 0) {
       const child = this.annotationGroup.children[0] as THREE.Sprite;
@@ -545,14 +575,12 @@ export class DrainagePipeGenerator {
     // 构造状态区分前缀文本与颜色
     let prefix = '[原始] ';
     let labelColor = '#38bdf8';
-    if (viewMode === 'critical') {
-      if (isCriticalEmpty) {
-        prefix = '[临界: 安全储备足够无需注浆] ';
-        labelColor = '#00ff88';
-      } else {
-        prefix = '[临界] ';
-        labelColor = '#ff9900';
-      }
+    if (activeStateTag === 'critical') {
+      prefix = '[临界] ';
+      labelColor = '#ff9900';
+    } else if (activeStateTag === 'critical_empty') {
+      prefix = '[临界: 安全储备足够无需加固] ';
+      labelColor = '#00ff88';
     }
 
     // 1. 环向盲管标注

@@ -61,11 +61,10 @@
               :checked="isAllLayersVisible" 
               @change="toggleAllLayersVisibility" 
             />
-            <span class="layer-label select-all-title">全选 / 全不选</span>
+            <span class="layer-label select-all-title">全选</span>
           </label>
           <div class="quick-btn-group">
-            <button class="layer-btn" @click="setAllLayersVisibility(true)" title="一键开启所有图层">全选</button>
-            <button class="layer-btn" @click="setAllLayersVisibility(false)" title="一键隐藏所有图层">全不选</button>
+            
           </div>
         </div>
         <div class="layer-divider"></div>
@@ -220,10 +219,26 @@
     <div v-if="probeInfo && showOverlay" class="probe-tooltip glass-card" :class="{ collapsed: isProbeTooltipCollapsed }">
       <div class="tooltip-header" @click="isProbeTooltipCollapsed = !isProbeTooltipCollapsed" style="cursor: pointer;">
         <span class="pulse-dot" :class="{ danger: probeInfo.isCritical }"></span>
-        <span class="title">最不利受力单元 #{{ probeInfo.controlIdx }} ({{ probeInfo.chainageText }})</span>
+        <span class="title">最不利受力单元 #{{ probeInfo.controlIdx }} ({{ probeInfo.chainageText }}) <small style="font-size: 11px; opacity: 0.85; margin-left: 4px;">{{ probeInfo.stateTag }}</small></span>
         <span class="collapse-icon">{{ isProbeTooltipCollapsed ? '▲' : '▼' }}</span>
       </div>
       <div v-if="!isProbeTooltipCollapsed" class="tooltip-body">
+        <div v-if="props.mode === 'all'" class="state-tab-row">
+          <button 
+            class="probe-tab-btn" 
+            :class="{ active: currentProbeStateTab === 'original' }" 
+            @click.stop="currentProbeStateTab = 'original'; renderSceneData()"
+          >
+            原始超限态
+          </button>
+          <button 
+            class="probe-tab-btn" 
+            :class="{ active: currentProbeStateTab === 'critical' }" 
+            @click.stop="currentProbeStateTab = 'critical'; renderSceneData()"
+          >
+            临界加固态
+          </button>
+        </div>
         <div class="metric-row">
           <span class="label">最小安全系数 K:</span>
           <span class="value" :class="{ danger: probeInfo.isCritical }">{{ probeInfo.minK.toFixed(2) }}</span>
@@ -345,7 +360,7 @@ const updateParticleAnimationLoop = () => {
   const shouldAnimate = isWaterParticleAnimated.value && 
                         layerVisibility.environment && 
                         layerVisibility.waterParticles && 
-                        envInstance !== null;
+                        envInstances.length > 0;
 
   if (shouldAnimate) {
     if (particleAnimFrameId === null) {
@@ -353,11 +368,11 @@ const updateParticleAnimationLoop = () => {
         if (!isWaterParticleAnimated.value || 
             !layerVisibility.environment || 
             !layerVisibility.waterParticles || 
-            !envInstance) {
+            envInstances.length === 0) {
           particleAnimFrameId = null;
           return;
         }
-        envInstance.update(0.016);
+        envInstances.forEach(env => env.update(0.016));
         if (renderer && scene && camera) {
           renderer.render(scene, camera);
         }
@@ -375,21 +390,22 @@ const updateParticleAnimationLoop = () => {
 
 const toggleWaterParticleAnimation = () => {
   isWaterParticleAnimated.value = !isWaterParticleAnimated.value;
-  if (envInstance) {
-    envInstance.setAnimationEnabled(isWaterParticleAnimated.value);
-  }
+  envInstances.forEach(env => env.setAnimationEnabled(isWaterParticleAnimated.value));
   updateParticleAnimationLoop();
   scheduleRender();
 };
 
-// 追踪已挂载对象与组件实例
+// 追踪已挂载对象与组件实例 (升级为 List 数组管理，解耦多快照组装单例覆盖)
 let activeMeshes: THREE.Object3D[] = [];
-let envInstance: Environment | null = null;
 let probeManager: StressProbeManager | null = null;
 
-let tGenInstance: TunnelGenerator | null = null;
-let rManagerInstance: ReinforcementManager | null = null;
-let pipeGenInstance: DrainagePipeGenerator | null = null;
+let tGenInstances: TunnelGenerator[] = [];
+let rManagerInstances: ReinforcementManager[] = [];
+let pipeGenInstances: DrainagePipeGenerator[] = [];
+let envInstances: Environment[] = [];
+
+// 探针在 mode === 'all' 下的解算态选择 (原始超限态 | 临界加固态)
+const currentProbeStateTab = ref<'original' | 'critical'>('original');
 
 // 图层显隐控制状态
 const isLayerPanelOpen = ref(true);
@@ -405,34 +421,44 @@ const layerVisibility = reactive({
 });
 
 const updateLayerVisibility = () => {
-  if (tGenInstance?.mesh) {
-    tGenInstance.mesh.visible = layerVisibility.lining;
-  }
+  // 1. 衬砌
+  tGenInstances.forEach(tGen => {
+    if (tGen.mesh) tGen.mesh.visible = layerVisibility.lining;
+  });
 
-  if (rManagerInstance) {
-    if (rManagerInstance.groutingMesh) rManagerInstance.groutingMesh.visible = layerVisibility.initialGrouting;
-    if (rManagerInstance.criticalGroutingMesh) rManagerInstance.criticalGroutingMesh.visible = layerVisibility.criticalGrouting;
-  }
+  // 2. 注浆加固圈（支持原始与临界）
+  rManagerInstances.forEach(rManager => {
+    if (rManager.groutingMesh) {
+      rManager.groutingMesh.visible = layerVisibility.initialGrouting;
+    }
+    if (rManager.criticalGroutingMesh) {
+      rManager.criticalGroutingMesh.visible = 
+        props.mode !== 'original' && layerVisibility.criticalGrouting;
+    }
+  });
 
-  if (pipeGenInstance) {
-    pipeGenInstance.getMeshes().forEach(mesh => {
+  // 3. 排水管网与标注
+  pipeGenInstances.forEach(pipeGen => {
+    pipeGen.getMeshes().forEach(mesh => {
       mesh.visible = layerVisibility.pipes;
     });
-    if (pipeGenInstance.annotationGroup) {
-      pipeGenInstance.annotationGroup.visible = layerVisibility.pipes && layerVisibility.pipeAnnotations;
+    if (pipeGen.annotationGroup) {
+      pipeGen.annotationGroup.visible = layerVisibility.pipes && layerVisibility.pipeAnnotations;
     }
-  }
+  });
 
-  if (envInstance) {
-    if (envInstance.waterPlane) envInstance.waterPlane.visible = layerVisibility.environment;
-    if (envInstance.groundPlane) envInstance.groundPlane.visible = layerVisibility.environment;
-    if (envInstance.flowLines) envInstance.flowLines.visible = layerVisibility.environment;
-    if (envInstance.depthIndicator) envInstance.depthIndicator.visible = layerVisibility.environment;
-    if (envInstance.waterParticles) {
-      envInstance.waterParticles.visible = layerVisibility.environment && layerVisibility.waterParticles;
+  // 4. 水文环境
+  envInstances.forEach(env => {
+    if (env.waterPlane) env.waterPlane.visible = layerVisibility.environment;
+    if (env.groundPlane) env.groundPlane.visible = layerVisibility.environment;
+    if (env.flowLines) env.flowLines.visible = layerVisibility.environment;
+    if (env.depthIndicator) env.depthIndicator.visible = layerVisibility.environment;
+    if (env.waterParticles) {
+      env.waterParticles.visible = layerVisibility.environment && layerVisibility.waterParticles;
     }
-  }
+  });
 
+  // 5. 探针与受力图例
   if (probeManager) {
     probeManager.probeGroup.visible = layerVisibility.probe;
     probeManager.diagramGroup.visible = layerVisibility.probe;
@@ -509,6 +535,7 @@ const probeInfo = ref<{
   minK: number;
   isCritical: boolean;
   chainageText: string;
+  stateTag: string;
 } | null>(null);
 
 // 剖切分析交互状态
@@ -887,7 +914,7 @@ const scheduleRender = () => {
   }
 
   renderFrameId = requestAnimationFrame(() => {
-    if (envInstance) envInstance.update(0.016);
+    envInstances.forEach(env => env.update(0.016));
     if (controls) controls.update();
     if (renderer && scene && camera) {
       renderer.render(scene, camera);
@@ -914,10 +941,26 @@ const renderSceneData = () => {
   // 清理上一轮实体
   activeMeshes.forEach(mesh => scene.remove(mesh));
   activeMeshes = [];
-  if (envInstance) {
-    envInstance.dispose();
-    envInstance = null;
-  }
+  
+  envInstances.forEach(env => env.dispose());
+  envInstances = [];
+
+  tGenInstances.forEach(tGen => {
+    if (tGen.mesh) {
+      tGen.mesh.geometry?.dispose();
+      if (tGen.mesh.material) {
+        if (Array.isArray(tGen.mesh.material)) tGen.mesh.material.forEach((m: any) => m.dispose());
+        else (tGen.mesh.material as any).dispose();
+      }
+    }
+  });
+  tGenInstances = [];
+
+  rManagerInstances.forEach(rm => rm.dispose());
+  rManagerInstances = [];
+
+  pipeGenInstances.forEach(pg => pg.dispose());
+  pipeGenInstances = [];
 
   // 决定数据源快照列表
   let snapshotsToRender: Snapshot[] = [];
@@ -974,7 +1017,7 @@ const renderSceneData = () => {
     tGen.mesh.position.z = -start_chainage;
     scene.add(tGen.mesh);
     activeMeshes.push(tGen.mesh);
-    tGenInstance = tGen;
+    tGenInstances.push(tGen);
 
     // 2. 加固注浆圈 (去除超前小导管)
     const rManager = new ReinforcementManager({
@@ -994,7 +1037,7 @@ const renderSceneData = () => {
       scene.add(mesh);
       activeMeshes.push(mesh);
     });
-    rManagerInstance = rManager;
+    rManagerInstances.push(rManager);
 
     // 3. 排水管网生成器
     const pipeGen = new DrainagePipeGenerator({
@@ -1021,10 +1064,10 @@ const renderSceneData = () => {
       scene.add(pipeGen.annotationGroup);
       activeMeshes.push(pipeGen.annotationGroup);
     }
-    pipeGenInstance = pipeGen;
+    pipeGenInstances.push(pipeGen);
 
     // 4. 水文环境建模随动 (注入 activeMeshes 支持 3D 剖切分析)
-    envInstance = new Environment(scene, {
+    const envInstance = new Environment(scene, {
       startChainage: start_chainage,
       endChainage: end_chainage,
       tunnelRadius: r,
@@ -1037,10 +1080,11 @@ const renderSceneData = () => {
     envInstance.getMeshes().forEach(mesh => {
       activeMeshes.push(mesh);
     });
+    envInstances.push(envInstance);
 
     // 5. 受力云图与探针挂载
     if (probeManager) {
-      const targetViewMode = props.mode === 'all' ? 'original' : props.mode;
+      const targetViewMode = props.mode === 'all' ? currentProbeStateTab.value : props.mode;
       const probeRes = probeManager.updateFromSnapshot(rawData, r, -start_chainage, 2.0, targetViewMode);
       probeManager.setForceMode(currentForceMode.value);
       probeInfo.value = {
@@ -1049,7 +1093,8 @@ const renderSceneData = () => {
         controlN: probeRes.controlN,
         minK: probeRes.minK,
         isCritical: probeRes.minK <= 2.0,
-        chainageText: probeRes.chainageText
+        chainageText: probeRes.chainageText,
+        stateTag: targetViewMode === 'critical' ? '[临界自适应态]' : '[原始超限态]'
       };
       if (probeRes.ranges) {
         probeRanges.value = probeRes.ranges;
@@ -1117,7 +1162,12 @@ onBeforeUnmount(() => {
   if (cameraAnimFrameId !== null) cancelAnimationFrame(cameraAnimFrameId);
   if (renderFrameId !== null) cancelAnimationFrame(renderFrameId);
   if (particleAnimFrameId !== null) cancelAnimationFrame(particleAnimFrameId);
-  if (envInstance) envInstance.dispose();
+  envInstances.forEach(env => env.dispose());
+  envInstances = [];
+  pipeGenInstances.forEach(pg => pg.dispose());
+  pipeGenInstances = [];
+  rManagerInstances.forEach(rm => rm.dispose());
+  rManagerInstances = [];
   if (probeManager) probeManager.dispose();
   renderer?.dispose();
 });
@@ -1665,5 +1715,36 @@ input:checked + .switch-slider:before {
 
 .probe-tooltip.collapsed {
   padding: 8px 12px;
+}
+
+.state-tab-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.probe-tab-btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cfd8dc;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.probe-tab-btn:hover {
+  background: rgba(0, 229, 255, 0.2);
+  border-color: #00e5ff;
+  color: #ffffff;
+}
+
+.probe-tab-btn.active {
+  background: #1e88e5;
+  color: #ffffff;
+  border-color: #42a5f5;
 }
 </style>

@@ -446,8 +446,10 @@ export class StressProbeManager {
     this.disposeGroup(this.diagramGroup);
 
     // 1. 严格依据 viewMode 选取状态字段
-    const isCriticalMode = viewMode === 'critical' && snapshot?.critical_state;
-    const state = isCriticalMode ? snapshot.critical_state : (snapshot?.original_state ?? {});
+    const isCriticalMode = viewMode === 'critical' && (snapshot?.results?.critical_state || snapshot?.critical_state);
+    const state = isCriticalMode 
+      ? (snapshot?.results?.critical_state ?? snapshot?.critical_state) 
+      : (snapshot?.results?.original_state ?? snapshot?.original_state ?? {});
     const echart = snapshot?.results?.echart_data ?? snapshot?.echart_data ?? {};
     const liningRes = isCriticalMode ? (echart.lining_res_critical ?? {}) : (echart.lining_res_original ?? {});
 
