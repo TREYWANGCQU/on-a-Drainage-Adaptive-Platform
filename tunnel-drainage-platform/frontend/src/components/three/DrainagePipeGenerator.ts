@@ -202,14 +202,26 @@ export class DrainagePipeGenerator {
   /**
    * 更新所有排水管实例数据 (数据驱动与预警联动)
    */
-  public updateFromSnapshot(snapshot: any): void {
+  public updateFromSnapshot(snapshot: any, viewMode: 'original' | 'critical' | 'all' = 'original'): void {
     if (!snapshot) return;
-    const state = snapshot.critical_state ?? snapshot.original_state ?? snapshot.results?.critical_state ?? {};
+
+    let targetState = snapshot.original_state ?? snapshot.results?.original_state ?? {};
+    let isCriticalEmpty = false;
+
+    if (viewMode === 'critical') {
+      const critState = snapshot.critical_state ?? snapshot.results?.critical_state;
+      if (critState && Object.keys(critState).length > 0) {
+        targetState = critState;
+      } else {
+        isCriticalEmpty = true;
+      }
+    }
+
     const params = snapshot.input_parameter ?? snapshot.params ?? {};
-    const qDrain = state.q_drain ?? snapshot.results?.q_drain ?? params.q_drain ?? 0.8;
+    const qDrain = targetState.q_drain ?? targetState.q ?? snapshot.results?.q_drain ?? params.q_drain ?? 0.8;
     
-    this.config.ringDiam = state.ring_diam_recommend ?? params.d_ring_default ?? this.config.ringDiam;
-    let baseSpacing = state.ring_spacing_recommend ?? this.config.ringSpacing;
+    this.config.ringDiam = targetState.ring_diam_recommend ?? targetState.d_ring ?? params.d_ring_default ?? this.config.ringDiam;
+    let baseSpacing = targetState.ring_spacing_recommend ?? targetState.S_ring ?? this.config.ringSpacing;
     
     // 富水段动态加密：涌水量 q_drain > 1.5 m³/(m·d) 时，盲管间距自动减半
     if (qDrain > 1.5) {
@@ -217,8 +229,8 @@ export class DrainagePipeGenerator {
     }
     this.config.ringSpacing = baseSpacing;
 
-    this.config.longDiam = params.d_long_default ?? this.config.longDiam;
-    this.config.latDiam = params.d_lat_default ?? this.config.latDiam;
+    this.config.longDiam = targetState.long_diam_recommend ?? targetState.d_long ?? params.d_long_default ?? this.config.longDiam;
+    this.config.latDiam = targetState.lateral_diam_recommend ?? targetState.d_lat ?? params.d_lat_default ?? this.config.latDiam;
     this.config.doubleSide = params.double_side ?? this.config.doubleSide;
 
     if (this.config.tunnelType === 'double') {
@@ -255,8 +267,8 @@ export class DrainagePipeGenerator {
       if (this.leftLatMesh) this.updateLatPipes(subXOffset, this.leftLatMesh);
     }
 
-    // 刷新排水管网数值参数标注
-    this.updateAnnotations(snapshot);
+    // 刷新排水管网数值参数标注 (传入视图模式与空状态标志)
+    this.updateAnnotations(snapshot, viewMode, isCriticalEmpty);
   }
 
   /**
@@ -511,9 +523,9 @@ export class DrainagePipeGenerator {
   }
 
   /**
-   * 依据快照数据动态更新管网标注
+   * 依据快照数据动态更新管网标注 (支持原始/临界状态区分与空值降级)
    */
-  public updateAnnotations(_snapshot: any): void {
+  public updateAnnotations(_snapshot: any, viewMode: 'original' | 'critical' | 'all' = 'original', isCriticalEmpty: boolean = false): void {
     // 清空现有标注
     while (this.annotationGroup.children.length > 0) {
       const child = this.annotationGroup.children[0] as THREE.Sprite;
@@ -530,33 +542,42 @@ export class DrainagePipeGenerator {
     const r2 = this.config.outerRadius ?? (this.config.tunnelRadius + 1.0);
     const length = Math.abs(this.config.endChainage - this.config.startChainage);
 
+    // 构造状态区分前缀文本与颜色
+    let prefix = '[原始] ';
+    let labelColor = '#38bdf8';
+    if (viewMode === 'critical') {
+      if (isCriticalEmpty) {
+        prefix = '[临界: 安全储备足够无需注浆] ';
+        labelColor = '#00ff88';
+      } else {
+        prefix = '[临界] ';
+        labelColor = '#ff9900';
+      }
+    }
+
     // 1. 环向盲管标注
     const ringDiamMm = Math.round(this.config.ringDiam * 1000);
     const ringSpacingM = this.config.ringSpacing.toFixed(1);
-    const ringText = `环向盲管: Φ${ringDiamMm}mm @ ${ringSpacingM}m`;
-    const ringSprite = this.createTextSprite(ringText, '#38bdf8');
+    const ringText = `${prefix}环向盲管: Φ${ringDiamMm}mm @ ${ringSpacingM}m`;
+    const ringSprite = this.createTextSprite(ringText, labelColor);
     ringSprite.position.set(mainXOffset, r2 + 0.6, -this.config.startChainage);
     this.annotationGroup.add(ringSprite);
 
     // 2. 纵向排水管标注
     const longDiamMm = Math.round(this.config.longDiam * 1000);
-    const longText = `纵向排水管: Φ${longDiamMm}mm`;
+    const longText = `${prefix}纵向排水管: Φ${longDiamMm}mm`;
     const longSprite = this.createTextSprite(longText, '#2ecc71');
     longSprite.position.set(mainXOffset + ditchGeo.sideDitchX, ditchGeo.sideDitchBottomY + 0.5, -this.config.startChainage - length * 0.4);
     this.annotationGroup.add(longSprite);
 
     // 3. 横向排水管标注
     const latDiamMm = Math.round(this.config.latDiam * 1000);
-    const latText = `横向排水管: Φ${latDiamMm}mm`;
+    const latText = `${prefix}横向排水管: Φ${latDiamMm}mm`;
     const latSprite = this.createTextSprite(latText, '#e74c3c');
     latSprite.position.set(mainXOffset + ditchGeo.sideDitchX / 2, (ditchGeo.sideDitchBottomY + ditchGeo.ditchBottomY) / 2 + 0.5, -this.config.startChainage - length * 0.2);
     this.annotationGroup.add(latSprite);
 
-    // 4. 径向排水管标注
-    const radialText = `径向排水管: L=4.0m Φ50mm`;
-    const radialSprite = this.createTextSprite(radialText, '#f39c12');
-    radialSprite.position.set(mainXOffset - r2 - 1.2, 0, -this.config.startChainage - length * 0.6);
-    this.annotationGroup.add(radialSprite);
+    // 4. 【径向排水管】文本标注已彻底移除
   }
 
   /**

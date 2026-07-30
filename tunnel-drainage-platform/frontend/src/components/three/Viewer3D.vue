@@ -1010,7 +1010,7 @@ const renderSceneData = () => {
       outerRadius: r2,
       dSpacing: D_spacing
     });
-    pipeGen.updateFromSnapshot(rawData);
+    pipeGen.updateFromSnapshot(rawData, props.mode);
     pipeGen.getMeshes().forEach(mesh => {
       mesh.position.z = -start_chainage;
       mesh.frustumCulled = false;

@@ -48,12 +48,12 @@
                   <span class="val">{{ (getRec(snap, 'ring_diam_recommend') * 1000).toFixed(0) || '-' }} mm</span>
                 </div>
                 <div class="res-cell">
-                  <span class="lbl">渗漏量 Q</span>
-                  <span class="val">{{ getRec(snap, 'Q')?.toFixed(2) || '-' }} m³/d</span>
+                  <span class="lbl">横向管径建议设计值</span>
+                  <span class="val">{{ (getRec(snap, 'lateral_diam_recommend') * 1000).toFixed(0) || '-' }} mm</span>
                 </div>
                 <div class="res-cell">
-                  <span class="lbl">计算状态</span>
-                  <span class="val-tag">{{ snap.results.critical_state ? '需降压' : '安全' }}</span>
+                  <span class="lbl">渗漏量 Q</span>
+                  <span class="val">{{ getRec(snap, 'Q')?.toFixed(2) || '-' }} m³/d</span>
                 </div>
               </div>
                <div class="main-metric critical-metrics" v-if="snap.results.critical_state">
@@ -69,6 +69,10 @@
                 <div class="res-cell">
                   <span class="lbl">临界环向孔径议设计值</span>
                   <span class="val">{{ (getRec(snap, 'ring_diam_recommend') * 1000).toFixed(0) || '-' }} mm</span>
+                </div>
+                <div class="res-cell">
+                  <span class="lbl">临界横向管径建议设计值</span>
+                  <span class="val">{{ (getRec(snap, 'lateral_diam_recommend') * 1000).toFixed(0) || '-' }} mm</span>
                 </div>
                 <div class="res-cell">
                   <span class="lbl">临界渗漏量 Q</span>
