@@ -108,6 +108,21 @@ export class TunnelGenerator {
     const invertCenterY = -H_side + dy_offset;
     const roadY = invertCenterY - dy_road;
 
+    // 根据侧边沟底高程计算二衬仰拱在水沟底部的物理安全极值边界 max_x_lining (WBS 1)
+    const yBot_side = roadY - 0.3;
+    const max_x_lining = Math.sqrt(Math.max(0, R3_base * R3_base - Math.pow(invertCenterY - yBot_side, 2)));
+
+    // 计算三沟与路面挖槽的具体 X 坐标分布 (严格控制在二衬极值内侧)
+    const sideLeftX = -max_x_lining + 0.05;
+    const sideLeftXInner = -max_x_lining + 0.45;
+    const sideRightXInner = max_x_lining - 0.45;
+    const sideRightX = max_x_lining - 0.05;
+
+    const centralLeftX = -0.35;
+    const centralRightX = 0.35;
+    // 中心排水沟底标高向下延展至仰拱底部上方 5cm 处 (WBS 2)
+    const yBot_central = invertCenterY - R3_base + 0.05;
+
     // 根据单/双洞确定 X 轴偏移数组
     const offsets = type === TunnelType.DOUBLE ? [-spacing / 2, spacing / 2] : [0];
     const roadShapes: THREE.Shape[] = [];
@@ -118,23 +133,23 @@ export class TunnelGenerator {
       const roadShape = new THREE.Shape();
       roadShape.moveTo(-halfRoadW + ox, roadY);
       
-      // 右侧沟槽凹槽 (x: halfRoadW - 0.4 -> halfRoadW)
-      roadShape.lineTo(halfRoadW - 0.4 + ox, roadY);
-      roadShape.lineTo(halfRoadW - 0.4 + ox, roadY - 0.3);
-      roadShape.lineTo(halfRoadW + ox, roadY - 0.3);
-      roadShape.lineTo(halfRoadW + ox, roadY);
+      // 右侧沟槽凹槽 (x: sideRightXInner -> sideRightX)
+      roadShape.lineTo(sideRightXInner + ox, roadY);
+      roadShape.lineTo(sideRightXInner + ox, yBot_side);
+      roadShape.lineTo(sideRightX + ox, yBot_side);
+      roadShape.lineTo(sideRightX + ox, roadY);
 
-      // 中央沟槽凹槽 (x: -0.35 -> 0.35)
-      roadShape.lineTo(0.35 + ox, roadY);
-      roadShape.lineTo(0.35 + ox, roadY - 0.4);
-      roadShape.lineTo(-0.35 + ox, roadY - 0.4);
-      roadShape.lineTo(-0.35 + ox, roadY);
+      // 中央沟槽凹槽 (x: centralLeftX -> centralRightX)
+      roadShape.lineTo(centralRightX + ox, roadY);
+      roadShape.lineTo(centralRightX + ox, yBot_central);
+      roadShape.lineTo(centralLeftX + ox, yBot_central);
+      roadShape.lineTo(centralLeftX + ox, roadY);
 
-      // 左侧沟槽凹槽 (x: -halfRoadW -> -halfRoadW + 0.4)
-      roadShape.lineTo(-halfRoadW + 0.4 + ox, roadY);
-      roadShape.lineTo(-halfRoadW + 0.4 + ox, roadY - 0.3);
-      roadShape.lineTo(-halfRoadW + ox, roadY - 0.3);
-      roadShape.lineTo(-halfRoadW + ox, roadY);
+      // 左侧沟槽凹槽 (x: sideLeftX -> sideLeftXInner)
+      roadShape.lineTo(sideLeftXInner + ox, roadY);
+      roadShape.lineTo(sideLeftXInner + ox, yBot_side);
+      roadShape.lineTo(sideLeftX + ox, yBot_side);
+      roadShape.lineTo(sideLeftX + ox, roadY);
 
       // 底部沿仰拱圆弧切合
       const steps = 16;
@@ -145,37 +160,56 @@ export class TunnelGenerator {
       }
       roadShapes.push(roadShape);
 
-      // 2. 独立三沟 Shape 数组构造 (防 Earcut 三角剖分自交)
-      const createBoxShape = (xMin: number, xMax: number, yTop: number, yBot: number) => {
+      // 2. 独立三沟 Shape 构造 (构造内嵌 Hole 路径的 U 型空心槽，彻底消除与路面的 Z-Fighting 填充重叠) (WBS 3)
+      const createUShape = (xMin: number, xMax: number, yTop: number, yBot: number, wallThickness: number = 0.05) => {
         const s = new THREE.Shape();
+        // 外壁 (顺时针)
         s.moveTo(xMin + ox, yTop);
         s.lineTo(xMax + ox, yTop);
         s.lineTo(xMax + ox, yBot);
         s.lineTo(xMin + ox, yBot);
         s.closePath();
+
+        // 内壁 Hole 扣除水流腔体 (逆时针方向，遵循 Non-Zero Winding 规则)
+        const hole = new THREE.Path();
+        const t = Math.min(wallThickness, (xMax - xMin) / 3);
+        hole.moveTo(xMin + t + ox, yTop);
+        hole.lineTo(xMin + t + ox, yBot + t);
+        hole.lineTo(xMax - t + ox, yBot + t);
+        hole.lineTo(xMax - t + ox, yTop);
+        s.holes.push(hole);
+
         return s;
       };
-      ditchShapes.push(createBoxShape(-0.35, 0.35, roadY, roadY - 0.4)); // 中央沟槽
-      ditchShapes.push(createBoxShape(-halfRoadW, -halfRoadW + 0.4, roadY, roadY - 0.3)); // 左侧沟槽
-      ditchShapes.push(createBoxShape(halfRoadW - 0.4, halfRoadW, roadY, roadY - 0.3)); // 右侧沟槽
+
+      ditchShapes.push(createUShape(centralLeftX, centralRightX, roadY, yBot_central, 0.05)); // 中央深水沟
+      ditchShapes.push(createUShape(sideLeftX, sideLeftXInner, roadY, yBot_side, 0.05)); // 左侧沟槽
+      ditchShapes.push(createUShape(sideRightXInner, sideRightX, roadY, yBot_side, 0.05)); // 右侧沟槽
     });
 
     const extrudeSettings = { depth: 0.999, bevelEnabled: false };
-    const roadGeo = new THREE.ExtrudeGeometry(roadShapes, extrudeSettings);
-    const ditchGeo = new THREE.ExtrudeGeometry(ditchShapes, extrudeSettings);
+    let roadGeo: THREE.BufferGeometry = new THREE.ExtrudeGeometry(roadShapes, extrudeSettings);
+    let ditchGeo: THREE.BufferGeometry = new THREE.ExtrudeGeometry(ditchShapes, extrudeSettings);
+
+    // 剔除前后封顶面，消除纵向排布时的横向梯子条纹与水沟内部封闭隔板 (WBS 5)
+    roadGeo = removeExtrudeEndCaps(roadGeo);
+    ditchGeo = removeExtrudeEndCaps(ditchGeo);
 
     const roadMat = new THREE.MeshStandardMaterial({
-      color: 0x242830,
-      roughness: 0.85,
-      metalness: 0.1,
-      side: THREE.DoubleSide
+      color: 0x1e293b,
+      roughness: 0.8,
+      metalness: 0.2,
+      side: THREE.FrontSide
     });
 
     const ditchMat = new THREE.MeshStandardMaterial({
       color: 0x475569,
-      roughness: 0.3,
-      metalness: 0.2,
-      side: THREE.DoubleSide
+      roughness: 0.4,
+      metalness: 0.3,
+      side: THREE.FrontSide,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1
     });
 
     this.roadMesh = new THREE.InstancedMesh(roadGeo, roadMat, nMax);
@@ -244,13 +278,25 @@ export class TunnelGenerator {
     if (this.roadMesh) {
       const roadMat = this.roadMesh.material as THREE.MeshStandardMaterial;
       if (mode === 'studio') {
-        roadMat.color.setHex(0x1f2937);
-        roadMat.roughness = 0.9;
+        roadMat.color.setHex(0x334155);
+        roadMat.roughness = 0.85;
       } else {
         roadMat.color.setHex(0x0f172a);
-        roadMat.roughness = 0.5;
+        roadMat.roughness = 0.6;
       }
       roadMat.needsUpdate = true;
+    }
+
+    if (this.ditchMesh) {
+      const ditchMat = this.ditchMesh.material as THREE.MeshStandardMaterial;
+      if (mode === 'studio') {
+        ditchMat.color.setHex(0x64748b);
+        ditchMat.roughness = 0.5;
+      } else {
+        ditchMat.color.setHex(0x1e293b);
+        ditchMat.roughness = 0.4;
+      }
+      ditchMat.needsUpdate = true;
     }
   }
 
@@ -480,4 +526,41 @@ function createHorseshoeLiningShape(r: number, r2: number, offsetX: number, aspe
   shape.holes.push(holePath);
 
   return shape;
+}
+
+/**
+ * 剔除 ExtrudeGeometry 产生的 Front Cap 和 Back Cap 三角形面片
+ * 消除 InstancedMesh 纵向排布时产生的切片端面黑条纹与水沟封闭挡板
+ */
+export function removeExtrudeEndCaps(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
+  // 1. 必须彻底清除 ExtrudeGeometry 预设的 Group 规则，防止 WebGLRenderer 依据旧 Group 偏移进行强制绘制
+  geometry.clearGroups();
+
+  const posAttr = geometry.getAttribute('position');
+  const indexAttr = geometry.getIndex();
+  if (!posAttr || !indexAttr) return geometry;
+
+  const indices = indexAttr.array;
+  const pos = posAttr.array;
+  const newIndices: number[] = [];
+
+  for (let i = 0; i < indices.length; i += 3) {
+    const a = indices[i];
+    const b = indices[i + 1];
+    const c = indices[i + 2];
+
+    const za = pos[a * 3 + 2];
+    const zb = pos[b * 3 + 2];
+    const zc = pos[c * 3 + 2];
+
+    // 如果三角形的 3 个顶点 Z 坐标高度一致 (dz < 1e-4)，说明该面片完全位于截面端面 (Front Cap 或 Back Cap)，直接剔除！
+    if (Math.abs(za - zb) < 1e-4 && Math.abs(zb - zc) < 1e-4) {
+      continue;
+    }
+    newIndices.push(a, b, c);
+  }
+
+  geometry.setIndex(newIndices);
+  geometry.computeVertexNormals();
+  return geometry;
 }
