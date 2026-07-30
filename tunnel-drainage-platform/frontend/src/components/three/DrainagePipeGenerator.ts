@@ -235,12 +235,7 @@ export class DrainagePipeGenerator {
     const qDrain = targetState.q_drain ?? targetState.q ?? snapshot.results?.q_drain ?? params.q_drain ?? 0.8;
     
     this.config.ringDiam = targetState.ring_diam_recommend ?? targetState.d_ring ?? params.d_ring_default ?? this.config.ringDiam;
-    let baseSpacing = targetState.ring_spacing_recommend ?? targetState.S_ring ?? this.config.ringSpacing;
-    
-    // 富水段动态加密：涌水量 q_drain > 1.5 m³/(m·d) 时，盲管间距自动减半
-    if (qDrain > 1.5) {
-      baseSpacing = Math.max(1.5, baseSpacing * 0.5);
-    }
+    const baseSpacing = targetState.ring_spacing_recommend ?? targetState.S_ring ?? params.S_code_max ?? this.config.ringSpacing;
     this.config.ringSpacing = baseSpacing;
 
     this.config.longDiam = targetState.long_diam_recommend ?? targetState.d_long ?? params.d_long_default ?? this.config.longDiam;

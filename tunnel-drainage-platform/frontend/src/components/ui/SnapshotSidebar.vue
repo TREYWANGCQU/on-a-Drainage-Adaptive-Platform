@@ -52,7 +52,7 @@
                   <span class="val">{{ getOrigMetric(snap, 'lateral_diam_recommend') != null ? (getOrigMetric(snap, 'lateral_diam_recommend') * 1000).toFixed(0) : '-' }} mm</span>
                 </div>
                 <div class="res-cell">
-                  <span class="lbl">渗漏量 Q</span>
+                  <span class="lbl">分区总涌水量 Q</span>
                   <span class="val">{{ (getOrigMetric(snap, 'Q') ?? snap.results.original_state?.q_drain)?.toFixed(2) || '-' }} m³/d</span>
                 </div>
               </div>
@@ -75,7 +75,7 @@
                   <span class="val">{{ getCritMetric(snap, 'lateral_diam_recommend') != null ? (getCritMetric(snap, 'lateral_diam_recommend') * 1000).toFixed(0) : '-' }} mm</span>
                 </div>
                 <div class="res-cell">
-                  <span class="lbl">临界渗漏量 Q</span>
+                  <span class="lbl">分区总涌水量 Q</span>
                   <span class="val">{{ (getCritMetric(snap, 'Q') ?? snap.results.critical_state?.final_Q)?.toFixed(2) || '-' }} m³/d</span>
                 </div>
               </div>

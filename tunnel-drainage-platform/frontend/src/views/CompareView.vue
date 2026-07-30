@@ -195,7 +195,7 @@ const origMetrics = computed(() => {
     minK: orig.safety_factor ?? 2.0,
     waterHead: orig.waterHead ?? params.H ?? params.h ?? 30.0,
     tg: Math.max(0, (params.r_g ?? params.rg ?? 8.57) - (params.r_p ?? params.r2 ?? 8.57)),
-    ringSpacing: orig.ring_spacing_recommend ?? 5.0
+    ringSpacing: orig.ring_spacing_recommend ?? params.S_code_max ?? 10.0
   };
 });
 
@@ -217,7 +217,7 @@ const critMetrics = computed(() => {
     minKStr: (crit.final_safety_factor ?? crit.safety_factor ?? 2.5).toFixed(2),
     waterHeadStr: (crit.final_waterHead ?? crit.waterHead ?? params.H ?? params.h ?? 30.0).toFixed(1),
     tgStr: (crit.tg_crit ?? Math.max(0, (params.r_g ?? params.rg ?? 8.57) - (params.r_p ?? params.r2 ?? 8.57))).toFixed(2),
-    ringSpacingStr: (crit.ring_spacing_recommend ?? 3.0).toFixed(1)
+    ringSpacingStr: (crit.ring_spacing_recommend ?? params.S_code_max ?? 10.0).toFixed(1)
   };
 });
 

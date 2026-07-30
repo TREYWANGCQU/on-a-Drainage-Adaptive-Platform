@@ -3,212 +3,252 @@
   <div class="viewer-container" ref="containerRef">
     <canvas ref="canvasRef"></canvas>
 
-    <!-- 剖切交互控制面板 -->
-    <div class="clipping-panel glass-card">
-      <div class="panel-header">
-        <span class="panel-title">3D 剖切分析</span>
-        <label class="switch-toggle">
-          <input type="checkbox" v-model="isClippingEnabled" @change="updateClipping" />
-          <span class="switch-slider"></span>
-        </label>
-      </div>
-      <div v-if="isClippingEnabled" class="panel-body">
-        <div class="control-row">
-          <span class="control-label">轴向:</span>
-          <div class="btn-group">
-            <button 
-              v-for="axis in (['z', 'x', 'y'] as const)" 
-              :key="axis"
-              class="axis-btn"
-              :class="{ active: clippingAxis === axis }"
-              @click="clippingAxis = axis; updateClipping()"
-            >
-              {{ axis.toUpperCase() }}
-            </button>
-          </div>
-        </div>
-        <div class="control-row">
-          <span class="control-label">位置: {{ clippingOffset.toFixed(1) }}m</span>
-          <input 
-            type="range" 
-            :min="clippingAxis === 'z' ? 0 : -30" 
-            :max="clippingAxis === 'z' ? maxChainageLength : 30" 
-            step="0.5" 
-            v-model.number="clippingOffset"
-            @input="updateClipping"
-            class="range-slider"
-          />
-        </div>
-        <div class="control-row inline-row">
-          <span class="control-label">反向剖切:</span>
-          <input type="checkbox" v-model="isClippingInverted" @change="updateClipping" />
-        </div>
-      </div>
-    </div>
-    
-    <!-- 图层隐显控制 Floating Toolbar -->
-    <div class="layer-panel glass-card">
-      <div class="panel-header" @click="isLayerPanelOpen = !isLayerPanelOpen">
-        <span class="panel-title">图层显隐控制</span>
-        <span class="collapse-icon">{{ isLayerPanelOpen ? '▲' : '▼' }}</span>
-      </div>
-      <div v-if="isLayerPanelOpen" class="panel-body layer-body">
-        <div class="layer-action-header">
-          <label class="layer-item select-all-item">
-            <input 
-              ref="selectAllCheckboxRef"
-              type="checkbox" 
-              :checked="isAllLayersVisible" 
-              @change="toggleAllLayersVisibility" 
-            />
-            <span class="layer-label select-all-title">全选</span>
+    <!-- 左侧控制面板自适应流动栈容器 -->
+    <div class="left-controls-stack">
+      <!-- 剖切交互控制面板 -->
+      <div class="clipping-panel glass-card">
+        <div class="panel-header">
+          <span class="panel-title">3D 剖切分析</span>
+          <label class="switch-toggle">
+            <input type="checkbox" v-model="isClippingEnabled" @change="updateClipping" />
+            <span class="switch-slider"></span>
           </label>
-          <div class="quick-btn-group">
-            
+        </div>
+        <div v-if="isClippingEnabled" class="panel-body">
+          <div class="control-row">
+            <span class="control-label">轴向:</span>
+            <div class="btn-group">
+              <button 
+                v-for="axis in (['z', 'x', 'y'] as const)" 
+                :key="axis"
+                class="axis-btn"
+                :class="{ active: clippingAxis === axis }"
+                @click="clippingAxis = axis; updateClipping()"
+              >
+                {{ axis.toUpperCase() }}
+              </button>
+            </div>
+          </div>
+          <div class="control-row">
+            <span class="control-label">位置: {{ clippingOffset.toFixed(1) }}m</span>
+            <input 
+              type="range" 
+              :min="clippingAxis === 'z' ? 0 : -30" 
+              :max="clippingAxis === 'z' ? maxChainageLength : 30" 
+              step="0.5" 
+              v-model.number="clippingOffset"
+              @input="updateClipping"
+              class="range-slider"
+            />
+          </div>
+          <div class="control-row inline-row">
+            <span class="control-label">反向剖切:</span>
+            <input type="checkbox" v-model="isClippingInverted" @change="updateClipping" />
           </div>
         </div>
-        <div class="layer-divider"></div>
-        <label class="layer-item">
-          <input type="checkbox" v-model="layerVisibility.lining" @change="updateLayerVisibility" />
-          <span class="layer-color-dot lining-dot"></span>
-          <span class="layer-label">隧道衬砌</span>
-        </label>
-        <label class="layer-item">
-          <input type="checkbox" v-model="layerVisibility.initialGrouting" @change="updateLayerVisibility" />
-          <span class="layer-color-dot initial-grouting-dot"></span>
-          <span class="layer-label">初始注浆圈 (rg)</span>
-        </label>
-        <label class="layer-item">
-          <input type="checkbox" v-model="layerVisibility.criticalGrouting" @change="updateLayerVisibility" />
-          <span class="layer-color-dot critical-grouting-dot"></span>
-          <span class="layer-label">临界注浆加固圈 (tg_crit)</span>
-        </label>
-        <label class="layer-item">
-          <input type="checkbox" v-model="layerVisibility.pipes" @change="updateLayerVisibility" />
-          <span class="layer-color-dot pipes-dot"></span>
-          <span class="layer-label">排水管网</span>
-        </label>
-        <label class="layer-item sub-layer-item">
-          <input type="checkbox" v-model="layerVisibility.pipeAnnotations" @change="updateLayerVisibility" />
-          <span class="layer-color-dot annotation-dot"></span>
-          <span class="layer-label">└ 排水管网参数标注</span>
-        </label>
-        <label class="layer-item">
-          <input type="checkbox" v-model="layerVisibility.environment" @change="updateLayerVisibility" />
-          <span class="layer-color-dot env-dot"></span>
-          <span class="layer-label">水文环境</span>
-        </label>
-        <label class="layer-item sub-layer-item inline-between">
-          <div class="left-group">
-            <input type="checkbox" v-model="layerVisibility.waterParticles" @change="updateLayerVisibility" />
-            <span class="layer-color-dot particle-dot"></span>
-            <span class="layer-label">└ 地下水粒子特效</span>
+      </div>
+      
+      <!-- 图层隐显控制 Floating Toolbar -->
+      <div class="layer-panel glass-card">
+        <div class="panel-header" @click="isLayerPanelOpen = !isLayerPanelOpen">
+          <span class="panel-title">图层显隐控制</span>
+          <span class="collapse-icon">{{ isLayerPanelOpen ? '▲' : '▼' }}</span>
+        </div>
+        <div v-if="isLayerPanelOpen" class="panel-body layer-body">
+          <div class="layer-action-header">
+            <label class="layer-item select-all-item">
+              <input 
+                ref="selectAllCheckboxRef"
+                type="checkbox" 
+                :checked="isAllLayersVisible" 
+                @change="toggleAllLayersVisibility" 
+              />
+              <span class="layer-label select-all-title">全选</span>
+            </label>
+            <div class="quick-btn-group">
+              
+            </div>
           </div>
+          <div class="layer-divider"></div>
+          <label class="layer-item">
+            <input type="checkbox" v-model="layerVisibility.lining" @change="updateLayerVisibility" />
+            <span class="layer-color-dot lining-dot"></span>
+            <span class="layer-label">隧道衬砌</span>
+          </label>
+          <label class="layer-item">
+            <input type="checkbox" v-model="layerVisibility.initialGrouting" @change="updateLayerVisibility" />
+            <span class="layer-color-dot initial-grouting-dot"></span>
+            <span class="layer-label">初始注浆圈 (rg)</span>
+          </label>
+          <label class="layer-item">
+            <input type="checkbox" v-model="layerVisibility.criticalGrouting" @change="updateLayerVisibility" />
+            <span class="layer-color-dot critical-grouting-dot"></span>
+            <span class="layer-label">临界注浆加固圈 (tg_crit)</span>
+          </label>
+
+          <!-- 排水管网图层组 (支持折叠) -->
+          <div class="layer-group-header">
+            <label class="layer-item">
+              <input type="checkbox" v-model="layerVisibility.pipes" @change="updateLayerVisibility" />
+              <span class="layer-color-dot pipes-dot"></span>
+              <span class="layer-label">排水管网</span>
+            </label>
+            <span 
+              class="group-toggle-btn" 
+              @click.stop="isPipesGroupOpen = !isPipesGroupOpen"
+              :title="isPipesGroupOpen ? '折叠子图层' : '展开子图层'"
+            >
+              {{ isPipesGroupOpen ? '▼' : '▶' }}
+            </span>
+          </div>
+          <div v-if="isPipesGroupOpen" class="sub-layer-container">
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.pipeAnnotations" @change="updateLayerVisibility" />
+              <span class="layer-color-dot annotation-dot"></span>
+              <span class="layer-label">└ 排水管网参数标注</span>
+            </label>
+          </div>
+
+          <!-- 水文环境图层组 (支持折叠) -->
+          <div class="layer-group-header">
+            <label class="layer-item">
+              <input type="checkbox" v-model="layerVisibility.environment" @change="updateLayerVisibility" />
+              <span class="layer-color-dot env-dot"></span>
+              <span class="layer-label">水文环境</span>
+            </label>
+            <span 
+              class="group-toggle-btn" 
+              @click.stop="isEnvGroupOpen = !isEnvGroupOpen"
+              :title="isEnvGroupOpen ? '折叠子图层' : '展开子图层'"
+            >
+              {{ isEnvGroupOpen ? '▼' : '▶' }}
+            </span>
+          </div>
+          <div v-if="isEnvGroupOpen" class="sub-layer-container">
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.ground" @change="updateLayerVisibility" />
+              <span class="layer-color-dot ground-dot"></span>
+              <span class="layer-label">└ 地面/地表</span>
+            </label>
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.flowLines" @change="updateLayerVisibility" />
+              <span class="layer-color-dot flowline-dot"></span>
+              <span class="layer-label">└ 地下水流线</span>
+            </label>
+            <label class="layer-item sub-layer-item inline-between">
+              <div class="left-group">
+                <input type="checkbox" v-model="layerVisibility.waterParticles" @change="updateLayerVisibility" />
+                <span class="layer-color-dot particle-dot"></span>
+                <span class="layer-label">└ 地下水粒子特效</span>
+              </div>
+              <button 
+                v-if="layerVisibility.environment && layerVisibility.waterParticles"
+                class="mini-anim-btn" 
+                :class="{ paused: !isWaterParticleAnimated }"
+                @click.stop="toggleWaterParticleAnimation"
+                :title="isWaterParticleAnimated ? '暂停粒子流动' : '启动粒子流动'"
+              >
+                {{ isWaterParticleAnimated ? '⏸ 动态' : '▶ 冻结' }}
+              </button>
+            </label>
+          </div>
+
+          <label class="layer-item">
+            <input type="checkbox" v-model="layerVisibility.probe" @change="updateLayerVisibility" />
+            <span class="layer-color-dot probe-dot"></span>
+            <span class="layer-label">最不利探针</span>
+          </label>
+        </div>
+      </div>
+      
+      <!-- 受力表达模式切换器 (K | M | N | 综合受力) 及 可折叠数值图例 -->
+      <div v-if="layerVisibility.probe" class="force-mode-panel glass-card">
+        <div class="panel-header" @click="isLegendPanelCollapsed = !isLegendPanelCollapsed" style="cursor: pointer;">
+          <span class="panel-title">受力表达模式</span>
+          <span class="collapse-icon">{{ isLegendPanelCollapsed ? '▼' : '▲' }}</span>
+        </div>
+        <div class="btn-group force-btn-group">
           <button 
-            v-if="layerVisibility.waterParticles"
-            class="mini-anim-btn" 
-            :class="{ paused: !isWaterParticleAnimated }"
-            @click.stop="toggleWaterParticleAnimation"
-            :title="isWaterParticleAnimated ? '暂停粒子流动' : '启动粒子流动'"
+            :class="{ active: currentForceMode === 'K' }" 
+            @click="setForceMode('K')"
+            title="安全系数 K 云图"
           >
-            {{ isWaterParticleAnimated ? '⏸ 动态' : '▶ 冻结' }}
+            安全系数 K
           </button>
-        </label>
-        <label class="layer-item">
-          <input type="checkbox" v-model="layerVisibility.probe" @change="updateLayerVisibility" />
-          <span class="layer-color-dot probe-dot"></span>
-          <span class="layer-label">最不利探针</span>
-        </label>
-      </div>
-    </div>
-    
-    <!-- 受力表达模式切换器 (K | M | N | 综合受力) 及 可折叠数值图例 -->
-    <div v-if="layerVisibility.probe" class="force-mode-panel glass-card">
-      <div class="panel-header" @click="isLegendPanelCollapsed = !isLegendPanelCollapsed" style="cursor: pointer;">
-        <span class="panel-title">受力表达模式</span>
-        <span class="collapse-icon">{{ isLegendPanelCollapsed ? '▼' : '▲' }}</span>
-      </div>
-      <div class="btn-group force-btn-group">
-        <button 
-          :class="{ active: currentForceMode === 'K' }" 
-          @click="setForceMode('K')"
-          title="安全系数 K 云图"
-        >
-          安全系数 K
-        </button>
-        <button 
-          :class="{ active: currentForceMode === 'M' }" 
-          @click="setForceMode('M')"
-          title="弯矩包络图 M"
-        >
-          弯矩图 M
-        </button>
-        <button 
-          :class="{ active: currentForceMode === 'N' }" 
-          @click="setForceMode('N')"
-          title="轴向压力图 N"
-        >
-          轴力图 N
-        </button>
-        <button 
-          :class="{ active: currentForceMode === 'COMBINED' }" 
-          @click="setForceMode('COMBINED')"
-          title="综合受力包络"
-        >
-          综合受力
-        </button>
-      </div>
-
-      <!-- 数值图例面板 (可折叠打开) -->
-      <div v-if="!isLegendPanelCollapsed" class="legend-container">
-        <!-- 1. 安全系数 K 图例 -->
-        <div v-if="currentForceMode === 'K'" class="legend-section">
-          <div class="legend-bar-wrapper">
-            <div class="color-bar k-gradient-bar"></div>
-            <div class="legend-ticks-row">
-              <span class="tick danger">&lt;1.0 危险</span>
-              <span class="tick warning">1.0-2.0 预警</span>
-              <span class="tick safe">&ge;2.0 安全</span>
-            </div>
-          </div>
-          <div class="legend-range-row">
-            <span>最小 K: <strong :class="{ danger: probeInfo?.isCritical }">{{ probeInfo?.minK ? probeInfo.minK.toFixed(2) : '2.00' }}</strong></span>
-            <span>截面范围: {{ probeRanges.minK.toFixed(2) }} ~ {{ probeRanges.maxK.toFixed(2) }}</span>
-          </div>
+          <button 
+            :class="{ active: currentForceMode === 'M' }" 
+            @click="setForceMode('M')"
+            title="弯矩包络图 M"
+          >
+            弯矩图 M
+          </button>
+          <button 
+            :class="{ active: currentForceMode === 'N' }" 
+            @click="setForceMode('N')"
+            title="轴向压力图 N"
+          >
+            轴力图 N
+          </button>
+          <button 
+            :class="{ active: currentForceMode === 'COMBINED' }" 
+            @click="setForceMode('COMBINED')"
+            title="综合受力包络"
+          >
+            综合受力
+          </button>
         </div>
 
-        <!-- 2. 弯矩图 M 图例 -->
-        <div v-if="currentForceMode === 'M'" class="legend-section">
-          <div class="legend-bar-wrapper">
-            <div class="color-bar m-gradient-bar"></div>
-            <div class="legend-scale-row">
-              <span>{{ probeRanges.minM.toFixed(1) }}</span>
-              <span>{{ ((probeRanges.minM + probeRanges.maxM) / 2).toFixed(1) }}</span>
-              <span>{{ probeRanges.maxM.toFixed(1) }} kN·m</span>
+        <!-- 数值图例面板 (可折叠打开) -->
+        <div v-if="!isLegendPanelCollapsed" class="legend-container">
+          <!-- 1. 安全系数 K 图例 -->
+          <div v-if="currentForceMode === 'K'" class="legend-section">
+            <div class="legend-bar-wrapper">
+              <div class="color-bar k-gradient-bar"></div>
+              <div class="legend-ticks-row">
+                <span class="tick danger">&lt;1.0 危险</span>
+                <span class="tick warning">1.0-2.0 预警</span>
+                <span class="tick safe">&ge;2.0 安全</span>
+              </div>
+            </div>
+            <div class="legend-range-row">
+              <span>最小 K: <strong :class="{ danger: probeInfo?.isCritical }">{{ probeInfo?.minK ? probeInfo.minK.toFixed(2) : '2.00' }}</strong></span>
+              <span>截面范围: {{ probeRanges.minK.toFixed(2) }} ~ {{ probeRanges.maxK.toFixed(2) }}</span>
             </div>
           </div>
-        </div>
 
-        <!-- 3. 轴力图 N 图例 -->
-        <div v-if="currentForceMode === 'N'" class="legend-section">
-          <div class="legend-bar-wrapper">
-            <div class="color-bar n-gradient-bar"></div>
-            <div class="legend-scale-row">
-              <span>{{ probeRanges.minN.toFixed(1) }}</span>
-              <span>{{ ((probeRanges.minN + probeRanges.maxN) / 2).toFixed(1) }}</span>
-              <span>{{ probeRanges.maxN.toFixed(1) }} kN</span>
+          <!-- 2. 弯矩图 M 图例 -->
+          <div v-if="currentForceMode === 'M'" class="legend-section">
+            <div class="legend-bar-wrapper">
+              <div class="color-bar m-gradient-bar"></div>
+              <div class="legend-scale-row">
+                <span>{{ probeRanges.minM.toFixed(1) }}</span>
+                <span>{{ ((probeRanges.minM + probeRanges.maxM) / 2).toFixed(1) }}</span>
+                <span>{{ probeRanges.maxM.toFixed(1) }} kN·m</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- 4. 综合受力 COMBINED 图例 -->
-        <div v-if="currentForceMode === 'COMBINED'" class="legend-section">
-          <div class="legend-bar-wrapper">
-            <div class="color-bar combined-gradient-bar"></div>
-            <div class="legend-ticks-row">
-              <span class="tick safe">低应力</span>
-              <span class="tick warning">中等包络</span>
-              <span class="tick danger">控制峰值</span>
+          <!-- 3. 轴力图 N 图例 -->
+          <div v-if="currentForceMode === 'N'" class="legend-section">
+            <div class="legend-bar-wrapper">
+              <div class="color-bar n-gradient-bar"></div>
+              <div class="legend-scale-row">
+                <span>{{ probeRanges.minN.toFixed(1) }}</span>
+                <span>{{ ((probeRanges.minN + probeRanges.maxN) / 2).toFixed(1) }}</span>
+                <span>{{ probeRanges.maxN.toFixed(1) }} kN</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. 综合受力 COMBINED 图例 -->
+          <div v-if="currentForceMode === 'COMBINED'" class="legend-section">
+            <div class="legend-bar-wrapper">
+              <div class="color-bar combined-gradient-bar"></div>
+              <div class="legend-ticks-row">
+                <span class="tick safe">低应力</span>
+                <span class="tick warning">中等包络</span>
+                <span class="tick danger">控制峰值</span>
+              </div>
             </div>
           </div>
         </div>
@@ -409,6 +449,8 @@ const currentProbeStateTab = ref<'original' | 'critical'>('original');
 
 // 图层显隐控制状态
 const isLayerPanelOpen = ref(true);
+const isPipesGroupOpen = ref(true);
+const isEnvGroupOpen = ref(true);
 const layerVisibility = reactive({
   lining: true,
   initialGrouting: true,
@@ -416,6 +458,8 @@ const layerVisibility = reactive({
   pipes: true,
   pipeAnnotations: true,
   environment: true,
+  ground: true,
+  flowLines: true,
   waterParticles: true,
   probe: true
 });
@@ -447,14 +491,15 @@ const updateLayerVisibility = () => {
     }
   });
 
-  // 4. 水文环境
+  // 4. 水文环境及其子图层 (地面、地下水流线、地下水粒子特效)
+  const envVisible = layerVisibility.environment;
   envInstances.forEach(env => {
-    if (env.waterPlane) env.waterPlane.visible = layerVisibility.environment;
-    if (env.groundPlane) env.groundPlane.visible = layerVisibility.environment;
-    if (env.flowLines) env.flowLines.visible = layerVisibility.environment;
-    if (env.depthIndicator) env.depthIndicator.visible = layerVisibility.environment;
+    if (env.waterPlane) env.waterPlane.visible = envVisible;
+    if (env.depthIndicator) env.depthIndicator.visible = envVisible;
+    if (env.groundPlane) env.groundPlane.visible = envVisible && layerVisibility.ground;
+    if (env.flowLines) env.flowLines.visible = envVisible && layerVisibility.flowLines;
     if (env.waterParticles) {
-      env.waterParticles.visible = layerVisibility.environment && layerVisibility.waterParticles;
+      env.waterParticles.visible = envVisible && layerVisibility.waterParticles;
     }
   });
 
@@ -1042,7 +1087,7 @@ const renderSceneData = () => {
     // 3. 排水管网生成器
     const pipeGen = new DrainagePipeGenerator({
       ringDiam: extractSnapshotValue(rawData, 'ring_diam_recommend', 0.05),
-      ringSpacing: extractSnapshotValue(rawData, 'ring_spacing_recommend', 5.0),
+      ringSpacing: extractSnapshotValue(rawData, 'ring_spacing_recommend', 10.0),
       longDiam: extractSnapshotValue(rawData, 'd_long_default', 0.1),
       latDiam: extractSnapshotValue(rawData, 'd_lat_default', 0.08),
       doubleSide: extractSnapshotValue(rawData, 'double_side', true),
@@ -1256,15 +1301,32 @@ canvas {
   color: #ff5252;
 }
 
+/* 左侧控制面板自适应流动栈容器 */
+.left-controls-stack {
+  position: absolute;
+  top: 48px;
+  left: 16px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100% - 64px);
+  overflow-y: auto;
+  pointer-events: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.left-controls-stack > .glass-card {
+  pointer-events: auto;
+  position: static;
+}
+
 /* 3D 剖切控制面板样式 */
 .clipping-panel {
-  position: absolute;
-  top: 46px;
-  left: 16px;
   padding: 12px 16px;
   color: #e0e6ed;
   font-size: 13px;
-  z-index: 10;
   min-width: 220px;
 }
 
@@ -1378,14 +1440,39 @@ input:checked + .switch-slider:before {
 
 /* 图层控制面板样式 */
 .layer-panel {
-  position: absolute;
-  top: 190px;
-  left: 16px;
   padding: 12px 16px;
   color: #e0e6ed;
   font-size: 13px;
-  z-index: 10;
   min-width: 220px;
+}
+
+.layer-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.group-toggle-btn {
+  font-size: 10px;
+  color: #8c9ba5;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.group-toggle-btn:hover {
+  color: #00ff88;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sub-layer-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+  margin-bottom: 2px;
 }
 
 .collapse-icon {
@@ -1607,13 +1694,9 @@ input:checked + .switch-slider:before {
 
 /* 受力表达模式面板样式 */
 .force-mode-panel {
-  position: absolute;
-  top: 500px;
-  left: 16px;
   padding: 10px 14px;
   color: #e0e6ed;
   font-size: 12px;
-  z-index: 10;
   min-width: 220px;
 }
 
