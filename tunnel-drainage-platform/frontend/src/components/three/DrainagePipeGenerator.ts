@@ -137,6 +137,7 @@ export class DrainagePipeGenerator {
     mesh.count = 0;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData = { pipeCategory: 'ring', name: '环向排水盲管', diameter: Math.round(radius * 1000), spacing: this.config.ringSpacing };
     return mesh;
   }
 
@@ -158,6 +159,7 @@ export class DrainagePipeGenerator {
     mesh.count = 0;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData = { pipeCategory: 'radial', name: '径向打孔排水管', diameter: 50, length: 4.0 };
     return mesh;
   }
 
@@ -179,7 +181,29 @@ export class DrainagePipeGenerator {
     mesh.count = 0;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData = { pipeCategory: 'ditch', name: '排水连通管', diameter: Math.round(radius * 2000) };
     return mesh;
+  }
+
+  /**
+   * 切换管道双模式质感 (影棚镀铬合金 vs 赛博自发光)
+   */
+  public setVisualParadigm(mode: 'studio' | 'cyber'): void {
+    const meshes = this.getMeshes();
+    meshes.forEach(mesh => {
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      if (!mat) return;
+      if (mode === 'studio') {
+        mat.metalness = 0.95;
+        mat.roughness = 0.1;
+        mat.emissive.setHex(0x111111);
+      } else {
+        mat.metalness = 0.4;
+        mat.roughness = 0.3;
+        mat.emissive = new THREE.Color(mat.color).multiplyScalar(0.35);
+      }
+      mat.needsUpdate = true;
+    });
   }
 
   private calculateRingCount(): number {

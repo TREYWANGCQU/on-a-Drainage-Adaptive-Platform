@@ -294,8 +294,37 @@
       </div>
     </div>
 
+    <!-- 微观防排水结构放大镜 (PIP Magnifier Window) -->
+    <MagnifierPIP 
+      :active="isPipActive" 
+      :pipe-data="pipPipeData" 
+      @close="isPipActive = false" 
+    />
+
     <!-- 标准视角与交互测距 Toolbar -->
     <div class="toolbar-panel glass-card">
+      <div class="toolbar-section">
+        <span class="section-title">视觉美学范式</span>
+        <div class="projection-btn-row">
+          <button 
+            class="tool-btn proj-btn" 
+            :class="{ active: visualParadigm === 'cyber' }" 
+            @click="switchVisualParadigm('cyber')"
+            title="赛博暗夜风 (数字孪生工程看板)"
+          >
+            🌙 赛博暗夜
+          </button>
+          <button 
+            class="tool-btn proj-btn" 
+            :class="{ active: visualParadigm === 'studio' }" 
+            @click="switchVisualParadigm('studio')"
+            title="高亮影棚风 (100% 对齐附图透视跑车质感)"
+          >
+            ☀️ 高亮影棚
+          </button>
+        </div>
+      </div>
+      <div class="toolbar-divider"></div>
       <div class="toolbar-section">
         <span class="section-title">相机投影模式</span>
         <div class="projection-btn-row">
@@ -361,6 +390,23 @@ import { ReinforcementManager } from './Reinforcement';
 import { DrainagePipeGenerator } from './DrainagePipeGenerator';
 import { Environment } from './Environment';
 import { StressProbeManager, ForceDisplayMode } from './PostProcessing';
+import MagnifierPIP from './MagnifierPIP.vue';
+
+// 视觉美学范式控制 (Light Studio 影棚风 vs Dark Cyber 赛博暗夜风)
+const visualParadigm = ref<'cyber' | 'studio'>('cyber');
+const isPipActive = ref(false);
+const pipPipeData = ref<any>(null);
+
+const switchVisualParadigm = (mode: 'cyber' | 'studio') => {
+  visualParadigm.value = mode;
+  if (scene) {
+    scene.background = new THREE.Color(mode === 'studio' ? 0xf3f4f6 : 0x030712);
+  }
+  tGenInstances.forEach(tg => tg.setVisualParadigm(mode));
+  rManagerInstances.forEach(rm => rm.setVisualParadigm(mode));
+  pipeGenInstances.forEach(pg => pg.setVisualParadigm(mode));
+  scheduleRender();
+};
 
 const props = withDefaults(defineProps<{
   mode?: 'all' | 'original' | 'critical';
@@ -664,6 +710,8 @@ const initWebGL = () => {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.localClippingEnabled = true; // 使能局部剖切平面剔除
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; // ACESFilmic 色调映射，防止高亮荧光线条爆光
+  renderer.toneMappingExposure = 1.1;
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1d24);
@@ -872,10 +920,10 @@ const clearMeasurements = () => {
 };
 
 /**
- * Canvas 点击事件处理器 (3D 交互拾取测距)
+ * Canvas 点击事件处理器 (3D 交互拾取测距 & 排水管线 PIP 局部放大)
  */
 const handleCanvasClick = (event: MouseEvent) => {
-  if (!isMeasuring.value || !canvasRef.value || !camera || !scene) return;
+  if (!canvasRef.value || !camera || !scene) return;
 
   const rect = canvasRef.value.getBoundingClientRect();
   mouseVec.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -884,69 +932,81 @@ const handleCanvasClick = (event: MouseEvent) => {
   raycaster.setFromCamera(mouseVec, camera);
   const intersects = raycaster.intersectObjects(activeMeshes, true);
 
-  if (intersects.length > 0) {
-    const point = intersects[0].point;
-    measurePoints.value.push(point);
+  if (isMeasuring.value) {
+    if (intersects.length > 0) {
+      const point = intersects[0].point;
+      measurePoints.value.push(point);
 
-    // 点选标记球
-    const sphereGeo = new THREE.SphereGeometry(0.15, 16, 16);
-    const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
-    const sphere = new THREE.Mesh(sphereGeo, sphereMat);
-    sphere.position.copy(point);
-    measureGroup.add(sphere);
+      // 点选标记球
+      const sphereGeo = new THREE.SphereGeometry(0.15, 16, 16);
+      const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+      const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+      sphere.position.copy(point);
+      measureGroup.add(sphere);
 
-    if (measurePoints.value.length === 2) {
-      const p1 = measurePoints.value[0];
-      const p2 = measurePoints.value[1];
-      const dist = p1.distanceTo(p2);
+      if (measurePoints.value.length === 2) {
+        const p1 = measurePoints.value[0];
+        const p2 = measurePoints.value[1];
+        const dist = p1.distanceTo(p2);
 
-      // 1. 虚线连接
-      const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-      const lineMat = new THREE.LineDashedMaterial({
-        color: 0xffea00,
-        dashSize: 0.3,
-        gapSize: 0.15,
-        linewidth: 2
-      });
-      const line = new THREE.Line(lineGeo, lineMat);
-      line.computeLineDistances();
-      measureGroup.add(line);
+        // 1. 虚线连接
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+        const lineMat = new THREE.LineDashedMaterial({
+          color: 0xffea00,
+          dashSize: 0.3,
+          gapSize: 0.15,
+          linewidth: 2
+        });
+        const line = new THREE.Line(lineGeo, lineMat);
+        line.computeLineDistances();
+        measureGroup.add(line);
 
-      // 2. 中点 Sprite 距离标签
-      const midPoint = p1.clone().add(p2).multiplyScalar(0.5);
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 64;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-        if (typeof (ctx as any).roundRect === 'function') {
-          (ctx as any).roundRect(10, 8, 236, 48, 8);
-        } else {
-          ctx.rect(10, 8, 236, 48);
+        // 2. 中点 Sprite 距离标签
+        const midPoint = p1.clone().add(p2).multiplyScalar(0.5);
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+          if (typeof (ctx as any).roundRect === 'function') {
+            (ctx as any).roundRect(10, 8, 236, 48, 8);
+          } else {
+            ctx.rect(10, 8, 236, 48);
+          }
+          ctx.fill();
+          ctx.strokeStyle = '#ffea00';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          ctx.font = 'bold 22px sans-serif';
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`L = ${dist.toFixed(2)} m`, 128, 32);
         }
-        ctx.fill();
-        ctx.strokeStyle = '#ffea00';
-        ctx.lineWidth = 3;
-        ctx.stroke();
+        const texture = new THREE.CanvasTexture(canvas);
+        const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.scale.set(4.0, 1.0, 1);
+        sprite.position.copy(midPoint).add(new THREE.Vector3(0, 0.5, 0));
+        measureGroup.add(sprite);
 
-        ctx.font = 'bold 22px sans-serif';
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(`L = ${dist.toFixed(2)} m`, 128, 32);
+        measurePoints.value = [];
       }
-      const texture = new THREE.CanvasTexture(canvas);
-      const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
-      const sprite = new THREE.Sprite(spriteMat);
-      sprite.scale.set(4.0, 1.0, 1);
-      sprite.position.copy(midPoint).add(new THREE.Vector3(0, 0.5, 0));
-      measureGroup.add(sprite);
-
-      measurePoints.value = [];
     }
 
     scheduleRender();
+    return;
+  }
+
+  // 非测距模式：检测是否点击了排水管网，激活 PIP 微观局部放大镜
+  if (intersects.length > 0) {
+    const hit = intersects[0].object;
+    if (hit && hit.userData && hit.userData.pipeCategory) {
+      pipPipeData.value = { ...hit.userData };
+      isPipActive.value = true;
+    }
   }
 };
 
@@ -1146,6 +1206,9 @@ const renderSceneData = () => {
       }
     }
   });
+
+  // 同步当前视觉美学范式模式 (Studio vs Cyber)
+  switchVisualParadigm(visualParadigm.value);
 
   updateClipping();
   updateLayerVisibility();

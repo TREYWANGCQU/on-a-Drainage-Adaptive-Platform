@@ -15,10 +15,12 @@ out vec3 vViewPosition;
 out vec3 vInstanceColor;
 out vec3 vLocalNormal; // 确保此处存在输出声明
 out vec3 vWorldPosition; // 新增：传递世界坐标
+out vec2 vUv; // 新增：传递 UV 坐标
 
 #include <logdepthbuf_pars_vertex>
 
 void main() {
+    vUv = uv;
     vLocalPosition = position;
     vLocalNormal = normal; // 确保此处对局部物理法线赋值
     

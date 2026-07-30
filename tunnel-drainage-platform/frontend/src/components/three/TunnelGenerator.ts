@@ -53,7 +53,12 @@ export class TunnelGenerator {
         // 新增：动态传入真实的双洞间距，若是单洞则传 0
         spacing: { value: type === TunnelType.DOUBLE ? D_spacing : 0.0 },
         aspect: { value: aspect_ratio }, // 新增：传入长宽比参数，支持非等比例隧道截面纹理适配
-        totalLength: { value: this.L_max } // 新增：传入隧道总长度，用于着色器内部端面切片剔除
+        totalLength: { value: this.L_max }, // 新增：传入隧道总长度，用于着色器内部端面切片剔除
+        uBaseColor: { value: new THREE.Color(0x1e2e40) },
+        uFresnelColor: { value: new THREE.Color(0x00f3ff) },
+        uOpacity: { value: 0.35 },
+        uFresnelPower: { value: 3.0 },
+        uShowGrid: { value: 1.0 }
       }
     });
     // 极值计算：N_max = ceil(L_max / delta_l_min) * C_ring
@@ -107,6 +112,29 @@ export class TunnelGenerator {
    */
   private createHorseshoeShape(r: number, r2: number, offsetX: number, aspect_ratio: number): THREE.Shape {
     return createHorseshoeLiningShape(r, r2, offsetX, aspect_ratio);
+  }
+
+  /**
+   * 动态切换双视觉范式 (Light Studio 影棚风 vs Dark Cyber 赛博暗夜风)
+   */
+  public setVisualParadigm(mode: 'studio' | 'cyber'): void {
+    const mat = this.mesh.material as THREE.ShaderMaterial;
+    if (!mat || !mat.uniforms) return;
+
+    if (mode === 'studio') {
+      mat.uniforms.uBaseColor.value.setHex(0xd0d5dd);
+      mat.uniforms.uFresnelColor.value.setHex(0xffffff);
+      mat.uniforms.uOpacity.value = 0.2; // 极高透明玻璃
+      mat.uniforms.uFresnelPower.value = 5.0;
+      mat.uniforms.uShowGrid.value = 0.0;
+    } else {
+      mat.uniforms.uBaseColor.value.setHex(0x1e2e40);
+      mat.uniforms.uFresnelColor.value.setHex(0x00f3ff);
+      mat.uniforms.uOpacity.value = 0.35;
+      mat.uniforms.uFresnelPower.value = 3.0;
+      mat.uniforms.uShowGrid.value = 1.0;
+    }
+    mat.needsUpdate = true;
   }
 
   /**

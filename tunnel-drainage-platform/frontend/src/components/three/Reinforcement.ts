@@ -130,6 +130,29 @@ export class ReinforcementManager {
   }
 
   /**
+   * 切换范式材质 (影棚抛光黄铜 vs 赛博荧光橙)
+   */
+  public setVisualParadigm(mode: 'studio' | 'cyber'): void {
+    if (this.criticalGroutingMesh) {
+      const mat = this.criticalGroutingMesh.material as THREE.MeshStandardMaterial;
+      if (mode === 'studio') {
+        mat.color.setHex(0xd4af37); // 抛光黄铜 / 金色金属漆
+        mat.metalness = 0.9;
+        mat.roughness = 0.15;
+        mat.opacity = 0.65;
+        mat.emissive.setHex(0x332200);
+      } else {
+        mat.color.setHex(0xff6600); // 炽热半透明荧光橙
+        mat.metalness = 0.1;
+        mat.roughness = 0.3;
+        mat.opacity = 0.35;
+        mat.emissive.setHex(0xff3300);
+      }
+      mat.needsUpdate = true;
+    }
+  }
+
+  /**
    * 更新注浆圈几何数据 - 严格遵循字段映射规范
    * 原始注浆圈：基于 rg 与 r2 计算厚度 tg = rg - r2
    * 临界注浆圈：基于 rg_crit 与 r2 计算厚度 tg_crit（若存在）

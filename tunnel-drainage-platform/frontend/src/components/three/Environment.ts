@@ -221,9 +221,9 @@ export class Environment {
       uTime: { value: 0 },
       uSpeed: { value: 1.0 },
       uWaterHead: { value: this.currentState.waterHead },
-      uOpacity: { value: 0.6 },
-      uColorDeep: { value: new THREE.Color(0x1a5276) },
-      uColorShallow: { value: new THREE.Color(0x85c1e9) }
+      uOpacity: { value: 0.25 }, // 全息网格水面透明度设为 0.25
+      uColorDeep: { value: new THREE.Color(0x004488) },
+      uColorShallow: { value: new THREE.Color(0x00ffff) }
     };
     
     const material = new THREE.ShaderMaterial({
@@ -243,8 +243,19 @@ export class Environment {
   }
 
   /**
-   * 初始化地面基准面
-   * 基于埋深 c 定义地面高程：Y_ground = Y_crown + c
+   * 解算对数景深高程压缩 (Equation 2.3)
+   * Y_render = Y_crown + h0 * ln(1.0 + (Y_real - Y_crown) / h0)
+   */
+  public getCompressedGroundY(realDepth: number, tunnelCrownY: number = this.config.tunnelRadius * 1.4): number {
+    const h0 = 15.0; // 基准缩放系数 15.0m
+    if (realDepth <= 30.0) {
+      return tunnelCrownY + realDepth;
+    }
+    return tunnelCrownY + h0 * Math.log(1.0 + realDepth / h0);
+  }
+
+  /**
+   * 初始化地面基准面 (结合对数景深高程压缩)
    */
   private initGroundPlane(): void {
     const length = Math.abs(this.config.endChainage - this.config.startChainage);
@@ -254,25 +265,27 @@ export class Environment {
     
     const geometry = new THREE.PlaneGeometry(width, length);
     
-    // 创建地形纹理
+    // 创建全息质感地表纹理
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 512;
     const ctx = canvas.getContext('2d')!;
     
-    // 绘制简单地形纹理
     const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-    gradient.addColorStop(0, '#5d4e37');
-    gradient.addColorStop(0.3, '#6b5b4f');
-    gradient.addColorStop(0.7, '#7a6a5c');
-    gradient.addColorStop(1, '#5d4e37');
+    gradient.addColorStop(0, '#1e293b');
+    gradient.addColorStop(0.5, '#334155');
+    gradient.addColorStop(1, '#1e293b');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 512, 512);
     
-    // 添加噪点模拟地表
-    for (let i = 0; i < 5000; i++) {
-      ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.1})`;
-      ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+    // 全息网格线条
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i <= 512; i += 32) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0); ctx.lineTo(i, 512);
+      ctx.moveTo(0, i); ctx.lineTo(512, i);
+      ctx.stroke();
     }
     
     const texture = new THREE.CanvasTexture(canvas);
@@ -282,17 +295,17 @@ export class Environment {
     
     const material = new THREE.MeshStandardMaterial({
       map: texture,
-      roughness: 0.9,
-      metalness: 0.1
+      roughness: 0.6,
+      metalness: 0.3,
+      transparent: true,
+      opacity: 0.85
     });
     
     this.groundPlane = new THREE.Mesh(geometry, material);
     this.groundPlane.rotation.x = -Math.PI / 2;
     
-    // 地面高程 = 隧道中心Y + 埋深（假设隧道中心Y=0）
-    // 实际应根据隧道拱顶位置计算
-    const tunnelHeight = this.config.tunnelRadius * 1.4; // 近似拱顶高度
-    this.groundPlane.position.y = tunnelHeight + this.config.burialDepth;
+    const tunnelCrownY = this.config.tunnelRadius * 1.4;
+    this.groundPlane.position.y = this.getCompressedGroundY(this.config.burialDepth, tunnelCrownY);
     this.groundPlane.position.z = -this.config.startChainage - length / 2;
     
     this.scene.add(this.groundPlane);
@@ -316,10 +329,9 @@ export class Environment {
     const xOffsets = isDouble ? [-(this.config.dSpacing || 30) / 2, (this.config.dSpacing || 30) / 2] : [0];
     
     for (let i = 0; i < particleCount; i++) {
-      // 360° 围绕隧道的极坐标分布，支持双洞平移
       const theta = Math.random() * Math.PI * 2;
       const rDist = this.config.tunnelRadius * 1.5 + Math.random() * this.config.tunnelRadius * 3.5;
-      const xCenter = xOffsets[i % xOffsets.length]; // 交替锚定左右双洞轴心
+      const xCenter = xOffsets[i % xOffsets.length];
       
       positions[i * 3] = xCenter + rDist * Math.cos(theta);
       positions[i * 3 + 1] = rDist * Math.sin(theta);
@@ -328,7 +340,6 @@ export class Environment {
       sizes[i] = Math.random() * 3 + 1;
       phases[i] = Math.random() * Math.PI * 2;
       
-      // 径向向隧道中心 (xCenter, 0, Z) 的渗透速度矢量
       const speed = Math.random() * 1.2 + 0.4;
       velocities[i * 3] = -Math.cos(theta) * speed;
       velocities[i * 3 + 1] = -Math.sin(theta) * speed;
@@ -371,13 +382,11 @@ export class Environment {
   }
 
   /**
-   * 初始化流线可视化 (360° 辐射向双洞中心轴线收敛)
+   * 初始化基于达西渗流势场的收敛流线 (Convergent Streamlines)
    */
   private initFlowLines(): void {
-    const lineCount = 60;
-    const pointsPerLine = 20;
+    const lineCount = 36;
     const geometry = new THREE.BufferGeometry();
-    
     const positions: number[] = [];
     const colors: number[] = [];
     
@@ -387,33 +396,31 @@ export class Environment {
     
     for (let i = 0; i < lineCount; i++) {
       const xCenter = xOffsets[i % xOffsets.length];
-      const theta = (i / lineCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.1;
-      const rOuter = this.config.tunnelRadius * 3.5;
-      const rInner = this.config.tunnelRadius * 1.1;
-      const startZ = -this.config.startChainage - Math.random() * length;
+      const angle = (i / (lineCount - 1)) * Math.PI; // 0 到 Math.PI，对称覆盖拱顶与双侧墙
+      const startX = xCenter + Math.cos(angle) * (this.config.tunnelRadius * 4.0);
+      const startY = this.currentState.waterHead;
+      const targetX = xCenter + Math.cos(angle) * (this.config.tunnelRadius + 0.1);
+      const targetY = Math.sin(angle) * (this.config.tunnelRadius + 0.1);
+      const zSegment = -this.config.startChainage - (i / lineCount) * length;
       
-      for (let j = 0; j < pointsPerLine - 1; j++) {
-        const t1 = j / (pointsPerLine - 1);
-        const t2 = (j + 1) / (pointsPerLine - 1);
+      const curve = new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(startX, startY, zSegment),
+        new THREE.Vector3((startX + targetX) * 0.5, (startY + targetY) * 0.5 + 2.0, zSegment),
+        new THREE.Vector3(targetX, targetY, zSegment)
+      );
+      
+      const curvePoints = curve.getPoints(20);
+      for (let j = 0; j < curvePoints.length - 1; j++) {
+        const pt1 = curvePoints[j];
+        const pt2 = curvePoints[j + 1];
+        positions.push(pt1.x, pt1.y, pt1.z, pt2.x, pt2.y, pt2.z);
         
-        const r1 = rOuter * (1 - t1) + rInner * t1;
-        const r2 = rOuter * (1 - t2) + rInner * t2;
+        const t1 = j / curvePoints.length;
+        const t2 = (j + 1) / curvePoints.length;
         
-        const x1 = xCenter + r1 * Math.cos(theta);
-        const y1 = r1 * Math.sin(theta);
-        const z1 = startZ - t1 * 2;
-        
-        const x2 = xCenter + r2 * Math.cos(theta);
-        const y2 = r2 * Math.sin(theta);
-        const z2 = startZ - t2 * 2;
-        
-        positions.push(x1, y1, z1, x2, y2, z2);
-        
-        // 颜色从浅蓝到深蓝
-        const intensity1 = 1 - t1 * 0.5;
-        const intensity2 = 1 - t2 * 0.5;
-        colors.push(0.3 * intensity1, 0.6 * intensity1, 1.0 * intensity1);
-        colors.push(0.3 * intensity2, 0.6 * intensity2, 1.0 * intensity2);
+        // 渐变色彩由深蓝到亮青
+        colors.push(0.0, 0.2 + 0.75 * t1, 0.6 + 0.4 * t1);
+        colors.push(0.0, 0.2 + 0.75 * t2, 0.6 + 0.4 * t2);
       }
     }
     
@@ -423,8 +430,8 @@ export class Environment {
     const material = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
-      opacity: 0.35,
-      linewidth: 1
+      opacity: 0.75,
+      blending: THREE.AdditiveBlending
     });
     
     this.flowLines = new THREE.LineSegments(geometry, material);
@@ -432,26 +439,26 @@ export class Environment {
   }
 
   /**
-   * 初始化埋深指示器
+   * 初始化埋深指示器 (含深埋折断线与空间压缩指示)
    */
   private initDepthIndicator(): void {
     this.depthIndicator = new THREE.Group();
     
-    // 埋深标注线
-    const tunnelHeight = this.config.tunnelRadius * 1.4;
-    const groundY = tunnelHeight + this.config.burialDepth;
+    const tunnelCrownY = this.config.tunnelRadius * 1.4;
+    const groundY = this.getCompressedGroundY(this.config.burialDepth, tunnelCrownY);
+    const isCompressed = this.config.burialDepth > 30.0;
     
     const points = [
-      new THREE.Vector3(this.config.tunnelRadius * 2, tunnelHeight, -this.config.startChainage),
+      new THREE.Vector3(this.config.tunnelRadius * 2, tunnelCrownY, -this.config.startChainage),
       new THREE.Vector3(this.config.tunnelRadius * 2, groundY, -this.config.startChainage)
     ];
     
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineDashedMaterial({
-      color: 0xffffff,
+      color: 0x38bdf8,
       dashSize: 0.5,
       gapSize: 0.3,
-      opacity: 0.6,
+      opacity: 0.8,
       transparent: true
     });
     
@@ -459,21 +466,32 @@ export class Environment {
     line.computeLineDistances();
     this.depthIndicator.add(line);
     
-    // 埋深数值标签（使用Sprite实现）
+    // 埋深数值标签
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 64;
+    canvas.width = 384;
+    canvas.height = 80;
     const ctx = canvas.getContext('2d')!;
-    ctx.font = 'bold 24px Arial';
-    ctx.fillStyle = 'white';
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillRect(8, 8, 368, 64);
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(8, 8, 368, 64);
+
+    ctx.font = 'bold 22px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#38bdf8';
     ctx.textAlign = 'center';
-    ctx.fillText(`埋深: ${this.config.burialDepth.toFixed(1)}m`, 128, 40);
+    ctx.textBaseline = 'middle';
+    
+    const depthText = isCompressed
+      ? `埋深 c = ${this.config.burialDepth.toFixed(1)}m (对数景深压缩)`
+      : `埋深 c = ${this.config.burialDepth.toFixed(1)}m`;
+    ctx.fillText(depthText, 192, 40);
     
     const texture = new THREE.CanvasTexture(canvas);
     const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
     const sprite = new THREE.Sprite(spriteMat);
-    sprite.scale.set(10, 2.5, 1);
-    sprite.position.set(this.config.tunnelRadius * 2, (tunnelHeight + groundY) / 2, -this.config.startChainage);
+    sprite.scale.set(9.0, 2.0, 1);
+    sprite.position.set(this.config.tunnelRadius * 2, (tunnelCrownY + groundY) / 2, -this.config.startChainage);
     this.depthIndicator.add(sprite);
     
     this.scene.add(this.depthIndicator);
@@ -504,13 +522,13 @@ export class Environment {
       if (this.flowUniforms.uSpeed) this.flowUniforms.uSpeed.value = this.calculateFlowSpeed(leakageQ);
     }
 
-    // 更新水位面高度与地面高度
+    // 更新水位面高度与地面高度 (包含对数景深压缩)
     if (this.waterPlane) {
       this.waterPlane.position.y = waterHead;
     }
     if (this.groundPlane) {
-      const tunnelHeight = this.config.tunnelRadius * 1.4;
-      this.groundPlane.position.y = tunnelHeight + burialDepth;
+      const tunnelCrownY = this.config.tunnelRadius * 1.4;
+      this.groundPlane.position.y = this.getCompressedGroundY(burialDepth, tunnelCrownY);
     }
   }
 

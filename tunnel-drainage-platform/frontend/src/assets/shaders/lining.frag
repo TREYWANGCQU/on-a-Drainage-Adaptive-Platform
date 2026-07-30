@@ -8,6 +8,7 @@ in vec3 vViewPosition;
 in vec3 vInstanceColor;
 in vec3 vLocalNormal; // 确保此处存在接收声明
 in vec3 vWorldPosition; // 新增：接收世界坐标
+in vec2 vUv; // 新增：接收 UV 坐标
 
 uniform float r;
 uniform float r1;
@@ -16,6 +17,13 @@ uniform float rg;
 uniform float spacing; 
 uniform float aspect; // [修复] 新增注入的真实几何宽高比参数
 uniform float totalLength; // 新增：隧道总长度参数
+
+// 新增双范式控制 Uniforms
+uniform vec3 uBaseColor;       // 衬砌基色 vec3(0.12, 0.18, 0.25)
+uniform vec3 uFresnelColor;    // 边缘发光 vec3(0.0, 0.95, 1.0)
+uniform float uOpacity;        // 基础透明度 0.35
+uniform float uFresnelPower;   // 菲涅尔指数 3.0
+uniform float uShowGrid;       // 全息网格开关 (1.0 开启暗夜网格, 0.0 关闭纯净影棚玻璃)
 out vec4 fragColor;
 
 #include <logdepthbuf_pars_fragment>
@@ -172,19 +180,19 @@ void main() {
             alpha = mix(0.15, 0.60, borderGlow);
         }
         else {
-            // 保持原其余内墙面（非路面、非水沟区域）渲染逻辑，移除所有程序化条纹
+            // 衬砌侧壁与拱顶：高透明科技玻璃/影棚玻璃质感
             float reff_wall = calculateHorseshoeRadius(vLocalPosition.xy);
             float mid_r = (r + r2) * 0.5;
         
-            if (reff_wall < mid_r) {
-                finalColor = colorSecondary * vInstanceColor;
-                roughness = 0.4;
-                emit = 0.0;
-            } 
-            else {
-                finalColor = vec3(0.18, 0.22, 0.28); 
-                roughness = 0.9;
-                emit = 0.0;
+            float fresnel = pow(1.0 - max(0.0, dot(normal_view, viewDir)), uFresnelPower);
+            vec3 baseTone = (reff_wall < mid_r) ? uBaseColor * vInstanceColor : mix(uBaseColor, vec3(0.18, 0.22, 0.28), 0.5);
+            finalColor = mix(baseTone, uFresnelColor, fresnel * 0.7);
+            roughness = 0.1;
+            alpha = clamp(uOpacity + fresnel * 0.6, 0.1, 0.9);
+
+            if (uShowGrid > 0.5) {
+                float gridPattern = step(0.96, fract(vWorldPosition.z * 1.0)) + step(0.96, fract(vUv.x * 20.0));
+                finalColor += uFresnelColor * clamp(gridPattern, 0.0, 1.0) * 0.35;
             }
         }
     }
