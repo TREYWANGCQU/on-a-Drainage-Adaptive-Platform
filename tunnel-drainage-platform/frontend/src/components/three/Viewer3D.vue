@@ -397,10 +397,49 @@ const visualParadigm = ref<'cyber' | 'studio'>('cyber');
 const isPipActive = ref(false);
 const pipPipeData = ref<any>(null);
 
+const updateEnvironmentMap = (mode: 'cyber' | 'studio') => {
+  if (!renderer || !scene) return;
+  try {
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    pmremGenerator.compileEquirectangularShader();
+    const envScene = new THREE.Scene();
+    if (mode === 'studio') {
+      envScene.background = new THREE.Color(0xf3f4f6);
+      const studioLight1 = new THREE.DirectionalLight(0xffffff, 3.5);
+      studioLight1.position.set(10, 20, 15);
+      envScene.add(studioLight1);
+      const studioLight2 = new THREE.DirectionalLight(0x38bdf8, 2.0);
+      studioLight2.position.set(-10, 10, -10);
+      envScene.add(studioLight2);
+      const studioLight3 = new THREE.DirectionalLight(0xd4af37, 1.5);
+      studioLight3.position.set(0, -10, 10);
+      envScene.add(studioLight3);
+    } else {
+      envScene.background = new THREE.Color(0x050b14);
+      const cyberLight1 = new THREE.DirectionalLight(0x00f3ff, 2.0);
+      cyberLight1.position.set(10, 20, 15);
+      envScene.add(cyberLight1);
+      const cyberLight2 = new THREE.DirectionalLight(0x9333ea, 1.5);
+      cyberLight2.position.set(-10, 10, -10);
+      envScene.add(cyberLight2);
+      const cyberLight3 = new THREE.DirectionalLight(0x00f3ff, 1.0);
+      cyberLight3.position.set(0, -10, 10);
+      envScene.add(cyberLight3);
+    }
+
+    const envTarget = pmremGenerator.fromScene(envScene);
+    scene.environment = envTarget.texture;
+    pmremGenerator.dispose();
+  } catch (e) {
+    console.warn('PMREM Environment generation fallback:', e);
+  }
+};
+
 const switchVisualParadigm = (mode: 'cyber' | 'studio') => {
   visualParadigm.value = mode;
   if (scene) {
-    scene.background = new THREE.Color(mode === 'studio' ? 0xf3f4f6 : 0x030712);
+    scene.background = new THREE.Color(mode === 'studio' ? 0xf3f4f6 : 0x050b14);
+    updateEnvironmentMap(mode);
   }
   tGenInstances.forEach(tg => tg.setVisualParadigm(mode));
   rManagerInstances.forEach(rm => rm.setVisualParadigm(mode));
@@ -733,6 +772,15 @@ const initWebGL = () => {
   activeCamera = cameraMode.value === 'orthographic' ? orthographicCamera : perspectiveCamera;
   camera = activeCamera as any;
 
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+  dirLight.position.set(30, 60, 40);
+  dirLight.castShadow = true;
+  dirLight.shadow.bias = -0.0001;
+  dirLight.shadow.normalBias = 0.05;
+  scene.add(dirLight);
+
+  // PMREMGenerator 动态生成双范式 HDRI 光照贴图，赋予金属与玻璃逼真反射
+  updateEnvironmentMap(visualParadigm.value);
   controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 0, -20);
   controls.enableDamping = true;
@@ -748,36 +796,6 @@ const initWebGL = () => {
 
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
   scene.add(ambientLight);
-
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
-  dirLight.position.set(30, 60, 40);
-  dirLight.castShadow = true;
-  dirLight.shadow.bias = 0.0005;
-  dirLight.shadow.normalBias = 0.08;
-  scene.add(dirLight);
-
-  // PMREMGenerator 动态生成 3 点影棚柔光 HDRI 光照贴图，赋予金属与玻璃逼真反射
-  try {
-    const pmremGenerator = new THREE.PMREMGenerator(renderer);
-    pmremGenerator.compileEquirectangularShader();
-    const envScene = new THREE.Scene();
-    envScene.background = new THREE.Color(0xf3f4f6);
-    const studioLight1 = new THREE.DirectionalLight(0xffffff, 3.0);
-    studioLight1.position.set(10, 20, 15);
-    envScene.add(studioLight1);
-    const studioLight2 = new THREE.DirectionalLight(0x38bdf8, 1.5);
-    studioLight2.position.set(-10, 10, -10);
-    envScene.add(studioLight2);
-    const studioLight3 = new THREE.DirectionalLight(0xffb800, 1.0);
-    studioLight3.position.set(0, -10, 10);
-    envScene.add(studioLight3);
-
-    const envTarget = pmremGenerator.fromScene(envScene);
-    scene.environment = envTarget.texture;
-    pmremGenerator.dispose();
-  } catch (e) {
-    console.warn('PMREM Studio Environment generation fallback:', e);
-  }
 
   probeManager = new StressProbeManager(scene);
   scene.add(measureGroup);

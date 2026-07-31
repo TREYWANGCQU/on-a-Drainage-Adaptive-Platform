@@ -136,17 +136,33 @@ export class ReinforcementManager {
     if (this.criticalGroutingMesh) {
       const mat = this.criticalGroutingMesh.material as THREE.MeshStandardMaterial;
       if (mode === 'studio') {
-        mat.color.setHex(0xd4af37); // 抛光黄铜 / 金色金属漆 (100% 对齐附图跑车美学)
+        mat.color.setHex(0xd4af37); // 抛光黄铜 / 金色 PBR 金属材质 (Metalness: 0.95, Roughness: 0.18)
         mat.metalness = 0.95;
-        mat.roughness = 0.12;
+        mat.roughness = 0.18;
         mat.opacity = 0.85;
         mat.emissive.setHex(0x332200);
       } else {
-        mat.color.setHex(0xff6600); // 炽热半透明荧光橙
+        mat.color.setHex(0xff9900); // 炽热荧光橙能量防护带
         mat.metalness = 0.1;
         mat.roughness = 0.3;
-        mat.opacity = 0.35;
-        mat.emissive.setHex(0xff3300);
+        mat.opacity = 0.45;
+        mat.emissive.setHex(0xff6600);
+        mat.emissiveIntensity = 0.8;
+      }
+      mat.needsUpdate = true;
+    }
+    if (this.groutingMesh) {
+      const mat = this.groutingMesh.material as THREE.MeshStandardMaterial;
+      if (mode === 'studio') {
+        mat.color.setHex(0x38bdf8);
+        mat.metalness = 0.8;
+        mat.roughness = 0.2;
+        mat.opacity = 0.4;
+      } else {
+        mat.color.setHex(0x00ffff);
+        mat.metalness = 0.1;
+        mat.roughness = 0.3;
+        mat.opacity = 0.25;
       }
       mat.needsUpdate = true;
     }

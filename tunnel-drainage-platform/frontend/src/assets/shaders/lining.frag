@@ -139,14 +139,14 @@ void main() {
         roughness = 0.08;
         alpha = clamp(uOpacity + fresnel * 0.6, 0.08, 0.85);
 
-        // 升级 fwidth() 屏幕空间导数抗锯齿网格模型，解决旋转与极远距离下的莫尔纹走样 (WBS 1.1)
+        // 升级 fwidth() 屏幕空间导数抗锯齿网格模型，解决旋转与极远距离下的莫尔纹走样 (WBS 3.2)
         if (uShowGrid > 0.5) {
             float scale = 1.0;
-            float grid_z = fract(vWorldPosition.z * scale);
-            float w = fwidth(vWorldPosition.z * scale);
-            float line_pattern = clamp(1.0 - abs(grid_z - 0.5) / max(w, 0.001), 0.0, 1.0);
+            float grid_z = abs(fract(vWorldPosition.z * scale - 0.5) - 0.5);
+            float w = max(fwidth(vWorldPosition.z * scale), 0.001);
+            float line_pattern = 1.0 - smoothstep(0.0, w * 1.5, grid_z);
             float dist = length(vViewPosition);
-            float lod_factor = clamp(1.0 - (dist - 15.0) / (70.0 - 15.0), 0.0, 1.0);
+            float lod_factor = clamp(1.0 - (dist - 10.0) / (40.0 - 10.0), 0.0, 1.0);
             float finalGrid = line_pattern * lod_factor;
             finalColor += uFresnelColor * finalGrid * 0.35;
         }

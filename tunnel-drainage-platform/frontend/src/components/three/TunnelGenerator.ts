@@ -262,7 +262,8 @@ export class TunnelGenerator {
     }
 
     const settings = { depth: 1.0, bevelEnabled: false, curveSegments: 64 };
-    const geometry = new THREE.ExtrudeGeometry(shapes, settings);
+    let geometry: THREE.BufferGeometry = new THREE.ExtrudeGeometry(shapes, settings);
+    geometry = removeExtrudeEndCaps(geometry);
     geometry.computeVertexNormals();
 
     return geometry;
