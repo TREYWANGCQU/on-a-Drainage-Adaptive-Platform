@@ -445,7 +445,13 @@ const updateEnvironmentMap = (mode: 'cyber' | 'studio') => {
       hdrFile,
       (texture) => {
         const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+        if (scene.environment) {
+          scene.environment.dispose();
+        }
         scene.environment = envMap;
+        if ('environmentIntensity' in scene) {
+          (scene as any).environmentIntensity = mode === 'cyber' ? 0.8 : 1.2;
+        }
         texture.dispose();
         pmremGenerator.dispose();
         console.log(`[HDRI Pipeline] Successfully loaded & generated PMREM environment map: ${hdrFile}`);
@@ -456,7 +462,13 @@ const updateEnvironmentMap = (mode: 'cyber' | 'studio') => {
         console.warn('[HDRI Pipeline] HDR file load failed, falling back to RoomEnvironment:', err);
         const roomEnv = new RoomEnvironment();
         const envMap = pmremGenerator.fromScene(roomEnv).texture;
+        if (scene.environment) {
+          scene.environment.dispose();
+        }
         scene.environment = envMap;
+        if ('environmentIntensity' in scene) {
+          (scene as any).environmentIntensity = mode === 'cyber' ? 0.8 : 1.2;
+        }
         roomEnv.dispose();
         pmremGenerator.dispose();
         scheduleRender();
