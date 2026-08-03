@@ -193,6 +193,54 @@
           </label>
         </div>
       </div>
+
+      <!-- 排水管径放大会显控制面板 -->
+      <div v-if="layerVisibility.pipes" class="pipe-scale-card glass-card">
+        <div class="panel-header">
+          <span class="panel-title">排水管径放大会显</span>
+          <span class="scale-badge" :class="{ active: pipeScaleFactor > 1.0 }">
+            {{ pipeScaleFactor === 1.0 ? '1.0x 真实' : `${pipeScaleFactor.toFixed(1)}x` }}
+          </span>
+        </div>
+        <div class="panel-body">
+          <!-- 连续倍率滑动条 -->
+          <div class="control-row">
+            <span class="control-label">管径倍率:</span>
+            <input 
+              type="range" 
+              min="1.0" 
+              max="10.0" 
+              step="0.5" 
+              v-model.number="pipeScaleFactor"
+              @input="onPipeScaleInput"
+              class="range-slider"
+            />
+          </div>
+
+          <!-- 预设倍率 Pills 与一键还原按钮 -->
+          <div class="scale-action-row">
+            <div class="preset-btn-group">
+              <button 
+                v-for="preset in [1.0, 3.0, 5.0, 8.0]" 
+                :key="preset"
+                class="preset-pill-btn"
+                :class="{ active: pipeScaleFactor === preset }"
+                @click="setPipeScale(preset)"
+              >
+                {{ preset === 1.0 ? '真实' : `${preset}x` }}
+              </button>
+            </div>
+            <button 
+              class="reset-scale-btn" 
+              :disabled="pipeScaleFactor === 1.0"
+              @click="resetPipeScale"
+              title="重置为真实物理管径 (1.0x)"
+            >
+              ↺ 一键还原
+            </button>
+          </div>
+        </div>
+      </div>
       
       <!-- 受力表达模式切换器 (K | M | N | 综合受力) 及 可折叠数值图例 -->
       <div v-if="layerVisibility.probe" class="force-mode-panel glass-card">
@@ -431,6 +479,27 @@ import MagnifierPIP from './MagnifierPIP.vue';
 const visualParadigm = ref<'cyber' | 'studio'>('cyber');
 const isPipActive = ref(false);
 const pipPipeData = ref<any>(null);
+
+// 排水管径放大会显倍率 (1.0x ~ 10.0x)
+const pipeScaleFactor = ref<number>(1.0);
+
+const applyPipeScale = (scale: number) => {
+  pipeGenInstances.forEach(pg => pg.setPipeScaleFactor(scale));
+  scheduleRender();
+};
+
+const onPipeScaleInput = () => {
+  applyPipeScale(pipeScaleFactor.value);
+};
+
+const setPipeScale = (preset: number) => {
+  pipeScaleFactor.value = preset;
+  applyPipeScale(preset);
+};
+
+const resetPipeScale = () => {
+  setPipeScale(1.0);
+};
 
 const updateEnvironmentMap = (mode: 'cyber' | 'studio') => {
   if (!renderer || !scene) return;
@@ -1355,6 +1424,7 @@ const renderSceneData = () => {
       dSpacing: D_spacing
     });
     pipeGen.setVisualParadigm(visualParadigm.value);
+    pipeGen.setPipeScaleFactor(pipeScaleFactor.value);
     pipeGen.updateFromSnapshot(rawData, props.mode);
     pipeGen.getMeshes().forEach(mesh => {
       mesh.position.z = -start_chainage;
@@ -2089,5 +2159,96 @@ input:checked + .switch-slider:before {
   background: #1e88e5;
   color: #ffffff;
   border-color: #42a5f5;
+}
+
+/* 排水管径放大会显卡片样式 */
+.pipe-scale-card {
+  padding: 12px 16px;
+  color: #e0e6ed;
+  font-size: 13px;
+  min-width: 220px;
+}
+
+.scale-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #a0aec0;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.scale-badge.active {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.scale-action-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.preset-btn-group {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.preset-pill-btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cfd8dc;
+  padding: 3px 0;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.preset-pill-btn:hover {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: #f59e0b;
+  color: #ffffff;
+}
+
+.preset-pill-btn.active {
+  background: #d97706;
+  border-color: #f59e0b;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+}
+
+.reset-scale-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e2e8f0;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.reset-scale-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+  color: #ffffff;
+}
+
+.reset-scale-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: transparent;
 }
 </style>
