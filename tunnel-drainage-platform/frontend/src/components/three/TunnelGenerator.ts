@@ -133,7 +133,7 @@ export class TunnelGenerator {
       // 1. 路面 Shape (顶沿按 X 轴严格单调递增，彻底消除自交多边形剖分乱纹) (WBS 1.1)
       const roadShape = new THREE.Shape();
       roadShape.moveTo(-halfRoadW + ox, roadY);
-      
+
       // V1: 左侧水沟左外边缘切口
       roadShape.lineTo(sideLeftX + ox, roadY);
       // V2: 左侧水沟左垂直内下槽点
@@ -183,7 +183,7 @@ export class TunnelGenerator {
       ];
       for (let i = 1; i < topVertices.length; i++) {
         if (topVertices[i].x < topVertices[i - 1].x - 1e-6) {
-          throw new Error(`[Topology Error] Road shape top edge X coordinate decreased reverse: V[${i}].x (${topVertices[i].x}) < V[${i-1}].x (${topVertices[i-1].x})`);
+          throw new Error(`[Topology Error] Road shape top edge X coordinate decreased reverse: V[${i}].x (${topVertices[i].x}) < V[${i - 1}].x (${topVertices[i - 1].x})`);
         }
       }
 
@@ -246,13 +246,13 @@ export class TunnelGenerator {
       side: THREE.DoubleSide
     });
 
-    // 排水沟材质升级：三层内壁电镀金属与自发光高对比度着色 (WBS 3.2 / WBS 4)
+    // 排水沟材质升级：自发光彻底归零与 PBR 物理漫反射参数调整 (WBS 4.1.1)
     const ditchMat = new THREE.MeshStandardMaterial({
-      color: 0x0e3a5a,
-      emissive: new THREE.Color(0x00f3ff),
-      emissiveIntensity: 0.6,
-      roughness: 0.15,
-      metalness: 0.9,
+      color: 0x1e3a5a,
+      emissive: new THREE.Color(0x000000),
+      emissiveIntensity: 0.0,
+      roughness: 0.4,
+      metalness: 0.2,
       transparent: true,
       opacity: 0.75,
       depthWrite: true,
@@ -283,7 +283,7 @@ export class TunnelGenerator {
       color: 0x00f3ff,
       linewidth: 2,
       transparent: true,
-      opacity: 0.95
+      opacity: 0.45
     });
     this.ditchEdgeMesh = new THREE.InstancedMesh(edgesGeo, ditchEdgeMat, nMax);
     this.ditchEdgeMesh.frustumCulled = false;
@@ -362,17 +362,10 @@ export class TunnelGenerator {
 
     if (this.ditchMesh) {
       const ditchMat = this.ditchMesh.material as THREE.MeshStandardMaterial;
-      if (mode === 'studio') {
-        ditchMat.color.setHex(0x0284c7);
-        ditchMat.emissive.setHex(0x0284c7);
-        ditchMat.emissiveIntensity = 0.4;
-        ditchMat.roughness = 0.5;
-      } else {
-        ditchMat.color.setHex(0x0e3a5a);
-        ditchMat.emissive.setHex(0x00f3ff);
-        ditchMat.emissiveIntensity = 0.6;
-        ditchMat.roughness = 0.3;
-      }
+      ditchMat.color.setHex(mode === 'studio' ? 0x0284c7 : 0x1e3a5a);
+      ditchMat.emissive.setHex(0x000000);
+      ditchMat.emissiveIntensity = 0.0;
+      ditchMat.roughness = mode === 'studio' ? 0.5 : 0.4;
       ditchMat.needsUpdate = true;
     }
 
@@ -380,10 +373,10 @@ export class TunnelGenerator {
       const edgeMat = this.ditchEdgeMesh.material as THREE.LineBasicMaterial;
       if (mode === 'studio') {
         edgeMat.color.setHex(0x0284c7);
-        edgeMat.opacity = 0.7;
+        edgeMat.opacity = 0.45;
       } else {
         edgeMat.color.setHex(0x00f3ff);
-        edgeMat.opacity = 0.95;
+        edgeMat.opacity = 0.45;
       }
       edgeMat.needsUpdate = true;
     }
