@@ -158,11 +158,13 @@ export class TunnelGenerator {
     const ditchShapes: THREE.Shape[] = [];
 
     offsets.forEach(ox => {
-      // 1. 路面 Shape (以严格逆时针 CCW 顺序构建 2D 轮廓，彻底消除 Earcut 拓扑反转产生的剖分大三角形)
+      // 1. 路面 Shape：顶点采样拓扑解耦 (底沿弧线采样与顶沿细分槽口节点)
+      // 顶沿按 X 轴倒序细分采样 (与底沿 16 节点一一对应)，彻底消除跨越 9.8m 的大对角线剖分三角形；
+      // 在水沟区间下沉 0.05m 避开水沟内腔，暴露 ditchMesh 100% 敞口 U 型槽，解决水沟被遮挡问题。
       const roadShape = new THREE.Shape();
-
-      // 底沿仰拱圆弧切合：从 left (-halfRoadW) 扫至 right (+halfRoadW) (CCW 动向)
       const steps = 16;
+
+      // A. 底沿仰拱圆弧 (CCW 动向：从 -halfRoadW 到 +halfRoadW)
       for (let i = 0; i <= steps; i++) {
         const x = -halfRoadW + (i / steps) * (2 * halfRoadW);
         const y = invertCenterY - Math.sqrt(Math.max(0, R3_base * R3_base - x * x));
@@ -173,78 +175,51 @@ export class TunnelGenerator {
         }
       }
 
-      // 顶沿路面切口：从 right (+halfRoadW) 向 left (-halfRoadW) 逆向回扫 (V13 -> V1)
+      // B. 顶沿路面 (从 +halfRoadW 倒序扫描回 -halfRoadW)：精准插入水沟外壁 keypoints 并在水沟区间向下沉降至外底高程，彻底释放通水槽腔
+      const addDitchNotch = (xMax: number, xMin: number, yBot: number) => {
+        roadShape.lineTo(xMax + ox, roadY);
+        roadShape.lineTo(xMax + ox, yBot);
+        roadShape.lineTo(xMin + ox, yBot);
+        roadShape.lineTo(xMin + ox, roadY);
+      };
+
       roadShape.lineTo(halfRoadW + ox, roadY);
-
-      // 右侧水沟切口
-      roadShape.lineTo(sideRightX + ox, roadY);
-      roadShape.lineTo(sideRightX + ox, yBot_side);
-      roadShape.lineTo(sideRightXInner + ox, yBot_side);
-      roadShape.lineTo(sideRightXInner + ox, roadY);
-
-      // 中央水沟切口
-      roadShape.lineTo(centralRightX + ox, roadY);
-      roadShape.lineTo(centralRightX + ox, yBot_central);
-      roadShape.lineTo(centralLeftX + ox, yBot_central);
-      roadShape.lineTo(centralLeftX + ox, roadY);
-
-      // 左侧水沟切口
-      roadShape.lineTo(sideLeftXInner + ox, roadY);
-      roadShape.lineTo(sideLeftXInner + ox, yBot_side);
-      roadShape.lineTo(sideLeftX + ox, yBot_side);
-      roadShape.lineTo(sideLeftX + ox, roadY);
-
-      // 闭合回 (-halfRoadW, roadY) 及起始点
+      addDitchNotch(sideRightX, sideRightXInner, yBot_side);
+      addDitchNotch(centralRightX, centralLeftX, yBot_central);
+      addDitchNotch(sideLeftXInner, sideLeftX, yBot_side);
       roadShape.lineTo(-halfRoadW + ox, roadY);
+
       roadShape.closePath();
       roadShapes.push(roadShape);
 
-      // 2. 独立三沟 Shape 构造: 3-Box 凸拓扑与 CCW 严格无重叠拼接
-      // 每条 U 型沟槽拆分为 3 块独立的 4 顶点凸矩形 (左壁 + 底板 + 右壁)
-      // 4 顶点凸矩形的 Earcut 三角剖分结果恒为 2 个三角形，100% 免疫凹角跨越大三角形
+      // 2. 排水沟 Shapes 构造: 单圈 8 顶点 CCW 凹多边形 U 型槽 (createUShape)
+      // 单圈 8 顶点 CCW 顺序多边形构建 100% 敞口防渗 U 型防渗水沟，自适应嵌套在路面下方，消除拼装缝隙与重叠
       const delta_x = 0.008;
       const delta_y = 0.005;
 
-      const createDitchBoxShapes = (xMin: number, xMax: number, yTop: number, yBot: number, wallThickness: number = 0.05): THREE.Shape[] => {
+      const createUShape = (xMin: number, xMax: number, yTop: number, yBot: number, wallThickness: number = 0.05): THREE.Shape => {
         const safeXMin = xMin + delta_x;
         const safeXMax = xMax - delta_x;
         const safeYBot = yBot + delta_y;
         const t = Math.min(wallThickness, (safeXMax - safeXMin) / 3);
-        const shapes: THREE.Shape[] = [];
 
-        // 左侧壁 Box (4 顶点凸矩形 CCW: bottom-left -> bottom-right -> top-right -> top-left)
-        const leftWall = new THREE.Shape();
-        leftWall.moveTo(safeXMin + ox, safeYBot);
-        leftWall.lineTo(safeXMin + t + ox, safeYBot);
-        leftWall.lineTo(safeXMin + t + ox, yTop);
-        leftWall.lineTo(safeXMin + ox, yTop);
-        leftWall.closePath();
-        shapes.push(leftWall);
-
-        // 槽底 Box (4 顶点凸矩形 CCW，置于左右侧壁之间，避免角落物理重叠引发 Alpha 混合及 Z-fighting)
-        const bottom = new THREE.Shape();
-        bottom.moveTo(safeXMin + t + ox, safeYBot);
-        bottom.lineTo(safeXMax - t + ox, safeYBot);
-        bottom.lineTo(safeXMax - t + ox, safeYBot + t);
-        bottom.lineTo(safeXMin + t + ox, safeYBot + t);
-        bottom.closePath();
-        shapes.push(bottom);
-
-        // 右侧壁 Box (4 顶点凸矩形 CCW: bottom-left -> bottom-right -> top-right -> top-left)
-        const rightWall = new THREE.Shape();
-        rightWall.moveTo(safeXMax - t + ox, safeYBot);
-        rightWall.lineTo(safeXMax + ox, safeYBot);
-        rightWall.lineTo(safeXMax + ox, yTop);
-        rightWall.lineTo(safeXMax - t + ox, yTop);
-        rightWall.closePath();
-        shapes.push(rightWall);
-
-        return shapes;
+        const uShape = new THREE.Shape();
+        // V1 (左外顶) -> V2 (左外底) -> V3 (右外底) -> V4 (右外顶) -> V5 (右内顶) -> V6 (右内底) -> V7 (左内底) -> V8 (左内顶)
+        uShape.moveTo(safeXMin + ox, yTop);
+        uShape.lineTo(safeXMin + ox, safeYBot);
+        uShape.lineTo(safeXMax + ox, safeYBot);
+        uShape.lineTo(safeXMax + ox, yTop);
+        uShape.lineTo(safeXMax - t + ox, yTop);
+        uShape.lineTo(safeXMax - t + ox, safeYBot + t);
+        uShape.lineTo(safeXMin + t + ox, safeYBot + t);
+        uShape.lineTo(safeXMin + t + ox, yTop);
+        uShape.closePath();
+        return uShape;
       };
 
-      ditchShapes.push(...createDitchBoxShapes(centralLeftX, centralRightX, roadY, yBot_central, 0.05)); // 中央深水沟
-      ditchShapes.push(...createDitchBoxShapes(sideLeftX, sideLeftXInner, roadY, yBot_side, 0.05)); // 左侧沟槽
-      ditchShapes.push(...createDitchBoxShapes(sideRightXInner, sideRightX, roadY, yBot_side, 0.05)); // 右侧沟槽
+      ditchShapes.push(createUShape(centralLeftX, centralRightX, roadY, yBot_central, 0.05)); // 中央深水沟
+      ditchShapes.push(createUShape(sideLeftX, sideLeftXInner, roadY, yBot_side, 0.05)); // 左侧沟槽
+      ditchShapes.push(createUShape(sideRightXInner, sideRightX, roadY, yBot_side, 0.05)); // 右侧沟槽
     });
 
     // 1.0m 精确拉伸，消除 1m 实例衔接隙缝 (WBS 1.4)
@@ -264,14 +239,14 @@ export class TunnelGenerator {
     ditchGeo = ditchGeo.toNonIndexed();
     ditchGeo.computeVertexNormals();
 
-    // 沥青路面材质升级：高透透视与 Depth-Test 渲染顺序解耦 (WBS 2.2 / WBS 4)
+    // 沥青路面材质升级：开启深度写入防止底层面片透视干涉，呈现平整路面 (WBS 2.2 / WBS 4)
     const roadMat = new THREE.MeshStandardMaterial({
       color: 0x0f172a,
       roughness: 0.50,
       metalness: 0.20,
       transparent: true,
       opacity: 0.55,
-      depthWrite: false,
+      depthWrite: true,
       side: THREE.FrontSide
     });
 
@@ -284,41 +259,27 @@ export class TunnelGenerator {
       metalness: 0.20,
       transparent: true,
       opacity: 0.65,
-      depthWrite: false,
+      depthWrite: true,
       side: THREE.FrontSide,
       polygonOffset: true,
-      polygonOffsetFactor: 1,
-      polygonOffsetUnits: 1
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
     });
 
     this.roadMesh = new THREE.InstancedMesh(roadGeo, roadMat, nMax);
     this.roadMesh.frustumCulled = false;
     this.roadMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.roadMesh.count = 0;
-    this.roadMesh.renderOrder = 12; // 保证在水沟后绘制并支持半透明叠加解耦
+    this.roadMesh.renderOrder = 10; // 路面位于底层
 
     this.ditchMesh = new THREE.InstancedMesh(ditchGeo, ditchMat, nMax);
     this.ditchMesh.frustumCulled = false;
     this.ditchMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.ditchMesh.count = 0;
-    this.ditchMesh.renderOrder = 10;
+    this.ditchMesh.renderOrder = 12; // 水沟位于路面之上绘制，突出 3D 敞口槽体
 
-    // U 型水沟顶沿 3D 悬浮发光轮廓线 (WBS 1.4) - 经过平行性过滤剔除侧壁斜向对角发光线
-    const rawEdgesGeo = new THREE.EdgesGeometry(ditchGeo, 15);
-    const edgesGeo = filterParallelEdges(rawEdgesGeo, 0.05);
-    rawEdgesGeo.dispose();
-
-    const ditchEdgeMat = new THREE.LineBasicMaterial({
-      color: 0x00f3ff,
-      linewidth: 2,
-      transparent: true,
-      opacity: 0.45
-    });
-    this.ditchEdgeMesh = new THREE.InstancedMesh(edgesGeo, ditchEdgeMat, nMax);
-    this.ditchEdgeMesh.frustumCulled = false;
-    this.ditchEdgeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.ditchEdgeMesh.count = 0;
-    this.ditchEdgeMesh.renderOrder = 15;
+    // 排水沟发光轮廓线去化 (彻底消除侧壁对角斜向发光线与杂条纹，保持纯净 PBR 水晶/防渗混凝土槽体)
+    this.ditchEdgeMesh = undefined;
   }
 
   /**
@@ -578,97 +539,6 @@ export function buildHorseshoeShape(
 }
 
 /**
- * 包含内部路面/排水沟槽切口的衬砌 Shape 构建函数
- */
-function createHorseshoeLiningShape(r: number, r2: number, offsetX: number, aspect_ratio: number): THREE.Shape {
-  const shape = new THREE.Shape();
-
-  const buildPath = (target_r: number, isHole: boolean): THREE.Path | THREE.Shape => {
-    const path = isHole ? new THREE.Path() : shape;
-    const R1_base = 1.05 * r;
-    const R2_base = 0.65 * r;
-    const R3_base = 1.80 * r;
-
-    const dx = R1_base - R2_base;
-    const dy = Math.sqrt(Math.pow(R3_base - R2_base, 2) - Math.pow(dx, 2));
-
-    const w = 2.1 * r;
-    const h = w * aspect_ratio;
-    const H_side = Math.max(0.0, h - R1_base + dy - R3_base);
-    const invertCenterY = -H_side + dy;
-
-    const t = target_r - r;
-    const R1 = R1_base + t;
-    const R2 = R2_base + t;
-    const R3 = R3_base + t;
-
-    let aLeft = Math.atan2(-dy, -dx);
-    if (aLeft < 0) aLeft += Math.PI * 2;
-    let aRight = Math.atan2(-dy, dx);
-    if (aRight < 0) aRight += Math.PI * 2;
-
-    if (isHole) {
-      path.moveTo(R1 + offsetX, 0);
-      if (H_side > 0) path.lineTo(R1 + offsetX, -H_side);
-      path.absarc(dx + offsetX, -H_side, R2, Math.PI * 2, aRight, true);
-
-      const ditchW = 0.6;
-      const ditchH = 0.8;
-      const halfW = ditchW / 2;
-
-      const dy_road = R3 - ditchH;
-      const halfRoadW = Math.sqrt(Math.max(0, R3 * R3 - dy_road * dy_road));
-      const roadY = invertCenterY - dy_road;
-      const sideW = 0.3;
-
-      const halfSideW = halfRoadW - sideW;
-      const r3Y_at_side = invertCenterY - Math.sqrt(R3 * R3 - halfSideW * halfSideW);
-
-      let aSideInnerRight = Math.atan2(r3Y_at_side - invertCenterY, halfSideW);
-      if (aSideInnerRight < 0) aSideInnerRight += Math.PI * 2;
-
-      path.absarc(offsetX, invertCenterY, R3, aRight, aSideInnerRight, true);
-      path.lineTo(offsetX + halfSideW, roadY);
-
-      const r_threshold = 5.0;
-      if (r > r_threshold) {
-        const ditchBottomY = invertCenterY - Math.sqrt(R3 * R3 - halfW * halfW);
-        path.lineTo(offsetX + halfW, roadY);
-        path.lineTo(offsetX + halfW, ditchBottomY);
-        path.lineTo(offsetX - halfW, ditchBottomY);
-        path.lineTo(offsetX - halfW, roadY);
-      }
-
-      path.lineTo(offsetX - halfSideW, roadY);
-      path.lineTo(offsetX - halfSideW, r3Y_at_side);
-
-      let aSideInnerLeft = Math.atan2(r3Y_at_side - invertCenterY, -halfSideW);
-      if (aSideInnerLeft < 0) aSideInnerLeft += Math.PI * 2;
-
-      path.absarc(offsetX, invertCenterY, R3, aSideInnerLeft, aLeft, true);
-      path.absarc(-dx + offsetX, -H_side, R2, aLeft, Math.PI, true);
-      if (H_side > 0) path.lineTo(-R1 + offsetX, 0);
-      path.absarc(offsetX, 0, R1, Math.PI, 0, true);
-    } else {
-      path.moveTo(R1 + offsetX, 0);
-      path.absarc(offsetX, 0, R1, 0, Math.PI, false);
-      if (H_side > 0) path.lineTo(-R1 + offsetX, -H_side);
-      path.absarc(-dx + offsetX, -H_side, R2, Math.PI, aLeft, false);
-      path.absarc(offsetX, invertCenterY, R3, aLeft, aRight, false);
-      path.absarc(dx + offsetX, -H_side, R2, aRight, Math.PI * 2, false);
-      if (H_side > 0) path.lineTo(R1 + offsetX, 0);
-    }
-    return path;
-  };
-
-  buildPath(r2, false);
-  const holePath = buildPath(r, true) as THREE.Path;
-  shape.holes.push(holePath);
-
-  return shape;
-}
-
-/**
  * 剔除 ExtrudeGeometry 产生的 Front Cap 和 Back Cap 三角形面片
  * 消除 InstancedMesh 纵向排布时产生的切片端面黑条纹与水沟封闭挡板
  */
@@ -706,9 +576,9 @@ export function removeExtrudeEndCaps(geometry: THREE.BufferGeometry): THREE.Buff
 }
 
 /**
- * 过滤线框几何体，仅保留平行于 X/Y/Z 主轴的线段，剔除侧壁斜向对角发光线 (WBS 1.4)
+ * 过滤线框几何体，精准剔除面片三角剖分产生的斜向对角线 (Triangulation Diagonal Edges)
  */
-export function filterParallelEdges(edgesGeo: THREE.EdgesGeometry, tolerance: number = 0.05): THREE.BufferGeometry {
+export function filterParallelEdges(edgesGeo: THREE.EdgesGeometry): THREE.BufferGeometry {
   const posAttr = edgesGeo.attributes.position;
   const filteredPos: number[] = [];
   const p1 = new THREE.Vector3();
@@ -720,9 +590,12 @@ export function filterParallelEdges(edgesGeo: THREE.EdgesGeometry, tolerance: nu
     p2.fromBufferAttribute(posAttr, i + 1);
     dir.subVectors(p2, p1).normalize();
 
-    // 计算方向向量的最大分量绝对值
-    const maxComponent = Math.max(Math.abs(dir.x), Math.abs(dir.y), Math.abs(dir.z));
-    if (maxComponent >= 1.0 - tolerance) {
+    // 绝对对角线判别：若线段同时具备 Z 轴分量 (|dir.z| > 1e-3) 与 XY 平面分量 (|dir.x| > 1e-3 || |dir.y| > 1e-3)，则必为面片剖分对角线，直接剔除！
+    const hasZ = Math.abs(dir.z) > 1e-3;
+    const hasXY = Math.abs(dir.x) > 1e-3 || Math.abs(dir.y) > 1e-3;
+    const isDiagonal = hasZ && hasXY;
+
+    if (!isDiagonal) {
       filteredPos.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
     }
   }
