@@ -476,6 +476,7 @@ const switchVisualParadigm = (mode: 'cyber' | 'studio') => {
   tGenInstances.forEach(tg => tg.setVisualParadigm(mode));
   rManagerInstances.forEach(rm => rm.setVisualParadigm(mode));
   pipeGenInstances.forEach(pg => pg.setVisualParadigm(mode));
+  envInstances.forEach(env => env.setVisualParadigm(mode));
   scheduleRender();
 };
 
@@ -662,12 +663,12 @@ const updateLayerVisibility = () => {
     }
   });
 
-  // 4. 水文环境及其子图层 (地面、地下水流线、地下水粒子特效)
+  // 4. 水文环境及其子图层 (地面/地表、埋深标注、地下水流线、地下水粒子特效)
   const envVisible = layerVisibility.environment;
   envInstances.forEach(env => {
     if (env.waterPlane) env.waterPlane.visible = envVisible;
-    if (env.depthIndicator) env.depthIndicator.visible = envVisible;
     if (env.groundPlane) env.groundPlane.visible = envVisible && layerVisibility.ground;
+    if (env.depthIndicator) env.depthIndicator.visible = envVisible && layerVisibility.ground;
     if (env.flowLines) env.flowLines.visible = envVisible && layerVisibility.flowLines;
     if (env.waterParticles) {
       env.waterParticles.visible = envVisible && layerVisibility.waterParticles;

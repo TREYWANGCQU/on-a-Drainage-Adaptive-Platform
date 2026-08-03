@@ -224,6 +224,9 @@ export class Environment {
     this.initDepthIndicator();
   }
 
+  private visualParadigm: 'cyber' | 'studio' = 'cyber';
+  private groundMaterial!: THREE.MeshStandardMaterial;
+
   /**
    * 获取所有水文环境 3D 网格对象
    */
@@ -233,6 +236,7 @@ export class Environment {
     if (this.groundPlane) meshes.push(this.groundPlane);
     if (this.waterParticles) meshes.push(this.waterParticles);
     if (this.flowLines) meshes.push(this.flowLines);
+    if (this.depthIndicator) meshes.push(this.depthIndicator);
     return meshes;
   }
 
@@ -284,29 +288,28 @@ export class Environment {
   }
 
   /**
-   * 初始化地面基准面
+   * 生成程序化 Canvas 程序基准纹理 (降级容灾用)
    */
-  private initGroundPlane(): void {
-    const length = Math.abs(this.config.endChainage - this.config.startChainage);
-    const width = this.config.tunnelType === 'double'
-      ? (this.config.dSpacing || 0) + this.config.tunnelRadius * 10
-      : this.config.tunnelRadius * 10;
-    
-    const geometry = new THREE.PlaneGeometry(width, length);
-    
+  private generateProceduralGroundTexture(width: number, length: number, mode: 'cyber' | 'studio' = 'cyber'): THREE.CanvasTexture {
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 512;
     const ctx = canvas.getContext('2d')!;
     
     const gradient = ctx.createLinearGradient(0, 0, 0, 512);
-    gradient.addColorStop(0, '#1e293b');
-    gradient.addColorStop(0.5, '#334155');
-    gradient.addColorStop(1, '#1e293b');
+    if (mode === 'studio') {
+      gradient.addColorStop(0, '#e2e8f0');
+      gradient.addColorStop(0.5, '#cbd5e1');
+      gradient.addColorStop(1, '#e2e8f0');
+    } else {
+      gradient.addColorStop(0, '#1e293b');
+      gradient.addColorStop(0.5, '#334155');
+      gradient.addColorStop(1, '#1e293b');
+    }
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 512, 512);
     
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.25)';
+    ctx.strokeStyle = mode === 'studio' ? 'rgba(71, 85, 105, 0.25)' : 'rgba(56, 189, 248, 0.25)';
     ctx.lineWidth = 2;
     for (let i = 0; i <= 512; i += 32) {
       ctx.beginPath();
@@ -319,16 +322,66 @@ export class Environment {
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
     texture.repeat.set(width / 10, length / 10);
+    return texture;
+  }
+
+  /**
+   * 初始化地面基准面 (支持 PBR 贴图与程序化降级)
+   */
+  private initGroundPlane(): void {
+    const length = Math.abs(this.config.endChainage - this.config.startChainage);
+    const width = this.config.tunnelType === 'double'
+      ? (this.config.dSpacing || 0) + this.config.tunnelRadius * 10
+      : this.config.tunnelRadius * 10;
     
-    const material = new THREE.MeshStandardMaterial({
-      map: texture,
-      roughness: 0.6,
-      metalness: 0.3,
+    const geometry = new THREE.PlaneGeometry(width, length);
+    const defaultTexture = this.generateProceduralGroundTexture(width, length, this.visualParadigm);
+    
+    this.groundMaterial = new THREE.MeshStandardMaterial({
+      map: defaultTexture,
+      roughness: this.visualParadigm === 'studio' ? 0.8 : 0.6,
+      metalness: this.visualParadigm === 'studio' ? 0.1 : 0.3,
       transparent: true,
       opacity: 0.85
     });
+
+    // 尝试异步加载 PBR 真实贴图套件 (/textures/ground/)
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load(
+      '/textures/ground/ground_diffuse.jpg',
+      (diffuseTex) => {
+        diffuseTex.wrapS = THREE.RepeatWrapping;
+        diffuseTex.wrapT = THREE.RepeatWrapping;
+        diffuseTex.repeat.set(width / 10, length / 10);
+        this.groundMaterial.map = diffuseTex;
+        
+        // 尝试加载法线贴图
+        textureLoader.load('/textures/ground/ground_normal.jpg', (normalTex) => {
+          normalTex.wrapS = THREE.RepeatWrapping;
+          normalTex.wrapT = THREE.RepeatWrapping;
+          normalTex.repeat.set(width / 10, length / 10);
+          this.groundMaterial.normalMap = normalTex;
+          this.groundMaterial.needsUpdate = true;
+        });
+
+        // 尝试加载粗糙度贴图
+        textureLoader.load('/textures/ground/ground_roughness.jpg', (roughTex) => {
+          roughTex.wrapS = THREE.RepeatWrapping;
+          roughTex.wrapT = THREE.RepeatWrapping;
+          roughTex.repeat.set(width / 10, length / 10);
+          this.groundMaterial.roughnessMap = roughTex;
+          this.groundMaterial.needsUpdate = true;
+        });
+
+        this.groundMaterial.needsUpdate = true;
+      },
+      undefined,
+      () => {
+        // PBR 贴图未提供时，使用降级程序化 Canvas 纹理，不抛错
+      }
+    );
     
-    this.groundPlane = new THREE.Mesh(geometry, material);
+    this.groundPlane = new THREE.Mesh(geometry, this.groundMaterial);
     this.groundPlane.rotation.x = -Math.PI / 2;
     
     const tunnelCrownY = this.config.tunnelRadius * 1.4;
@@ -474,11 +527,16 @@ export class Environment {
     ];
     
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const isStudio = this.visualParadigm === 'studio';
+    const accentColor = isStudio ? 0x0284c7 : 0x38bdf8;
+    const accentHex = isStudio ? '#0284c7' : '#38bdf8';
+    const bgHex = isStudio ? 'rgba(255, 255, 255, 0.9)' : 'rgba(15, 23, 42, 0.85)';
+
     const material = new THREE.LineDashedMaterial({
-      color: 0x38bdf8,
+      color: accentColor,
       dashSize: 0.5,
       gapSize: 0.3,
-      opacity: 0.8,
+      opacity: 0.85,
       transparent: true
     });
     
@@ -491,14 +549,14 @@ export class Environment {
     canvas.width = 384;
     canvas.height = 80;
     const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillStyle = bgHex;
     ctx.fillRect(8, 8, 368, 64);
-    ctx.strokeStyle = '#38bdf8';
+    ctx.strokeStyle = accentHex;
     ctx.lineWidth = 3;
     ctx.strokeRect(8, 8, 368, 64);
 
     ctx.font = 'bold 22px "Segoe UI", sans-serif';
-    ctx.fillStyle = '#38bdf8';
+    ctx.fillStyle = accentHex;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
@@ -549,6 +607,48 @@ export class Environment {
     if (this.groundPlane) {
       const tunnelCrownY = this.config.tunnelRadius * 1.4;
       this.groundPlane.position.y = this.getCompressedGroundY(burialDepth, tunnelCrownY);
+    }
+  }
+
+  /**
+   * 动态设置视觉美学范式 (Cyber 赛博暗夜风 vs Studio 高亮影棚风)
+   */
+  public setVisualParadigm(mode: 'cyber' | 'studio'): void {
+    if (this.visualParadigm === mode) return;
+    this.visualParadigm = mode;
+
+    // 1. 更新地表材质物理属性与纹理
+    if (this.groundMaterial) {
+      this.groundMaterial.roughness = mode === 'studio' ? 0.8 : 0.6;
+      this.groundMaterial.metalness = mode === 'studio' ? 0.1 : 0.3;
+      
+      // 若当前使用的是降级程序化纹理，更新程序化渐变颜色
+      if (this.groundMaterial.map && this.groundMaterial.map.name === 'procedural') {
+        const length = Math.abs(this.config.endChainage - this.config.startChainage);
+        const width = this.config.tunnelType === 'double'
+          ? (this.config.dSpacing || 0) + this.config.tunnelRadius * 10
+          : this.config.tunnelRadius * 10;
+        this.groundMaterial.map = this.generateProceduralGroundTexture(width, length, mode);
+      }
+      this.groundMaterial.needsUpdate = true;
+    }
+
+    // 2. 更新埋深指示器 (depthIndicator) 的线段与文本 Sprite
+    if (this.depthIndicator) {
+      const isVisible = this.depthIndicator.visible;
+      this.scene.remove(this.depthIndicator);
+      this.depthIndicator.children.forEach(child => {
+        if ((child as any).geometry) (child as any).geometry.dispose();
+        if ((child as any).material) {
+          if (Array.isArray((child as any).material)) {
+            (child as any).material.forEach((m: any) => m.dispose());
+          } else {
+            (child as any).material.dispose();
+          }
+        }
+      });
+      this.initDepthIndicator();
+      this.depthIndicator.visible = isVisible;
     }
   }
 
