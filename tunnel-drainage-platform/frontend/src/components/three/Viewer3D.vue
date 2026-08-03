@@ -1302,6 +1302,7 @@ const renderSceneData = () => {
       r2,
       rg_crit: props.mode === 'original' ? undefined : rawData.results?.critical_state?.rg_crit,
       tg_crit: props.mode === 'original' ? undefined : rawData.results?.critical_state?.tg_crit,
+      base_r: r,
       start_chainage,
       end_chainage,
       tunnel_type,

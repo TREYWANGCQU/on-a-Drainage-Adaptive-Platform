@@ -1,7 +1,7 @@
 // tunnel-drainage-platform/frontend/src/components/three/Reinforcement.ts
 import * as THREE from 'three';
 import { polarToCartesian, calculateNormalQuaternion } from '@/utils/math';
-import { buildHorseshoeShape } from './TunnelGenerator';
+import { buildHorseshoeShape, removeExtrudeEndCaps, processHorseshoeLiningGeometry } from './TunnelGenerator';
 
 /**
  * 注浆圈配置接口 - 严格遵循阶段4-snapshot字段映射
@@ -15,6 +15,8 @@ export interface GroutingConfig {
   rg_crit?: number;
   /** 临界注浆圈厚度 (m)，对应 critical_state.tg_crit = max(0.0, rg_crit - r2) */
   tg_crit?: number;
+  /** 隧道净空基准内半径 (m)，对应 r_0 */
+  base_r?: number;
   /** 分区起点里程 (m)，对应 start_chainage */
   start_chainage: number;
   /** 分区终点里程 (m)，对应 end_chainage */
@@ -89,9 +91,11 @@ export class ReinforcementManager {
     this.nMaxGrouting = segmentsGrouting * 2;
 
     // 原始注浆圈（半透明青色），构建封闭马蹄形环状截面
-    const r_base = config.r2 ? config.r2 / 1.18 : 5.5;
+    const r_base = config.base_r ?? (config.r2 ? config.r2 / 1.18 : 5.5);
     const shapeInitial = buildHorseshoeShape(r_base, config.rg || (config.r2 + 1.5), config.r2 || 6.5, 0, 0.7);
-    const groutingGeom = new THREE.ExtrudeGeometry(shapeInitial, { depth: 1.0, bevelEnabled: false, curveSegments: 32 });
+    let groutingGeom: THREE.BufferGeometry = new THREE.ExtrudeGeometry(shapeInitial, { depth: 1.0, bevelEnabled: false, curveSegments: 32 });
+    groutingGeom = removeExtrudeEndCaps(groutingGeom);
+    groutingGeom = processHorseshoeLiningGeometry(groutingGeom);
 
     const groutingMaterial = new THREE.MeshStandardMaterial({
       color: 0x00ffff,
@@ -177,6 +181,7 @@ export class ReinforcementManager {
     const length = config.end_chainage - config.start_chainage;
     const segments = Math.max(1, Math.ceil(length / 5.0));
     const segmentLength = length / segments;
+    const baseRadius = config.base_r ?? 5.5;
 
     // ========== 原始注浆圈 ==========
     const tg_original = Math.max(0, config.rg - config.r2);
@@ -193,7 +198,8 @@ export class ReinforcementManager {
       tg_original > 0 ? 0x00ffff : 0x888888,
       0.25,
       config.tunnel_type,
-      config.D_spacing
+      config.D_spacing,
+      baseRadius
     );
 
     // ========== 临界注浆圈（双状态对比） ==========
@@ -209,13 +215,14 @@ export class ReinforcementManager {
         hasCritical ? 0xff6600 : 0x888888,
         hasCritical ? 0.35 : 0.1,
         config.tunnel_type,
-        config.D_spacing
+        config.D_spacing,
+        baseRadius
       );
     }
   }
 
   /**
-   * 内部：更新注浆圈环状体实例（支持双洞 Shape 几何与 5mm 防闪烁隙缝）
+   * 内部：更新注浆圈环状体实例（支持双洞 Shape 几何、5mm 防闪烁隙缝与端面盖板/法线去化处理）
    */
   private updateGroutingRing(
     mesh: THREE.InstancedMesh,
@@ -227,28 +234,40 @@ export class ReinforcementManager {
     _color: number,
     opacity: number = 0.25,
     tunnelType: 'single' | 'double' = 'single',
-    D_spacing: number = 30.0
+    D_spacing: number = 30.0,
+    baseRadius: number = 5.5
   ): void {
     const isDouble = tunnelType === 'double';
+
+    // 当注浆圈厚度 <= 0 (rOuter <= rInner + 0.001) 时，清空实例绘制数量，彻底消除重叠遗留伪影
+    if (rOuter <= rInner + 0.001) {
+      mesh.count = 0;
+      mesh.instanceMatrix.needsUpdate = true;
+      return;
+    }
+
     const totalInstances = segments;
     mesh.count = Math.min(totalInstances, mesh.instanceMatrix.count);
 
-    if (rOuter > rInner) {
-      const rInnerFit = rInner + 0.005; // 5mm 防闪烁隙缝
-      const tunnelRadius = rInner ? rInner / 1.18 : 5.5;
-      const shapes: THREE.Shape[] = [];
+    // 防闪烁微调：确保微调值不超过厚度的 40%，防止内半径反超外半径导致拓扑翻转
+    const epsFit = Math.min(0.005, (rOuter - rInner) * 0.4);
+    const rInnerFit = rInner + epsFit;
+    const shapes: THREE.Shape[] = [];
 
-      if (isDouble) {
-        shapes.push(buildHorseshoeShape(tunnelRadius, rOuter, rInnerFit, -D_spacing / 2, 0.7));
-        shapes.push(buildHorseshoeShape(tunnelRadius, rOuter, rInnerFit, D_spacing / 2, 0.7));
-      } else {
-        shapes.push(buildHorseshoeShape(tunnelRadius, rOuter, rInnerFit, 0, 0.7));
-      }
-
-      const newGeom = new THREE.ExtrudeGeometry(shapes, { depth: 1.0, bevelEnabled: false, curveSegments: 32 });
-      if (mesh.geometry) mesh.geometry.dispose();
-      mesh.geometry = newGeom;
+    if (isDouble) {
+      shapes.push(buildHorseshoeShape(baseRadius, rOuter, rInnerFit, -D_spacing / 2, 0.7));
+      shapes.push(buildHorseshoeShape(baseRadius, rOuter, rInnerFit, D_spacing / 2, 0.7));
+    } else {
+      shapes.push(buildHorseshoeShape(baseRadius, rOuter, rInnerFit, 0, 0.7));
     }
+
+    // 构建 3D 几何体，并进行端面盖板剔除与顶点法线离散化处理
+    let newGeom: THREE.BufferGeometry = new THREE.ExtrudeGeometry(shapes, { depth: 1.0, bevelEnabled: false, curveSegments: 32 });
+    newGeom = removeExtrudeEndCaps(newGeom);
+    newGeom = processHorseshoeLiningGeometry(newGeom);
+
+    if (mesh.geometry) mesh.geometry.dispose();
+    mesh.geometry = newGeom;
 
     const matrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
@@ -333,6 +352,7 @@ export class ReinforcementManager {
       r2: params.r_p ?? params.r2 ?? snapshot.r_p ?? snapshot.r2 ?? 8.57,
       rg_crit: critical.rg_crit,
       tg_crit: critical.tg_crit,
+      base_r: params.r_0 ?? params.r ?? snapshot.r_0 ?? snapshot.r ?? 5.5,
       start_chainage: params.start_chainage ?? snapshot.start_chainage ?? 0,
       end_chainage: params.end_chainage ?? snapshot.end_chainage ?? 50,
       tunnel_type: params.tunnel_type ?? snapshot.tunnel_type ?? 'single',

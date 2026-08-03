@@ -37,10 +37,10 @@ export class TunnelGenerator {
     this.L_max = Math.abs(end_chainage - start_chainage);
     this.delta_l_min = delta_l_min;
 
-    // 构建二衬 (r -> r1 - eps) 与 初支 (r1 + eps -> r2) 独立几何体，引入 1mm 物理避让间隙彻底消除 r1 界面 Z-fighting
-    const eps = 0.001;
+    // 构建二衬 (r -> r1 - eps) 与 初支 (r1 - eps -> r2) 拓扑无缝衔接几何体，彻底消除洞口端面 2mm 缝隙与侧壁 Z-fighting
+    const eps = 0.0005;
     const secondaryGeometry = this.createHorseshoeBase(type, r, r1 - eps, r, D_spacing, aspect_ratio);
-    const primaryGeometry = this.createHorseshoeBase(type, r, r2, r1 + eps, D_spacing, aspect_ratio);
+    const primaryGeometry = this.createHorseshoeBase(type, r, r2, r1 - eps, D_spacing, aspect_ratio);
 
     // 材质挂影与 Uniform 参数暴露
     const uniformsBase = {

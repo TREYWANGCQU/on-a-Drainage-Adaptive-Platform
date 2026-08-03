@@ -100,8 +100,8 @@ void main() {
     
     // 【核心修正】完全隔离相机视角干扰，使用绝对局部坐标法线判定
     if (abs(vLocalNormal.z) > 0.5) {
-        // [核心剔除] 仅渲染隧道真实前洞口（z >= -0.8）与后洞口（z <= -(totalLength - 0.8)），废弃中间1m实例产生的内部切片端面
-        if (totalLength > 1.5 && vLocalPosition.z < -0.8 && vLocalPosition.z > -(totalLength - 0.8)) {
+        // [核心剔除] 仅渲染隧道真实前洞口（z >= -0.8）与后洞口（z <= -(totalLength - 1.2)），废弃中间1m实例产生的内部切片端面
+        if (totalLength > 1.5 && vLocalPosition.z < -0.8 && vLocalPosition.z > -(totalLength - 1.2)) {
             discard;
         }
 
