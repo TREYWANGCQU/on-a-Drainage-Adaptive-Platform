@@ -922,7 +922,7 @@ const handleCanvasPointerMove = (event: MouseEvent) => {
 
   if (intersects.length > 0) {
     const hit = intersects[0].object;
-    if (hit && hit.userData && (hit.userData.pipeCategory || hit.userData.name)) {
+    if (hit && hit.userData && hit.userData.isAnnotation === true && (hit.userData.pipeCategory || hit.userData.name)) {
       canvasRef.value.style.cursor = 'pointer';
       return;
     }
@@ -1183,10 +1183,10 @@ const handleCanvasClick = (event: MouseEvent) => {
     return;
   }
 
-  // 非测距模式：检测是否点击了排水管网或 3D 悬浮文字卡片，激活 PIP 微观局部放大镜
+  // 非测距模式：仅当点击 3D 悬浮文字标注框 (isAnnotation === true) 时才弹出 PIP 局部放大镜
   if (intersects.length > 0) {
     const hit = intersects[0].object;
-    if (hit && hit.userData && (hit.userData.pipeCategory || hit.userData.name)) {
+    if (hit && hit.userData && hit.userData.isAnnotation === true && (hit.userData.pipeCategory || hit.userData.name)) {
       pipPipeData.value = { ...hit.userData };
       isPipActive.value = true;
       return;

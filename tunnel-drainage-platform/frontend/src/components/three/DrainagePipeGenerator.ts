@@ -591,6 +591,7 @@ export class DrainagePipeGenerator {
     const sprite = new THREE.Sprite(spriteMaterial);
     sprite.renderOrder = 999;
     sprite.scale.set(6.0, 1.5, 1.0);
+    sprite.userData = { isAnnotation: true };
     return sprite;
   }
 
@@ -632,7 +633,9 @@ export class DrainagePipeGenerator {
     const ringSprite = this.createTextSprite(ringText, labelColor);
     ringSprite.position.set(mainXOffset, r2 + 0.6, -this.config.startChainage);
     ringSprite.userData = {
+      isAnnotation: true,
       pipeCategory: 'ring',
+      nodeType: 'standard',
       name: '环向排水盲管',
       diameter: ringDiamMm,
       spacing: parseFloat(ringSpacingM),
@@ -648,7 +651,9 @@ export class DrainagePipeGenerator {
     const longSprite = this.createTextSprite(longText, '#2ecc71');
     longSprite.position.set(mainXOffset + ditchGeo.sideDitchX, ditchGeo.sideDitchBottomY + 0.5, -this.config.startChainage - length * 0.4);
     longSprite.userData = {
+      isAnnotation: true,
       pipeCategory: 'longitudinal',
+      nodeType: 'standard',
       name: '纵向主排水管',
       diameter: longDiamMm,
       spacing: 50.0,
@@ -664,7 +669,9 @@ export class DrainagePipeGenerator {
     const latSprite = this.createTextSprite(latText, '#e74c3c');
     latSprite.position.set(mainXOffset + ditchGeo.sideDitchX / 2, (ditchGeo.sideDitchBottomY + ditchGeo.ditchBottomY) / 2 + 0.5, -this.config.startChainage - length * 0.2);
     latSprite.userData = {
+      isAnnotation: true,
       pipeCategory: 'lateral',
+      nodeType: 'standard',
       name: '横向连通排水管',
       diameter: latDiamMm,
       spacing: parseFloat(ringSpacingM) * 2,
@@ -674,7 +681,26 @@ export class DrainagePipeGenerator {
     };
     this.annotationGroup.add(latSprite);
 
-    // 4. 径向管文本标注已移除
+    // 4. 环向盲管与纵向排水管三通连接节点标注 (仅保留 1 个三通演示)
+    const threeWayText = `${prefix}三通连接节点: 环向盲管-纵向排水管 🔍`;
+    const threeWaySprite = this.createTextSprite(threeWayText, '#a855f7');
+    threeWaySprite.position.set(
+      mainXOffset + ditchGeo.sideDitchX, 
+      ditchGeo.sideDitchBottomY + 0.4, 
+      -this.config.startChainage - length * 0.25
+    );
+    threeWaySprite.userData = {
+      isAnnotation: true,
+      pipeCategory: 'three_way',
+      nodeType: 'three-way',
+      name: '环向盲管与纵向排水管三通节点',
+      diameter: 100,
+      spacing: parseFloat(ringSpacingM),
+      permeability: '三向汇排 3.5×10⁻² cm/s',
+      flowRate: '0.60 L/s',
+      status: '高效汇排'
+    };
+    this.annotationGroup.add(threeWaySprite);
   }
 
   /**
