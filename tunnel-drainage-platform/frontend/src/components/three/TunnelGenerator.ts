@@ -428,7 +428,7 @@ export class TunnelGenerator {
     const scale = new THREE.Vector3(scaleFactor, scaleFactor, scaleFactor);
 
     for (let i = 0; i < nCurrent; i++) {
-      const z = -i * spacingZ;
+      const z = -(i * spacingZ + spacingZ);
 
       position.set(0, 0, z);
 
