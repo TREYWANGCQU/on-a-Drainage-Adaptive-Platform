@@ -57,6 +57,7 @@ export class DrainagePipeGenerator {
     this.config = config;
     this.annotationGroup = new THREE.Group();
     this.annotationGroup.name = 'DrainagePipeAnnotations';
+    this.annotationGroup.renderOrder = 999;
     const r2 = config.outerRadius ?? (config.tunnelRadius + 1.0);
     this.horseshoeCurve = new HorseshoeArcCurve(config.tunnelRadius, r2, 0.7);
 
@@ -564,9 +565,11 @@ export class DrainagePipeGenerator {
     const spriteMaterial = new THREE.SpriteMaterial({
       map: texture,
       transparent: true,
-      depthTest: false
+      depthTest: false,
+      depthWrite: false
     });
     const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.renderOrder = 999;
     sprite.scale.set(6.0, 1.5, 1.0);
     return sprite;
   }

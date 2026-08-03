@@ -103,7 +103,8 @@ export class ReinforcementManager {
       metalness: 0.1,
       transparent: true,
       opacity: 0.25,
-      side: THREE.DoubleSide
+      depthWrite: false,
+      side: THREE.FrontSide
     });
     this.groutingMesh = new THREE.InstancedMesh(
       groutingGeom,
@@ -121,7 +122,8 @@ export class ReinforcementManager {
       metalness: 0.1,
       transparent: true,
       opacity: 0.35,
-      side: THREE.DoubleSide
+      depthWrite: false,
+      side: THREE.FrontSide
     });
     this.criticalGroutingMesh = new THREE.InstancedMesh(
       groutingGeom.clone(),
@@ -139,6 +141,8 @@ export class ReinforcementManager {
   public setVisualParadigm(mode: 'studio' | 'cyber'): void {
     if (this.criticalGroutingMesh) {
       const mat = this.criticalGroutingMesh.material as THREE.MeshStandardMaterial;
+      mat.depthWrite = false;
+      mat.side = THREE.FrontSide;
       if (mode === 'studio') {
         mat.color.setHex(0xd4af37); // 抛光黄铜 / 金色 PBR 金属材质 (Metalness: 0.95, Roughness: 0.18)
         mat.metalness = 0.95;
@@ -157,6 +161,8 @@ export class ReinforcementManager {
     }
     if (this.groutingMesh) {
       const mat = this.groutingMesh.material as THREE.MeshStandardMaterial;
+      mat.depthWrite = false;
+      mat.side = THREE.FrontSide;
       if (mode === 'studio') {
         mat.color.setHex(0x38bdf8);
         mat.metalness = 0.8;
@@ -179,8 +185,9 @@ export class ReinforcementManager {
    */
   public updateGroutingFromSnapshot(config: GroutingConfig): void {
     const length = config.end_chainage - config.start_chainage;
-    const segments = Math.max(1, Math.ceil(length / 5.0));
-    const segmentLength = length / segments;
+    // 连续注浆圈采用整段单 Instance 挤出，彻底根除纵向拼接缝隙与环向条纹伪影
+    const segments = 1;
+    const segmentLength = length;
     const baseRadius = config.base_r ?? 5.5;
 
     // ========== 原始注浆圈 ==========
@@ -275,7 +282,7 @@ export class ReinforcementManager {
     const quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 0));
 
     for (let i = 0; i < segments; i++) {
-      const z = -(i * segmentLength + segmentLength / 2);
+      const z = -(i * segmentLength + segmentLength);
       if (i >= mesh.count) break;
       position.set(0, 0, z);
       matrix.compose(position, quaternion, scale);
