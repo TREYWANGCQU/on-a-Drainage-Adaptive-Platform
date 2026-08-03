@@ -1,10 +1,11 @@
 <!-- 阶段4-第六次-排水沟发光去化与HDRI光影响应更新方案.md -->
-# 阶段4-第六次-排水沟发光去化与HDRI光影响应更新方案 (v6.7 修正版)
+# 阶段4-第六次-排水沟发光去化与HDRI光影响应更新方案 (v6.8 已执行版)
 
 ---
-**版本**: v6.7 (解耦重构版)  
+**版本**: v6.8 (已执行)  
 **定位**: 隧道防排水自适应平台 - 排水沟发光归零、3-Box 凸拓扑解耦大/小三角形根除与 HDRI IBL 物理光影响应方案  
 **依据**: 基于 `/verifier` 独立核验与图形学 Earcut 算法归因诊断。彻底纠正先前 8 顶点凹多边形 `createUShape` 引发 Earcut 凹角盲目切分产生大三角形的盲区，采用 **3 块 4 顶点凸矩形盒 (3-Box Composite)** 组合拓扑，配合顶点法线归一化与 Z-Buffer 禁写，实现几何与材质的解耦重塑。  
+  
 ---
 
 ## 1. Objectives (方案目标)
@@ -80,17 +81,17 @@
 
 ```
 WBS 4.0 排水沟发光去化、3-Box 凸拓扑解耦与 HDRI 物理光影响应
- ├── 阶段 4.1：材质自发光归零 (安全、无拓扑风险)
- │    ├── 4.1.1 归零 ditchMat 的 emissive (0x000000) 与 emissiveIntensity (0.0)
- │    ├── 4.1.2 同步更新 setVisualParadigm()，确保 studio/cyber 动态切换时均归零发光
- │    └── 4.1.3 柔化 ditchEdgeMat 轮廓线透明度至 0.45
- ├── 阶段 4.2：3-Box 凸拓扑几何重构 (解耦根除大/小三角形)
- │    ├── 4.2.1 彻底废弃 8 顶点凹 Shape，编写 createDitchBoxShapes 3-Box 拆分函数
- │    ├── 4.2.2 保持 δx = 0.008m, δy = 0.005m 物理缩进容差，彻底消除 Contact Alpha 叠加
- │    ├── 4.2.3 对 Extrude 后的 3-Box 几何体应用 computeVertexNormals() 归一化法线
- │    ├── 4.2.4 设置 ditchMat 的 depthWrite: false 与 side: FrontSide 消除 Z-Buffer 自遮挡
- │    └── 4.2.5 应用 removeExtrudeEndCaps 剔除 1m 节段前后端面 Cap
- └── 阶段 4.3：运行期质量回归与 HDRI 验证
+ ├── 阶段 4.1：材质自发光归零 (安全、无拓扑风险)                          [✅ 已执行]
+ │    ├── 4.1.1 归零 ditchMat 的 emissive (0x000000) 与 emissiveIntensity (0.0)  [✅]
+ │    ├── 4.1.2 同步更新 setVisualParadigm()，确保 studio/cyber 动态切换时均归零发光  [✅]
+ │    └── 4.1.3 柔化 ditchEdgeMat 轮廓线透明度至 0.45                      [✅]
+ ├── 阶段 4.2：3-Box 凸拓扑几何重构 (解耦根除大/小三角形)                   [✅ 已执行]
+ │    ├── 4.2.1 彻底废弃 8 顶点凹 Shape，编写 createDitchBoxShapes 3-Box 拆分函数  [✅ v6.8 执行]
+ │    ├── 4.2.2 保持 δx = 0.008m, δy = 0.005m 物理缩进容差                 [✅]
+ │    ├── 4.2.3 对 Extrude 后的 3-Box 几何体应用 computeVertexNormals()      [✅]
+ │    ├── 4.2.4 设置 ditchMat 的 depthWrite: false 与 side: FrontSide       [✅]
+ │    └── 4.2.5 应用 removeExtrudeEndCaps 剔除 1m 节段前后端面 Cap          [✅]
+ └── 阶段 4.3：运行期质量回归与 HDRI 验证                                  [⏳ 待验证]
       ├── 4.3.1 验证 Studio 影棚下 HDRI 镜面高光与 Cyber 暗夜下沉浸质感
       └── 4.3.2 确认大三角形与小三角形 100% 消失，剖切与显隐控制无异常
 ```
@@ -127,46 +128,53 @@ if (this.ditchMesh) {
 }
 ```
 
-### 5.2 阶段 4.2 3-Box 凸拓扑拆分规范
-在 [TunnelGenerator.ts](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/three/TunnelGenerator.ts) 中采用 3 块 4 顶点凸矩形 Box：
+### 5.2 阶段 4.2 3-Box 凸拓扑拆分规范 ✅ 已执行
+在 [TunnelGenerator.ts](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/three/TunnelGenerator.ts) 中已将 `createUShape` 替换为 3 块 4 顶点凸矩形 Box `createDitchBoxShapes`：
 
 ```typescript
-// 3 块 4 顶点凸矩形盒构造 (100% 免疫 Earcut 凹角切分大三角形) (WBS 4.2.1)
-const createDitchBoxShapes = (xMin: number, xMax: number, yTop: number, yBot: number, wallThickness: number = 0.05) => {
+// tunnel-drainage-platform/frontend/src/components/three/TunnelGenerator.ts
+// 3-Box 凸拓扑 (WBS 4.2.1) — 已执行
+const createDitchBoxShapes = (xMin: number, xMax: number, yTop: number, yBot: number, wallThickness: number = 0.05): THREE.Shape[] => {
   const safeXMin = xMin + delta_x;
   const safeXMax = xMax - delta_x;
   const safeYBot = yBot + delta_y;
   const t = Math.min(wallThickness, (safeXMax - safeXMin) / 3);
-
   const shapes: THREE.Shape[] = [];
 
-  // 左侧壁 4 顶点凸矩形
+  // 左侧壁 Box (4 顶点凸矩形 → Earcut 确定性 2 三角形)
   const leftWall = new THREE.Shape();
   leftWall.moveTo(safeXMin + ox, yTop);
   leftWall.lineTo(safeXMin + t + ox, yTop);
-  leftWall.lineTo(safeXMin + t + ox, safeYBot + t);
-  leftWall.lineTo(safeXMin + ox, safeYBot + t);
+  leftWall.lineTo(safeXMin + t + ox, safeYBot);
+  leftWall.lineTo(safeXMin + ox, safeYBot);
   leftWall.closePath();
+  shapes.push(leftWall);
 
-  // 槽底 4 顶点凸矩形
+  // 槽底 Box (4 顶点凸矩形 → Earcut 确定性 2 三角形)
   const bottom = new THREE.Shape();
   bottom.moveTo(safeXMin + ox, safeYBot + t);
   bottom.lineTo(safeXMax + ox, safeYBot + t);
   bottom.lineTo(safeXMax + ox, safeYBot);
   bottom.lineTo(safeXMin + ox, safeYBot);
   bottom.closePath();
+  shapes.push(bottom);
 
-  // 右侧壁 4 顶点凸矩形
+  // 右侧壁 Box (4 顶点凸矩形 → Earcut 确定性 2 三角形)
   const rightWall = new THREE.Shape();
   rightWall.moveTo(safeXMax - t + ox, yTop);
   rightWall.lineTo(safeXMax + ox, yTop);
-  rightWall.lineTo(safeXMax + ox, safeYBot + t);
-  rightWall.lineTo(safeXMax - t + ox, safeYBot + t);
+  rightWall.lineTo(safeXMax + ox, safeYBot);
+  rightWall.lineTo(safeXMax - t + ox, safeYBot);
   rightWall.closePath();
+  shapes.push(rightWall);
 
-  shapes.push(leftWall, bottom, rightWall);
   return shapes;
 };
+
+// 调用方式: 展开 shapes 数组
+ditchShapes.push(...createDitchBoxShapes(centralLeftX, centralRightX, roadY, yBot_central, 0.05));
+ditchShapes.push(...createDitchBoxShapes(sideLeftX, sideLeftXInner, roadY, yBot_side, 0.05));
+ditchShapes.push(...createDitchBoxShapes(sideRightXInner, sideRightX, roadY, yBot_side, 0.05));
 ```
 
 ---

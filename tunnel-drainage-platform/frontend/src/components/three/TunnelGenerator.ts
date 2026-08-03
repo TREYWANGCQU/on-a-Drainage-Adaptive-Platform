@@ -196,34 +196,52 @@ export class TunnelGenerator {
       }
       roadShapes.push(roadShape);
 
-      // 2. 独立三沟 Shape 构造 (引入 δx = 0.008m, δy = 0.005m 物理缩进容差，彻底消除与路面切口的 Z-Fighting) (WBS 1.2)
+      // 2. 独立三沟 Shape 构造: 3-Box 凸拓扑 (WBS 4.2.1)
+      // 每条 U 型沟槽拆分为 3 块独立的 4 顶点凸矩形 (左壁 + 底板 + 右壁)
+      // 4 顶点凸矩形的 Earcut 三角剖分结果恒为 2 个三角形，100% 免疫凹角跨越大三角形
       const delta_x = 0.008;
       const delta_y = 0.005;
 
-      const createUShape = (xMin: number, xMax: number, yTop: number, yBot: number, wallThickness: number = 0.05) => {
+      const createDitchBoxShapes = (xMin: number, xMax: number, yTop: number, yBot: number, wallThickness: number = 0.05): THREE.Shape[] => {
         const safeXMin = xMin + delta_x;
         const safeXMax = xMax - delta_x;
         const safeYBot = yBot + delta_y;
         const t = Math.min(wallThickness, (safeXMax - safeXMin) / 3);
+        const shapes: THREE.Shape[] = [];
 
-        const s = new THREE.Shape();
-        // 8顶点 U 型凹槽横截面轮廓（敞口空心 U 型水槽，避免 Box/Hole 在 Extrude 时在顶面生成封闭顶盖）
-        s.moveTo(safeXMin + ox, yTop);
-        s.lineTo(safeXMin + t + ox, yTop);
-        s.lineTo(safeXMin + t + ox, safeYBot + t);
-        s.lineTo(safeXMax - t + ox, safeYBot + t);
-        s.lineTo(safeXMax - t + ox, yTop);
-        s.lineTo(safeXMax + ox, yTop);
-        s.lineTo(safeXMax + ox, safeYBot);
-        s.lineTo(safeXMin + ox, safeYBot);
-        s.closePath();
+        // 左侧壁 Box (4 顶点凸矩形 → Earcut 确定性 2 三角形)
+        const leftWall = new THREE.Shape();
+        leftWall.moveTo(safeXMin + ox, yTop);
+        leftWall.lineTo(safeXMin + t + ox, yTop);
+        leftWall.lineTo(safeXMin + t + ox, safeYBot);
+        leftWall.lineTo(safeXMin + ox, safeYBot);
+        leftWall.closePath();
+        shapes.push(leftWall);
 
-        return s;
+        // 槽底 Box (4 顶点凸矩形 → Earcut 确定性 2 三角形)
+        const bottom = new THREE.Shape();
+        bottom.moveTo(safeXMin + ox, safeYBot + t);
+        bottom.lineTo(safeXMax + ox, safeYBot + t);
+        bottom.lineTo(safeXMax + ox, safeYBot);
+        bottom.lineTo(safeXMin + ox, safeYBot);
+        bottom.closePath();
+        shapes.push(bottom);
+
+        // 右侧壁 Box (4 顶点凸矩形 → Earcut 确定性 2 三角形)
+        const rightWall = new THREE.Shape();
+        rightWall.moveTo(safeXMax - t + ox, yTop);
+        rightWall.lineTo(safeXMax + ox, yTop);
+        rightWall.lineTo(safeXMax + ox, safeYBot);
+        rightWall.lineTo(safeXMax - t + ox, safeYBot);
+        rightWall.closePath();
+        shapes.push(rightWall);
+
+        return shapes;
       };
 
-      ditchShapes.push(createUShape(centralLeftX, centralRightX, roadY, yBot_central, 0.05)); // 中央深水沟
-      ditchShapes.push(createUShape(sideLeftX, sideLeftXInner, roadY, yBot_side, 0.05)); // 左侧沟槽
-      ditchShapes.push(createUShape(sideRightXInner, sideRightX, roadY, yBot_side, 0.05)); // 右侧沟槽
+      ditchShapes.push(...createDitchBoxShapes(centralLeftX, centralRightX, roadY, yBot_central, 0.05)); // 中央深水沟
+      ditchShapes.push(...createDitchBoxShapes(sideLeftX, sideLeftXInner, roadY, yBot_side, 0.05)); // 左侧沟槽
+      ditchShapes.push(...createDitchBoxShapes(sideRightXInner, sideRightX, roadY, yBot_side, 0.05)); // 右侧沟槽
     });
 
     // 1.0m 精确拉伸，消除 1m 实例衔接隙缝 (WBS 1.4)
@@ -235,6 +253,14 @@ export class TunnelGenerator {
     roadGeo = removeExtrudeEndCaps(roadGeo);
     ditchGeo = removeExtrudeEndCaps(ditchGeo);
 
+    // 关键修正：转换为非索引 BufferGeometry 并重新计算独立面法线
+    // 彻底消除 90° 平滑法线插值导致的片元对角线色差（根除小三角形与路面大三角形条纹）
+    roadGeo = roadGeo.toNonIndexed();
+    roadGeo.computeVertexNormals();
+
+    ditchGeo = ditchGeo.toNonIndexed();
+    ditchGeo.computeVertexNormals();
+
     // 沥青路面材质升级：高透透视与 Depth-Test 渲染顺序解耦 (WBS 2.2 / WBS 4)
     const roadMat = new THREE.MeshStandardMaterial({
       color: 0x0f172a,
@@ -243,10 +269,10 @@ export class TunnelGenerator {
       transparent: true,
       opacity: 0.55,
       depthWrite: true,
-      side: THREE.DoubleSide
+      side: THREE.FrontSide
     });
 
-    // 排水沟材质升级：自发光彻底归零与 PBR 物理漫反射参数调整 (WBS 4.1.1)
+    // 排水沟材质升级：自发光彻底归零与 PBR 物理漫反射参数调整 (WBS 4.1.1 & WBS 4.2.4)
     const ditchMat = new THREE.MeshStandardMaterial({
       color: 0x1e3a5a,
       emissive: new THREE.Color(0x000000),
@@ -255,8 +281,8 @@ export class TunnelGenerator {
       metalness: 0.2,
       transparent: true,
       opacity: 0.75,
-      depthWrite: true,
-      side: THREE.DoubleSide,
+      depthWrite: false,
+      side: THREE.FrontSide,
       polygonOffset: true,
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1
