@@ -98,11 +98,11 @@ export class ReinforcementManager {
     groutingGeom = processHorseshoeLiningGeometry(groutingGeom);
 
     const groutingMaterial = new THREE.MeshStandardMaterial({
-      color: 0x00ffff,
-      roughness: 0.3,
-      metalness: 0.1,
+      color: 0x38bdf8,
+      roughness: 0.20,
+      metalness: 0.20,
       transparent: true,
-      opacity: 0.25,
+      opacity: 0.30,
       depthWrite: false,
       side: THREE.FrontSide
     });
@@ -114,14 +114,16 @@ export class ReinforcementManager {
     this.groutingMesh.frustumCulled = false;
     this.groutingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.groutingMesh.count = 0;
+    this.groutingMesh.renderOrder = 5;
 
     // 临界注浆圈常驻初始化（支持动态解算结果注入与显隐切换）
     const criticalMaterial = new THREE.MeshStandardMaterial({
-      color: 0xff6600,
-      roughness: 0.3,
-      metalness: 0.1,
+      color: 0xffd700,
+      roughness: 0.15,
+      metalness: 0.92,
+      emissive: new THREE.Color(0x000000),
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.85,
       depthWrite: false,
       side: THREE.FrontSide
     });
@@ -133,10 +135,11 @@ export class ReinforcementManager {
     this.criticalGroutingMesh.frustumCulled = false;
     this.criticalGroutingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.criticalGroutingMesh.count = 0;
+    this.criticalGroutingMesh.renderOrder = 25;
   }
 
   /**
-   * 切换范式材质 (影棚抛光黄铜 vs 赛博荧光橙)
+   * 切换范式材质 (影棚抛光黄金 PBR vs 赛博暗夜微光)
    */
   public setVisualParadigm(mode: 'studio' | 'cyber'): void {
     if (this.criticalGroutingMesh) {
@@ -144,18 +147,19 @@ export class ReinforcementManager {
       mat.depthWrite = false;
       mat.side = THREE.FrontSide;
       if (mode === 'studio') {
-        mat.color.setHex(0xd4af37); // 抛光黄铜 / 金色 PBR 金属材质 (Metalness: 0.95, Roughness: 0.18)
+        mat.color.setHex(0xffd700); // 纯黄金 PBR 金属材质 (#FFD700)
         mat.metalness = 0.95;
         mat.roughness = 0.18;
         mat.opacity = 0.85;
-        mat.emissive.setHex(0x332200);
+        mat.emissive.setHex(0x000000);
+        mat.emissiveIntensity = 0.0;
       } else {
-        mat.color.setHex(0xff9900); // 炽热荧光橙能量防护带
-        mat.metalness = 0.1;
-        mat.roughness = 0.3;
-        mat.opacity = 0.45;
-        mat.emissive.setHex(0xff6600);
-        mat.emissiveIntensity = 0.8;
+        mat.color.setHex(0xd4af37); // 暗夜香槟金辅助防护带
+        mat.metalness = 0.90;
+        mat.roughness = 0.20;
+        mat.opacity = 0.85;
+        mat.emissive.setHex(0x221800);
+        mat.emissiveIntensity = 0.15;
       }
       mat.needsUpdate = true;
     }
@@ -165,14 +169,18 @@ export class ReinforcementManager {
       mat.side = THREE.FrontSide;
       if (mode === 'studio') {
         mat.color.setHex(0x38bdf8);
-        mat.metalness = 0.8;
-        mat.roughness = 0.2;
-        mat.opacity = 0.4;
+        mat.metalness = 0.20;
+        mat.roughness = 0.20;
+        mat.opacity = 0.30;
+        mat.emissive.setHex(0x000000);
+        mat.emissiveIntensity = 0.0;
       } else {
-        mat.color.setHex(0x00ffff);
-        mat.metalness = 0.1;
-        mat.roughness = 0.3;
-        mat.opacity = 0.25;
+        mat.color.setHex(0x38bdf8);
+        mat.metalness = 0.20;
+        mat.roughness = 0.20;
+        mat.opacity = 0.30;
+        mat.emissive.setHex(0x002244);
+        mat.emissiveIntensity = 0.10;
       }
       mat.needsUpdate = true;
     }
@@ -202,8 +210,8 @@ export class ReinforcementManager {
       config.start_chainage,
       r_inner,
       r_outer,
-      tg_original > 0 ? 0x00ffff : 0x888888,
-      0.25,
+      tg_original > 0 ? 0x38bdf8 : 0x888888,
+      0.30,
       config.tunnel_type,
       config.D_spacing,
       baseRadius
@@ -219,8 +227,8 @@ export class ReinforcementManager {
         config.start_chainage,
         config.r2,
         hasCritical ? config.rg_crit : config.r2,
-        hasCritical ? 0xff6600 : 0x888888,
-        hasCritical ? 0.35 : 0.1,
+        hasCritical ? 0xffd700 : 0x888888,
+        hasCritical ? 0.85 : 0.1,
         config.tunnel_type,
         config.D_spacing,
         baseRadius
@@ -419,14 +427,16 @@ export class RockBoltGenerator {
     geometry.rotateX(Math.PI / 2);
 
     const material = new THREE.MeshStandardMaterial({ 
-      color: 0x8a8a8a, 
-      roughness: 0.8 
+      color: 0xe2e8f0,
+      metalness: 0.90, 
+      roughness: 0.20 
     });
 
     this.mesh = new THREE.InstancedMesh(geometry, material, nMax);
     this.mesh.frustumCulled = false;
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.count = 0;
+    this.mesh.renderOrder = 30;
   }
 
   public updateFromSnapshot(snapshot: any, stateColors?: THREE.Color[]): void {

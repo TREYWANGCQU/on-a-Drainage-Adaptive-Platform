@@ -856,12 +856,24 @@ const initWebGL = () => {
   activeCamera = cameraMode.value === 'orthographic' ? orthographicCamera : perspectiveCamera;
   camera = activeCamera as any;
 
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
-  dirLight.position.set(30, 60, 40);
-  dirLight.castShadow = true;
-  dirLight.shadow.bias = -0.0001;
-  dirLight.shadow.normalBias = 0.05;
-  scene.add(dirLight);
+  // 影棚级三点光源阵列 (Key Light + Fill Light + Rim Light)
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
+  keyLight.position.set(50, 80, 50);
+  keyLight.castShadow = true;
+  keyLight.shadow.bias = -0.0001;
+  keyLight.shadow.normalBias = 0.05;
+  scene.add(keyLight);
+
+  const fillLight = new THREE.DirectionalLight(0x93c5fd, 1.2);
+  fillLight.position.set(-50, 40, -50);
+  scene.add(fillLight);
+
+  const rimLight = new THREE.DirectionalLight(0xfde047, 2.8);
+  rimLight.position.set(0, -20, -100);
+  scene.add(rimLight);
+
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambientLight);
 
   // PMREMGenerator 动态生成双范式 HDRI 光照贴图，赋予金属与玻璃逼真反射
   updateEnvironmentMap(visualParadigm.value);
@@ -877,9 +889,6 @@ const initWebGL = () => {
     });
     scheduleRender();
   });
-
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-  scene.add(ambientLight);
 
   probeManager = new StressProbeManager(scene);
   scene.add(measureGroup);

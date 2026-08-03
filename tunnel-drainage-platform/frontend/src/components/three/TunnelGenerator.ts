@@ -42,7 +42,7 @@ export class TunnelGenerator {
     const secondaryGeometry = this.createHorseshoeBase(type, r, r1 - eps, r, D_spacing, aspect_ratio);
     const primaryGeometry = this.createHorseshoeBase(type, r, r2, r1 - eps, D_spacing, aspect_ratio);
 
-    // 材质挂影与 Uniform 参数暴露
+    // 材质挂影与 Uniform 参数暴露 (磨砂珍珠水晶包覆外壳)
     const uniformsBase = {
       r: { value: r },
       r1: { value: r1 },
@@ -51,10 +51,10 @@ export class TunnelGenerator {
       spacing: { value: type === TunnelType.DOUBLE ? D_spacing : 0.0 },
       aspect: { value: aspect_ratio },
       totalLength: { value: this.L_max },
-      uBaseColor: { value: new THREE.Color(0x1e2e40) },
-      uFresnelColor: { value: new THREE.Color(0x00f3ff) },
-      uOpacity: { value: 0.35 },
-      uFresnelPower: { value: 3.0 },
+      uBaseColor: { value: new THREE.Color(0x1e293b) },
+      uFresnelColor: { value: new THREE.Color(0x38bdf8) },
+      uOpacity: { value: 0.22 },
+      uFresnelPower: { value: 3.5 },
       uShowGrid: { value: 1.0 },
       uLayerType: { value: 0.0 }
     };
@@ -88,12 +88,14 @@ export class TunnelGenerator {
     this.mesh.frustumCulled = false;
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.count = 0;
+    this.mesh.renderOrder = 2;
 
     // 初支 Mesh
     this.primaryMesh = new THREE.InstancedMesh(primaryGeometry, primaryMaterial, nMax);
     this.primaryMesh.frustumCulled = false;
     this.primaryMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.primaryMesh.count = 0;
+    this.primaryMesh.renderOrder = 1;
 
     // 创建独立 PBR 沥青路面与防渗混凝土水沟槽 Mesh
     this.createInternalRoadAndDitchGeometry(type, r, aspect_ratio, D_spacing, nMax);
@@ -290,8 +292,8 @@ export class TunnelGenerator {
     // 沥青路面材质升级：高透透视与 Depth-Test 渲染顺序解耦 (WBS 2.2 / WBS 4)
     const roadMat = new THREE.MeshStandardMaterial({
       color: 0x0f172a,
-      roughness: 0.6,
-      metalness: 0.1,
+      roughness: 0.50,
+      metalness: 0.20,
       transparent: true,
       opacity: 0.55,
       depthWrite: true,
@@ -303,10 +305,10 @@ export class TunnelGenerator {
       color: 0x1e3a5a,
       emissive: new THREE.Color(0x000000),
       emissiveIntensity: 0.0,
-      roughness: 0.4,
-      metalness: 0.2,
+      roughness: 0.50,
+      metalness: 0.20,
       transparent: true,
-      opacity: 0.75,
+      opacity: 0.65,
       depthWrite: false,
       side: THREE.FrontSide,
       polygonOffset: true,
@@ -392,16 +394,16 @@ export class TunnelGenerator {
       const mat = meshObj.material as THREE.ShaderMaterial;
       if (mat && mat.uniforms) {
         if (mode === 'studio') {
-          mat.uniforms.uBaseColor.value.setHex(0xd0d5dd);
-          mat.uniforms.uFresnelColor.value.setHex(0xffffff);
-          mat.uniforms.uOpacity.value = 0.15; // 极高透明影棚玻璃
-          mat.uniforms.uFresnelPower.value = 5.0;
+          mat.uniforms.uBaseColor.value.setHex(0x1e293b);
+          mat.uniforms.uFresnelColor.value.setHex(0x38bdf8);
+          mat.uniforms.uOpacity.value = 0.22; // 珍珠水晶玻璃 (Opacity <= 0.25)
+          mat.uniforms.uFresnelPower.value = 3.5;
           mat.uniforms.uShowGrid.value = 0.0;
         } else {
-          mat.uniforms.uBaseColor.value.setHex(0x1e2e40);
-          mat.uniforms.uFresnelColor.value.setHex(0x00f3ff);
-          mat.uniforms.uOpacity.value = 0.35;
-          mat.uniforms.uFresnelPower.value = 3.0;
+          mat.uniforms.uBaseColor.value.setHex(0x1e293b);
+          mat.uniforms.uFresnelColor.value.setHex(0x38bdf8);
+          mat.uniforms.uOpacity.value = 0.22;
+          mat.uniforms.uFresnelPower.value = 3.5;
           mat.uniforms.uShowGrid.value = 1.0;
         }
         mat.needsUpdate = true;
@@ -411,30 +413,33 @@ export class TunnelGenerator {
     if (this.roadMesh) {
       const roadMat = this.roadMesh.material as THREE.MeshStandardMaterial;
       if (mode === 'studio') {
-        roadMat.color.setHex(0x334155);
-        roadMat.opacity = 0.65;
-        roadMat.roughness = 0.85;
+        roadMat.color.setHex(0x0f172a);
+        roadMat.opacity = 0.55;
+        roadMat.roughness = 0.50;
+        roadMat.metalness = 0.20;
       } else {
         roadMat.color.setHex(0x0f172a);
         roadMat.opacity = 0.55;
-        roadMat.roughness = 0.6;
+        roadMat.roughness = 0.60;
       }
       roadMat.needsUpdate = true;
     }
 
     if (this.ditchMesh) {
       const ditchMat = this.ditchMesh.material as THREE.MeshStandardMaterial;
-      ditchMat.color.setHex(mode === 'studio' ? 0x0284c7 : 0x1e3a5a);
+      ditchMat.color.setHex(0x1e3a5a);
       ditchMat.emissive.setHex(0x000000);
       ditchMat.emissiveIntensity = 0.0;
-      ditchMat.roughness = mode === 'studio' ? 0.5 : 0.4;
+      ditchMat.opacity = 0.65;
+      ditchMat.roughness = mode === 'studio' ? 0.50 : 0.40;
+      ditchMat.metalness = 0.20;
       ditchMat.needsUpdate = true;
     }
 
     if (this.ditchEdgeMesh) {
       const edgeMat = this.ditchEdgeMesh.material as THREE.LineBasicMaterial;
       if (mode === 'studio') {
-        edgeMat.color.setHex(0x0284c7);
+        edgeMat.color.setHex(0x38bdf8);
         edgeMat.opacity = 0.45;
       } else {
         edgeMat.color.setHex(0x00f3ff);

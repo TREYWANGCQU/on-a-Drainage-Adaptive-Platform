@@ -60,29 +60,29 @@ export class DrainagePipeGenerator {
     const r2 = config.outerRadius ?? (config.tunnelRadius + 1.0);
     this.horseshoeCurve = new HorseshoeArcCurve(config.tunnelRadius, r2, 0.7);
 
-    // 1. 环向盲管：使用 HorseshoeArcCurve 导出的 TubeGeometry 270° 马蹄形半环
+    // 1. 环向盲管：使用 HorseshoeArcCurve 导出的 TubeGeometry 270° 马蹄形半环 (黄铜金 #F59E0B)
     const ringCount = this.calculateRingCount();
-    this.ringMesh = this.createRingInstancedMesh(config.ringDiam, ringCount, 0x4aa8ff);
+    this.ringMesh = this.createRingInstancedMesh(config.ringDiam, ringCount, 0xf59e0b);
 
     // 2. 径向打孔排水管：已根据要求注销代码
     // const radialPerRing = 7;
     // const radialCount = ringCount * radialPerRing;
     // this.radialMesh = this.createRadialInstancedMesh(radialCount, 0x3498db);
 
-    // 3. 纵向排水管：侧边沟槽底 + 中心水沟槽底
+    // 3. 纵向排水管：侧边沟槽底 + 中心水沟槽底 (深金 #D97706)
     const longCount = this.calculateLongCount();
-    this.longMesh = this.createCylinderInstancedMesh(config.longDiam / 2, 1.0, longCount, 0x2ecc71);
+    this.longMesh = this.createCylinderInstancedMesh(config.longDiam / 2, 1.0, longCount, 0xd97706, 0.95, 0.12);
 
-    // 4. 横向连接管：连接侧沟槽底与中心沟槽底
+    // 4. 横向连接管：连接侧沟槽底与中心沟槽底 (亮金 #EAB308)
     const latCount = this.calculateLatCount() * (config.doubleSide ? 2 : 1);
-    this.latMesh = this.createCylinderInstancedMesh(config.latDiam / 2, 1.0, latCount, 0xe74c3c);
+    this.latMesh = this.createCylinderInstancedMesh(config.latDiam / 2, 1.0, latCount, 0xeab308, 0.90, 0.18);
 
     // 双洞模式：创建副洞实例
     if (config.tunnelType === 'double') {
-      this.leftRingMesh = this.createRingInstancedMesh(config.ringDiam, ringCount, 0x4aa8ff);
+      this.leftRingMesh = this.createRingInstancedMesh(config.ringDiam, ringCount, 0xf59e0b);
       // this.leftRadialMesh = this.createRadialInstancedMesh(radialCount, 0x3498db);
-      this.leftLongMesh = this.createCylinderInstancedMesh(config.longDiam / 2, 1.0, longCount, 0x2ecc71);
-      this.leftLatMesh = this.createCylinderInstancedMesh(config.latDiam / 2, 1.0, latCount, 0xe74c3c);
+      this.leftLongMesh = this.createCylinderInstancedMesh(config.longDiam / 2, 1.0, longCount, 0xd97706, 0.95, 0.12);
+      this.leftLatMesh = this.createCylinderInstancedMesh(config.latDiam / 2, 1.0, latCount, 0xeab308, 0.90, 0.18);
     }
   }
 
@@ -120,7 +120,7 @@ export class DrainagePipeGenerator {
   }
 
   /**
-   * 创建 270° 马蹄拱形半环 实例化网格 (修复半径混淆与自发光增强)
+   * 创建 270° 马蹄拱形半环 实例化网格 (抛光黄铜 PBR 材质)
    */
   private createRingInstancedMesh(radius: number, count: number, color: number): THREE.InstancedMesh {
     // 关键修正：入参 radius 为管径 (Diameter)，需除以 2 转换为物理半径
@@ -129,9 +129,9 @@ export class DrainagePipeGenerator {
     
     const material = new THREE.MeshStandardMaterial({
       color,
-      roughness: 0.3,
-      metalness: 0.4,
-      emissive: new THREE.Color(color).multiplyScalar(0.25), // 自发光强化微小盲管可见度
+      roughness: 0.15,
+      metalness: 0.92,
+      emissive: new THREE.Color(0x000000),
       clippingPlanes: []
     });
 
@@ -141,6 +141,7 @@ export class DrainagePipeGenerator {
     mesh.count = 0;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.renderOrder = 50;
     mesh.userData = { pipeCategory: 'ring', name: '环向排水盲管', diameter: Math.round(radius * 1000), spacing: this.config.ringSpacing };
     return mesh;
   }
@@ -172,12 +173,20 @@ export class DrainagePipeGenerator {
   /**
    * 创建标准圆柱 实例化网格 (纵向/横向管)
    */
-  private createCylinderInstancedMesh(radius: number, length: number, count: number, color: number): THREE.InstancedMesh {
+  private createCylinderInstancedMesh(
+    radius: number, 
+    length: number, 
+    count: number, 
+    color: number, 
+    metalness: number = 0.92, 
+    roughness: number = 0.15
+  ): THREE.InstancedMesh {
     const geometry = new THREE.CylinderGeometry(radius, radius, length, 12);
     const material = new THREE.MeshStandardMaterial({
       color,
-      roughness: 0.4,
-      metalness: 0.3,
+      roughness,
+      metalness,
+      emissive: new THREE.Color(0x000000),
       clippingPlanes: []
     });
 
@@ -187,12 +196,13 @@ export class DrainagePipeGenerator {
     mesh.count = 0;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.renderOrder = 50;
     mesh.userData = { pipeCategory: 'ditch', name: '排水连通管', diameter: Math.round(radius * 2000) };
     return mesh;
   }
 
   /**
-   * 切换管道双模式质感 (影棚镀铬合金 vs 赛博自发光)
+   * 切换管道双模式质感 (影棚抛光黄金 PBR vs 赛博暗夜微光)
    */
   public setVisualParadigm(mode: 'studio' | 'cyber'): void {
     const meshes = this.getMeshes();
@@ -201,12 +211,14 @@ export class DrainagePipeGenerator {
       if (!mat) return;
       if (mode === 'studio') {
         mat.metalness = 0.95;
-        mat.roughness = 0.1;
-        mat.emissive.setHex(0x111111);
+        mat.roughness = 0.12;
+        mat.emissive.setHex(0x000000);
+        mat.emissiveIntensity = 0.0;
       } else {
-        mat.metalness = 0.4;
-        mat.roughness = 0.3;
-        mat.emissive = new THREE.Color(mat.color).multiplyScalar(0.35);
+        mat.metalness = 0.85;
+        mat.roughness = 0.20;
+        mat.emissive.setHex(0x221500);
+        mat.emissiveIntensity = 0.15;
       }
       mat.needsUpdate = true;
     });
@@ -277,7 +289,7 @@ export class DrainagePipeGenerator {
     }
 
     // 预警着色逻辑
-    let stateColor = 0x4aa8ff; // 正常工况：天蓝
+    let stateColor = 0xf59e0b; // 正常工况：黄铜金 (#F59E0B)
     if (qDrain > 3.0) {
       stateColor = 0xe74c3c; // 堵塞过载：警示红
     } else if (qDrain > 1.0) {

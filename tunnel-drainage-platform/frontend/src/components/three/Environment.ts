@@ -73,9 +73,9 @@ export class Environment {
       pulse = pow(pulse, 3.0);
       
       vec3 color = mix(uColorStart, uColorEnd, vUv.x);
-      color += vec3(0.8, 1.0, 1.0) * pulse * 0.6; // 脉冲亮斑
-      
-      float alpha = smoothstep(0.0, 0.1, vUv.x) * (0.4 + pulse * 0.5);
+      color += vec3(0.35, 0.65, 0.95) * pulse * 0.3; // 细微冰蓝脉冲亮斑
+
+      float alpha = smoothstep(0.0, 0.1, vUv.x) * (0.3 + pulse * 0.3);
       gl_FragColor = vec4(color, alpha);
     }
   `;
@@ -255,9 +255,9 @@ export class Environment {
       uTime: { value: 0 },
       uSpeed: { value: 1.0 },
       uWaterHead: { value: this.currentState.waterHead },
-      uOpacity: { value: 0.25 },
+      uOpacity: { value: 0.20 },
       uColorDeep: { value: new THREE.Color(0x004488) },
-      uColorShallow: { value: new THREE.Color(0x00ffff) }
+      uColorShallow: { value: new THREE.Color(0x0284c7) }
     };
     
     const material = new THREE.ShaderMaterial({
@@ -272,6 +272,7 @@ export class Environment {
     this.waterPlane = new THREE.Mesh(geometry, material);
     this.waterPlane.rotation.x = -Math.PI / 2;
     this.waterPlane.position.z = -this.config.startChainage - length / 2;
+    this.waterPlane.renderOrder = 0;
     
     this.scene.add(this.waterPlane);
   }
