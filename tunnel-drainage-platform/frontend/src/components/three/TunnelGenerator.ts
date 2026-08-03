@@ -204,23 +204,19 @@ export class TunnelGenerator {
         const safeXMin = xMin + delta_x;
         const safeXMax = xMax - delta_x;
         const safeYBot = yBot + delta_y;
+        const t = Math.min(wallThickness, (safeXMax - safeXMin) / 3);
 
         const s = new THREE.Shape();
-        // 外壁 (顺时针)
+        // 8顶点 U 型凹槽横截面轮廓（敞口空心 U 型水槽，避免 Box/Hole 在 Extrude 时在顶面生成封闭顶盖）
         s.moveTo(safeXMin + ox, yTop);
+        s.lineTo(safeXMin + t + ox, yTop);
+        s.lineTo(safeXMin + t + ox, safeYBot + t);
+        s.lineTo(safeXMax - t + ox, safeYBot + t);
+        s.lineTo(safeXMax - t + ox, yTop);
         s.lineTo(safeXMax + ox, yTop);
         s.lineTo(safeXMax + ox, safeYBot);
         s.lineTo(safeXMin + ox, safeYBot);
         s.closePath();
-
-        // 内壁 Hole 扣除水流腔体 (逆时针方向，遵循 Non-Zero Winding 规则)
-        const hole = new THREE.Path();
-        const t = Math.min(wallThickness, (safeXMax - safeXMin) / 3);
-        hole.moveTo(safeXMin + t + ox, yTop);
-        hole.lineTo(safeXMin + t + ox, safeYBot + t);
-        hole.lineTo(safeXMax - t + ox, safeYBot + t);
-        hole.lineTo(safeXMax - t + ox, yTop);
-        s.holes.push(hole);
 
         return s;
       };
@@ -239,7 +235,7 @@ export class TunnelGenerator {
     roadGeo = removeExtrudeEndCaps(roadGeo);
     ditchGeo = removeExtrudeEndCaps(ditchGeo);
 
-    // 沥青路面材质升级：高透透视与 Depth-Test 渲染顺序解耦 (WBS 2.2)
+    // 沥青路面材质升级：高透透视与 Depth-Test 渲染顺序解耦 (WBS 2.2 / WBS 4)
     const roadMat = new THREE.MeshStandardMaterial({
       color: 0x0f172a,
       roughness: 0.6,
@@ -247,17 +243,20 @@ export class TunnelGenerator {
       transparent: true,
       opacity: 0.55,
       depthWrite: true,
-      side: THREE.FrontSide
+      side: THREE.DoubleSide
     });
 
-    // 排水沟材质升级：三层内壁电镀金属与自发光高对比度着色 (WBS 3.2)
+    // 排水沟材质升级：三层内壁电镀金属与自发光高对比度着色 (WBS 3.2 / WBS 4)
     const ditchMat = new THREE.MeshStandardMaterial({
       color: 0x0e3a5a,
       emissive: new THREE.Color(0x00f3ff),
       emissiveIntensity: 0.6,
       roughness: 0.15,
       metalness: 0.9,
-      side: THREE.FrontSide,
+      transparent: true,
+      opacity: 0.75,
+      depthWrite: true,
+      side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1
