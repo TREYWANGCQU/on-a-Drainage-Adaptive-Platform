@@ -130,29 +130,64 @@ export class TunnelGenerator {
     const ditchShapes: THREE.Shape[] = [];
 
     offsets.forEach(ox => {
-      // 1. 路面 Shape (顶部切割三沟凹槽，底部沿 R3 弧线相切)
+      // 1. 路面 Shape (顶沿按 X 轴严格单调递增，彻底消除自交多边形剖分乱纹) (WBS 1.1)
       const roadShape = new THREE.Shape();
       roadShape.moveTo(-halfRoadW + ox, roadY);
       
-      // 右侧沟槽凹槽 (x: sideRightXInner -> sideRightX)
+      // V1: 左侧水沟左外边缘切口
+      roadShape.lineTo(sideLeftX + ox, roadY);
+      // V2: 左侧水沟左垂直内下槽点
+      roadShape.lineTo(sideLeftX + ox, yBot_side);
+      // V3: 左侧水沟右垂直内下槽点
+      roadShape.lineTo(sideLeftXInner + ox, yBot_side);
+      // V4: 左侧水沟右内边缘切口
+      roadShape.lineTo(sideLeftXInner + ox, roadY);
+
+      // V5: 中央水沟左边缘切口
+      roadShape.lineTo(centralLeftX + ox, roadY);
+      // V6: 中央水沟左垂直内下槽点
+      roadShape.lineTo(centralLeftX + ox, yBot_central);
+      // V7: 中央水沟右垂直内下槽点
+      roadShape.lineTo(centralRightX + ox, yBot_central);
+      // V8: 中央水沟右边缘切口
+      roadShape.lineTo(centralRightX + ox, roadY);
+
+      // V9: 右侧水沟左内边缘切口
       roadShape.lineTo(sideRightXInner + ox, roadY);
+      // V10: 右侧水沟左垂直内下槽点
       roadShape.lineTo(sideRightXInner + ox, yBot_side);
+      // V11: 右侧水沟右垂直内下槽点
       roadShape.lineTo(sideRightX + ox, yBot_side);
+      // V12: 右侧水沟右外边缘切口
       roadShape.lineTo(sideRightX + ox, roadY);
 
-      // 中央沟槽凹槽 (x: centralLeftX -> centralRightX)
-      roadShape.lineTo(centralRightX + ox, roadY);
-      roadShape.lineTo(centralRightX + ox, yBot_central);
-      roadShape.lineTo(centralLeftX + ox, yBot_central);
-      roadShape.lineTo(centralLeftX + ox, roadY);
+      // V13: 路面最右侧终点
+      roadShape.lineTo(halfRoadW + ox, roadY);
 
-      // 左侧沟槽凹槽 (x: sideLeftX -> sideLeftXInner)
-      roadShape.lineTo(sideLeftXInner + ox, roadY);
-      roadShape.lineTo(sideLeftXInner + ox, yBot_side);
-      roadShape.lineTo(sideLeftX + ox, yBot_side);
-      roadShape.lineTo(sideLeftX + ox, roadY);
+      // Tier 1 拓扑单调性自动校验断言 (允许垂直边 X_i === X_{i-1}，仅当 X 严格反向递减时抛错)
+      const topVertices = [
+        { x: -halfRoadW + ox, y: roadY },
+        { x: sideLeftX + ox, y: roadY },
+        { x: sideLeftX + ox, y: yBot_side },
+        { x: sideLeftXInner + ox, y: yBot_side },
+        { x: sideLeftXInner + ox, y: roadY },
+        { x: centralLeftX + ox, y: roadY },
+        { x: centralLeftX + ox, y: yBot_central },
+        { x: centralRightX + ox, y: yBot_central },
+        { x: centralRightX + ox, y: roadY },
+        { x: sideRightXInner + ox, y: roadY },
+        { x: sideRightXInner + ox, y: yBot_side },
+        { x: sideRightX + ox, y: yBot_side },
+        { x: sideRightX + ox, y: roadY },
+        { x: halfRoadW + ox, y: roadY }
+      ];
+      for (let i = 1; i < topVertices.length; i++) {
+        if (topVertices[i].x < topVertices[i - 1].x - 1e-6) {
+          throw new Error(`[Topology Error] Road shape top edge X coordinate decreased reverse: V[${i}].x (${topVertices[i].x}) < V[${i-1}].x (${topVertices[i-1].x})`);
+        }
+      }
 
-      // 底部沿仰拱圆弧切合
+      // 底部沿仰拱圆弧切合 (从 halfRoadW 扫回 -halfRoadW)
       const steps = 16;
       for (let i = steps; i >= 0; i--) {
         const x = -halfRoadW + (i / steps) * (2 * halfRoadW);
@@ -161,23 +196,30 @@ export class TunnelGenerator {
       }
       roadShapes.push(roadShape);
 
-      // 2. 独立三沟 Shape 构造 (构造内嵌 Hole 路径的 U 型空心槽，彻底消除与路面的 Z-Fighting 填充重叠) (WBS 3)
+      // 2. 独立三沟 Shape 构造 (引入 δx = 0.008m, δy = 0.005m 物理缩进容差，彻底消除与路面切口的 Z-Fighting) (WBS 1.2)
+      const delta_x = 0.008;
+      const delta_y = 0.005;
+
       const createUShape = (xMin: number, xMax: number, yTop: number, yBot: number, wallThickness: number = 0.05) => {
+        const safeXMin = xMin + delta_x;
+        const safeXMax = xMax - delta_x;
+        const safeYBot = yBot + delta_y;
+
         const s = new THREE.Shape();
         // 外壁 (顺时针)
-        s.moveTo(xMin + ox, yTop);
-        s.lineTo(xMax + ox, yTop);
-        s.lineTo(xMax + ox, yBot);
-        s.lineTo(xMin + ox, yBot);
+        s.moveTo(safeXMin + ox, yTop);
+        s.lineTo(safeXMax + ox, yTop);
+        s.lineTo(safeXMax + ox, safeYBot);
+        s.lineTo(safeXMin + ox, safeYBot);
         s.closePath();
 
         // 内壁 Hole 扣除水流腔体 (逆时针方向，遵循 Non-Zero Winding 规则)
         const hole = new THREE.Path();
-        const t = Math.min(wallThickness, (xMax - xMin) / 3);
-        hole.moveTo(xMin + t + ox, yTop);
-        hole.lineTo(xMin + t + ox, yBot + t);
-        hole.lineTo(xMax - t + ox, yBot + t);
-        hole.lineTo(xMax - t + ox, yTop);
+        const t = Math.min(wallThickness, (safeXMax - safeXMin) / 3);
+        hole.moveTo(safeXMin + t + ox, yTop);
+        hole.lineTo(safeXMin + t + ox, safeYBot + t);
+        hole.lineTo(safeXMax - t + ox, safeYBot + t);
+        hole.lineTo(safeXMax - t + ox, yTop);
         s.holes.push(hole);
 
         return s;
@@ -208,13 +250,13 @@ export class TunnelGenerator {
       side: THREE.FrontSide
     });
 
-    // 排水沟材质升级：三层内壁冰蓝自发光与高对比度着色 (WBS 2.1)
+    // 排水沟材质升级：三层内壁电镀金属与自发光高对比度着色 (WBS 3.2)
     const ditchMat = new THREE.MeshStandardMaterial({
       color: 0x0e3a5a,
       emissive: new THREE.Color(0x00f3ff),
       emissiveIntensity: 0.6,
-      roughness: 0.3,
-      metalness: 0.2,
+      roughness: 0.15,
+      metalness: 0.9,
       side: THREE.FrontSide,
       polygonOffset: true,
       polygonOffsetFactor: 1,
@@ -233,8 +275,11 @@ export class TunnelGenerator {
     this.ditchMesh.count = 0;
     this.ditchMesh.renderOrder = 10;
 
-    // U 型水沟顶沿 3D 悬浮发光轮廓线 (WBS 2.3)
-    const edgesGeo = new THREE.EdgesGeometry(ditchGeo, 15);
+    // U 型水沟顶沿 3D 悬浮发光轮廓线 (WBS 1.4) - 经过平行性过滤剔除侧壁斜向对角发光线
+    const rawEdgesGeo = new THREE.EdgesGeometry(ditchGeo, 15);
+    const edgesGeo = filterParallelEdges(rawEdgesGeo, 0.05);
+    rawEdgesGeo.dispose();
+
     const ditchEdgeMat = new THREE.LineBasicMaterial({
       color: 0x00f3ff,
       linewidth: 2,
@@ -614,4 +659,31 @@ export function removeExtrudeEndCaps(geometry: THREE.BufferGeometry): THREE.Buff
   geometry.setIndex(newIndices);
   geometry.computeVertexNormals();
   return geometry;
+}
+
+/**
+ * 过滤线框几何体，仅保留平行于 X/Y/Z 主轴的线段，剔除侧壁斜向对角发光线 (WBS 1.4)
+ */
+export function filterParallelEdges(edgesGeo: THREE.EdgesGeometry, tolerance: number = 0.05): THREE.BufferGeometry {
+  const posAttr = edgesGeo.attributes.position;
+  const filteredPos: number[] = [];
+  const p1 = new THREE.Vector3();
+  const p2 = new THREE.Vector3();
+  const dir = new THREE.Vector3();
+
+  for (let i = 0; i < posAttr.count; i += 2) {
+    p1.fromBufferAttribute(posAttr, i);
+    p2.fromBufferAttribute(posAttr, i + 1);
+    dir.subVectors(p2, p1).normalize();
+
+    // 计算方向向量的最大分量绝对值
+    const maxComponent = Math.max(Math.abs(dir.x), Math.abs(dir.y), Math.abs(dir.z));
+    if (maxComponent >= 1.0 - tolerance) {
+      filteredPos.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+    }
+  }
+
+  const cleanGeo = new THREE.BufferGeometry();
+  cleanGeo.setAttribute('position', new THREE.Float32BufferAttribute(filteredPos, 3));
+  return cleanGeo;
 }

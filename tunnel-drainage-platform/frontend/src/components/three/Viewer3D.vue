@@ -384,6 +384,8 @@ import * as THREE from 'three';
 import { useSnapshotStore, extractSnapshotValue, Snapshot } from '@/store/snapshotStore';
 import { useParameterStore } from '@/store/parameterStore';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 import { TunnelGenerator, TunnelType } from './TunnelGenerator';
 import { ReinforcementManager } from './Reinforcement';
@@ -402,36 +404,33 @@ const updateEnvironmentMap = (mode: 'cyber' | 'studio') => {
   try {
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     pmremGenerator.compileEquirectangularShader();
-    const envScene = new THREE.Scene();
-    if (mode === 'studio') {
-      envScene.background = new THREE.Color(0xf3f4f6);
-      const studioLight1 = new THREE.DirectionalLight(0xffffff, 3.5);
-      studioLight1.position.set(10, 20, 15);
-      envScene.add(studioLight1);
-      const studioLight2 = new THREE.DirectionalLight(0x38bdf8, 2.0);
-      studioLight2.position.set(-10, 10, -10);
-      envScene.add(studioLight2);
-      const studioLight3 = new THREE.DirectionalLight(0xd4af37, 1.5);
-      studioLight3.position.set(0, -10, 10);
-      envScene.add(studioLight3);
-    } else {
-      envScene.background = new THREE.Color(0x050b14);
-      const cyberLight1 = new THREE.DirectionalLight(0x00f3ff, 2.0);
-      cyberLight1.position.set(10, 20, 15);
-      envScene.add(cyberLight1);
-      const cyberLight2 = new THREE.DirectionalLight(0x9333ea, 1.5);
-      cyberLight2.position.set(-10, 10, -10);
-      envScene.add(cyberLight2);
-      const cyberLight3 = new THREE.DirectionalLight(0x00f3ff, 1.0);
-      cyberLight3.position.set(0, -10, 10);
-      envScene.add(cyberLight3);
-    }
 
-    const envTarget = pmremGenerator.fromScene(envScene);
-    scene.environment = envTarget.texture;
-    pmremGenerator.dispose();
+    const hdrFile = mode === 'studio' ? '/textures/hdri/studio_bright.hdr' : '/textures/hdri/cyber_night.hdr';
+    const rgbeLoader = new RGBELoader();
+
+    rgbeLoader.load(
+      hdrFile,
+      (texture) => {
+        const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+        scene.environment = envMap;
+        texture.dispose();
+        pmremGenerator.dispose();
+        console.log(`[HDRI Pipeline] Successfully loaded & generated PMREM environment map: ${hdrFile}`);
+        scheduleRender();
+      },
+      undefined,
+      (err) => {
+        console.warn('[HDRI Pipeline] HDR file load failed, falling back to RoomEnvironment:', err);
+        const roomEnv = new RoomEnvironment();
+        const envMap = pmremGenerator.fromScene(roomEnv).texture;
+        scene.environment = envMap;
+        roomEnv.dispose();
+        pmremGenerator.dispose();
+        scheduleRender();
+      }
+    );
   } catch (e) {
-    console.warn('PMREM Environment generation fallback:', e);
+    console.warn('[HDRI Pipeline] PMREM Environment generation fallback:', e);
   }
 };
 
