@@ -37,11 +37,12 @@ export class TunnelGenerator {
     this.L_max = Math.abs(end_chainage - start_chainage);
     this.delta_l_min = delta_l_min;
 
-    // 构建二衬 (r -> r1) 与 初支 (r1 -> r2) 独立几何体
-    const secondaryGeometry = this.createHorseshoeBase(type, r, r1, r, D_spacing, aspect_ratio);
-    const primaryGeometry = this.createHorseshoeBase(type, r, r2, r1, D_spacing, aspect_ratio);
+    // 构建二衬 (r -> r1 - eps) 与 初支 (r1 + eps -> r2) 独立几何体，引入 1mm 物理避让间隙彻底消除 r1 界面 Z-fighting
+    const eps = 0.001;
+    const secondaryGeometry = this.createHorseshoeBase(type, r, r1 - eps, r, D_spacing, aspect_ratio);
+    const primaryGeometry = this.createHorseshoeBase(type, r, r2, r1 + eps, D_spacing, aspect_ratio);
 
-    // 材质挂载与 Uniform 参数暴露
+    // 材质挂影与 Uniform 参数暴露
     const uniformsBase = {
       r: { value: r },
       r1: { value: r1 },
@@ -54,28 +55,31 @@ export class TunnelGenerator {
       uFresnelColor: { value: new THREE.Color(0x00f3ff) },
       uOpacity: { value: 0.35 },
       uFresnelPower: { value: 3.0 },
-      uShowGrid: { value: 1.0 }
+      uShowGrid: { value: 1.0 },
+      uLayerType: { value: 0.0 }
     };
 
     const secondaryMaterial = new THREE.ShaderMaterial({
       vertexShader: liningVert,
       fragmentShader: liningFrag,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
       clipping: true,
       glslVersion: THREE.GLSL3,
       transparent: true,
       uniforms: THREE.UniformsUtils.clone(uniformsBase)
     });
+    secondaryMaterial.uniforms.uLayerType.value = 0.0;
 
     const primaryMaterial = new THREE.ShaderMaterial({
       vertexShader: liningVert,
       fragmentShader: liningFrag,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
       clipping: true,
       glslVersion: THREE.GLSL3,
       transparent: true,
       uniforms: THREE.UniformsUtils.clone(uniformsBase)
     });
+    primaryMaterial.uniforms.uLayerType.value = 1.0;
 
     const nMax = Math.ceil(this.L_max / this.delta_l_min) * this.c_ring;
 
@@ -362,8 +366,7 @@ export class TunnelGenerator {
 
     const settings = { depth: 1.0, bevelEnabled: false, curveSegments: 64 };
     let geometry: THREE.BufferGeometry = new THREE.ExtrudeGeometry(shapes, settings);
-    geometry = removeExtrudeEndCaps(geometry);
-    geometry.computeVertexNormals();
+    geometry = processHorseshoeLiningGeometry(geometry);
 
     return geometry;
   }
@@ -747,4 +750,44 @@ export function filterParallelEdges(edgesGeo: THREE.EdgesGeometry, tolerance: nu
   const cleanGeo = new THREE.BufferGeometry();
   cleanGeo.setAttribute('position', new THREE.Float32BufferAttribute(filteredPos, 3));
   return cleanGeo;
+}
+
+/**
+  * 解耦侧壁与端面法线，精确防止 45° 倾斜色差条纹，同时完美保留洞口 Native Cap
+  */
+export function processHorseshoeLiningGeometry(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
+  geometry.clearGroups();
+  // 转换为非索引 BufferGeometry，隔绝侧壁与端面顶点法线平滑干涉
+  const nonIndexedGeo = geometry.toNonIndexed();
+  nonIndexedGeo.computeVertexNormals();
+
+  const normAttr = nonIndexedGeo.getAttribute('normal');
+  if (!normAttr) return nonIndexedGeo;
+
+  const normals = normAttr.array as Float32Array;
+  for (let i = 0; i < normAttr.count; i++) {
+    const nx = normals[i * 3];
+    const ny = normals[i * 3 + 1];
+    const nz = normals[i * 3 + 2];
+
+    // 如果 nz 绝对值 >= 0.5，说明是端面 Cap 三角形，法线严格收敛至 ±Z 轴 (0, 0, ±1)
+    if (Math.abs(nz) >= 0.5) {
+      normals[i * 3] = 0;
+      normals[i * 3 + 1] = 0;
+      normals[i * 3 + 2] = nz > 0 ? 1 : -1;
+    } else {
+      // 如果是侧壁筒体三角形，法线严格纠偏至 XY 平面 (nz = 0)，彻底消除纵向 1m 实例衔接处的 45° 色差条纹！
+      const len = Math.sqrt(nx * nx + ny * ny);
+      if (len > 1e-6) {
+        normals[i * 3] = nx / len;
+        normals[i * 3 + 1] = ny / len;
+        normals[i * 3 + 2] = 0;
+      } else {
+        normals[i * 3 + 2] = 0;
+      }
+    }
+  }
+
+  normAttr.needsUpdate = true;
+  return nonIndexedGeo;
 }

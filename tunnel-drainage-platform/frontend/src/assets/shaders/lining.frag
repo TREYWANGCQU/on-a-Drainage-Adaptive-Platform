@@ -24,6 +24,7 @@ uniform vec3 uFresnelColor;    // 边缘发光 vec3(0.0, 0.95, 1.0)
 uniform float uOpacity;        // 基础透明度 0.35
 uniform float uFresnelPower;   // 菲涅尔指数 3.0
 uniform float uShowGrid;       // 全息网格开关 (1.0 开启暗夜网格, 0.0 关闭纯净影棚玻璃)
+uniform float uLayerType;      // 图层类型: 0.0 = 二衬 (Secondary Lining), 1.0 = 初支 (Primary Support)
 out vec4 fragColor;
 
 #include <logdepthbuf_pars_fragment>
@@ -100,31 +101,22 @@ void main() {
     // 【核心修正】完全隔离相机视角干扰，使用绝对局部坐标法线判定
     if (abs(vLocalNormal.z) > 0.5) {
         // [核心剔除] 仅渲染隧道真实前洞口（z >= -0.8）与后洞口（z <= -(totalLength - 0.8)），废弃中间1m实例产生的内部切片端面
-        if (totalLength > 1.5 && vWorldPosition.z < -0.8 && vWorldPosition.z > -(totalLength - 0.8)) {
+        if (totalLength > 1.5 && vLocalPosition.z < -0.8 && vLocalPosition.z > -(totalLength - 0.8)) {
             discard;
         }
 
         // ==================== 1. 端面多层衬砌拓扑拆解 ====================
-        float reff = calculateHorseshoeRadius(vLocalPosition.xy);
-        
-        if (reff >= r && reff < r1) {
-            finalColor = colorSecondary;
-            roughness = 0.3;
-        } 
-        else if (reff >= r1 && reff <= r2) {
-            // 初期支护（一衬）层：采用均匀真实混凝土调色，移除同心正弦弧形条纹伪影
+        // 【拓扑解耦】基于 uLayerType 精确判定二衬与初支端面色彩，彻底废弃 GPU 拟合二次 discard 造成的缺口空洞与错位
+        if (uLayerType > 0.5) {
+            // 初期支护（一衬）层：采用均匀真实混凝土调色
             finalColor = colorPrimary;
             roughness = 0.8;
-        } 
-        
-        else {
-            discard;
+        } else {
+            // 二衬层：采用高质感混凝土调色
+            finalColor = colorSecondary;
+            roughness = 0.3;
         }
-        
-        float edgeStroke = 0.03;
-        if (abs(reff - r1) < edgeStroke || abs(reff - r2) < edgeStroke ) {
-            finalColor = mix(finalColor, colorEdge, 0.7);
-        }
+        alpha = 1.0;
     }  
     else {
        
@@ -148,7 +140,7 @@ void main() {
             float dist = length(vViewPosition);
             float lod_factor = clamp(1.0 - (dist - 10.0) / (40.0 - 10.0), 0.0, 1.0);
             float finalGrid = line_pattern * lod_factor;
-            finalColor += uFresnelColor * finalGrid * 0.35;
+            finalColor += uFresnelColor * finalGrid * 0.05;
         }
     }
     

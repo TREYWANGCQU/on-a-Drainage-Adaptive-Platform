@@ -35,6 +35,8 @@ void main() {
         transformedNormal = instanceNormalMatrix * transformedNormal;
     #endif
     
+    vLocalPosition = localPosition.xyz;
+    
     // 传递世界坐标与视图参数
     vec4 worldPosition = modelMatrix * localPosition;
     vWorldPosition = worldPosition.xyz;
