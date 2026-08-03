@@ -158,73 +158,48 @@ export class TunnelGenerator {
     const ditchShapes: THREE.Shape[] = [];
 
     offsets.forEach(ox => {
-      // 1. 路面 Shape (顶沿按 X 轴严格单调递增，彻底消除自交多边形剖分乱纹) (WBS 1.1)
+      // 1. 路面 Shape (以严格逆时针 CCW 顺序构建 2D 轮廓，彻底消除 Earcut 拓扑反转产生的剖分大三角形)
       const roadShape = new THREE.Shape();
-      roadShape.moveTo(-halfRoadW + ox, roadY);
 
-      // V1: 左侧水沟左外边缘切口
-      roadShape.lineTo(sideLeftX + ox, roadY);
-      // V2: 左侧水沟左垂直内下槽点
-      roadShape.lineTo(sideLeftX + ox, yBot_side);
-      // V3: 左侧水沟右垂直内下槽点
-      roadShape.lineTo(sideLeftXInner + ox, yBot_side);
-      // V4: 左侧水沟右内边缘切口
-      roadShape.lineTo(sideLeftXInner + ox, roadY);
-
-      // V5: 中央水沟左边缘切口
-      roadShape.lineTo(centralLeftX + ox, roadY);
-      // V6: 中央水沟左垂直内下槽点
-      roadShape.lineTo(centralLeftX + ox, yBot_central);
-      // V7: 中央水沟右垂直内下槽点
-      roadShape.lineTo(centralRightX + ox, yBot_central);
-      // V8: 中央水沟右边缘切口
-      roadShape.lineTo(centralRightX + ox, roadY);
-
-      // V9: 右侧水沟左内边缘切口
-      roadShape.lineTo(sideRightXInner + ox, roadY);
-      // V10: 右侧水沟左垂直内下槽点
-      roadShape.lineTo(sideRightXInner + ox, yBot_side);
-      // V11: 右侧水沟右垂直内下槽点
-      roadShape.lineTo(sideRightX + ox, yBot_side);
-      // V12: 右侧水沟右外边缘切口
-      roadShape.lineTo(sideRightX + ox, roadY);
-
-      // V13: 路面最右侧终点
-      roadShape.lineTo(halfRoadW + ox, roadY);
-
-      // Tier 1 拓扑单调性自动校验断言 (允许垂直边 X_i === X_{i-1}，仅当 X 严格反向递减时抛错)
-      const topVertices = [
-        { x: -halfRoadW + ox, y: roadY },
-        { x: sideLeftX + ox, y: roadY },
-        { x: sideLeftX + ox, y: yBot_side },
-        { x: sideLeftXInner + ox, y: yBot_side },
-        { x: sideLeftXInner + ox, y: roadY },
-        { x: centralLeftX + ox, y: roadY },
-        { x: centralLeftX + ox, y: yBot_central },
-        { x: centralRightX + ox, y: yBot_central },
-        { x: centralRightX + ox, y: roadY },
-        { x: sideRightXInner + ox, y: roadY },
-        { x: sideRightXInner + ox, y: yBot_side },
-        { x: sideRightX + ox, y: yBot_side },
-        { x: sideRightX + ox, y: roadY },
-        { x: halfRoadW + ox, y: roadY }
-      ];
-      for (let i = 1; i < topVertices.length; i++) {
-        if (topVertices[i].x < topVertices[i - 1].x - 1e-6) {
-          throw new Error(`[Topology Error] Road shape top edge X coordinate decreased reverse: V[${i}].x (${topVertices[i].x}) < V[${i - 1}].x (${topVertices[i - 1].x})`);
+      // 底沿仰拱圆弧切合：从 left (-halfRoadW) 扫至 right (+halfRoadW) (CCW 动向)
+      const steps = 16;
+      for (let i = 0; i <= steps; i++) {
+        const x = -halfRoadW + (i / steps) * (2 * halfRoadW);
+        const y = invertCenterY - Math.sqrt(Math.max(0, R3_base * R3_base - x * x));
+        if (i === 0) {
+          roadShape.moveTo(x + ox, y);
+        } else {
+          roadShape.lineTo(x + ox, y);
         }
       }
 
-      // 底部沿仰拱圆弧切合 (从 halfRoadW 扫回 -halfRoadW)
-      const steps = 16;
-      for (let i = steps; i >= 0; i--) {
-        const x = -halfRoadW + (i / steps) * (2 * halfRoadW);
-        const y = invertCenterY - Math.sqrt(Math.max(0, R3_base * R3_base - x * x));
-        roadShape.lineTo(x + ox, y);
-      }
+      // 顶沿路面切口：从 right (+halfRoadW) 向 left (-halfRoadW) 逆向回扫 (V13 -> V1)
+      roadShape.lineTo(halfRoadW + ox, roadY);
+
+      // 右侧水沟切口
+      roadShape.lineTo(sideRightX + ox, roadY);
+      roadShape.lineTo(sideRightX + ox, yBot_side);
+      roadShape.lineTo(sideRightXInner + ox, yBot_side);
+      roadShape.lineTo(sideRightXInner + ox, roadY);
+
+      // 中央水沟切口
+      roadShape.lineTo(centralRightX + ox, roadY);
+      roadShape.lineTo(centralRightX + ox, yBot_central);
+      roadShape.lineTo(centralLeftX + ox, yBot_central);
+      roadShape.lineTo(centralLeftX + ox, roadY);
+
+      // 左侧水沟切口
+      roadShape.lineTo(sideLeftXInner + ox, roadY);
+      roadShape.lineTo(sideLeftXInner + ox, yBot_side);
+      roadShape.lineTo(sideLeftX + ox, yBot_side);
+      roadShape.lineTo(sideLeftX + ox, roadY);
+
+      // 闭合回 (-halfRoadW, roadY) 及起始点
+      roadShape.lineTo(-halfRoadW + ox, roadY);
+      roadShape.closePath();
       roadShapes.push(roadShape);
 
-      // 2. 独立三沟 Shape 构造: 3-Box 凸拓扑 (WBS 4.2.1)
+      // 2. 独立三沟 Shape 构造: 3-Box 凸拓扑与 CCW 严格无重叠拼接
       // 每条 U 型沟槽拆分为 3 块独立的 4 顶点凸矩形 (左壁 + 底板 + 右壁)
       // 4 顶点凸矩形的 Earcut 三角剖分结果恒为 2 个三角形，100% 免疫凹角跨越大三角形
       const delta_x = 0.008;
@@ -237,30 +212,30 @@ export class TunnelGenerator {
         const t = Math.min(wallThickness, (safeXMax - safeXMin) / 3);
         const shapes: THREE.Shape[] = [];
 
-        // 左侧壁 Box (4 顶点凸矩形 → Earcut 确定性 2 三角形)
+        // 左侧壁 Box (4 顶点凸矩形 CCW: bottom-left -> bottom-right -> top-right -> top-left)
         const leftWall = new THREE.Shape();
-        leftWall.moveTo(safeXMin + ox, yTop);
-        leftWall.lineTo(safeXMin + t + ox, yTop);
+        leftWall.moveTo(safeXMin + ox, safeYBot);
         leftWall.lineTo(safeXMin + t + ox, safeYBot);
-        leftWall.lineTo(safeXMin + ox, safeYBot);
+        leftWall.lineTo(safeXMin + t + ox, yTop);
+        leftWall.lineTo(safeXMin + ox, yTop);
         leftWall.closePath();
         shapes.push(leftWall);
 
-        // 槽底 Box (4 顶点凸矩形 → Earcut 确定性 2 三角形)
+        // 槽底 Box (4 顶点凸矩形 CCW，置于左右侧壁之间，避免角落物理重叠引发 Alpha 混合及 Z-fighting)
         const bottom = new THREE.Shape();
-        bottom.moveTo(safeXMin + ox, safeYBot + t);
-        bottom.lineTo(safeXMax + ox, safeYBot + t);
-        bottom.lineTo(safeXMax + ox, safeYBot);
-        bottom.lineTo(safeXMin + ox, safeYBot);
+        bottom.moveTo(safeXMin + t + ox, safeYBot);
+        bottom.lineTo(safeXMax - t + ox, safeYBot);
+        bottom.lineTo(safeXMax - t + ox, safeYBot + t);
+        bottom.lineTo(safeXMin + t + ox, safeYBot + t);
         bottom.closePath();
         shapes.push(bottom);
 
-        // 右侧壁 Box (4 顶点凸矩形 → Earcut 确定性 2 三角形)
+        // 右侧壁 Box (4 顶点凸矩形 CCW: bottom-left -> bottom-right -> top-right -> top-left)
         const rightWall = new THREE.Shape();
-        rightWall.moveTo(safeXMax - t + ox, yTop);
-        rightWall.lineTo(safeXMax + ox, yTop);
+        rightWall.moveTo(safeXMax - t + ox, safeYBot);
         rightWall.lineTo(safeXMax + ox, safeYBot);
-        rightWall.lineTo(safeXMax - t + ox, safeYBot);
+        rightWall.lineTo(safeXMax + ox, yTop);
+        rightWall.lineTo(safeXMax - t + ox, yTop);
         rightWall.closePath();
         shapes.push(rightWall);
 
@@ -296,7 +271,7 @@ export class TunnelGenerator {
       metalness: 0.20,
       transparent: true,
       opacity: 0.55,
-      depthWrite: true,
+      depthWrite: false,
       side: THREE.FrontSide
     });
 
@@ -320,7 +295,7 @@ export class TunnelGenerator {
     this.roadMesh.frustumCulled = false;
     this.roadMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.roadMesh.count = 0;
-    this.roadMesh.renderOrder = 20; // 保证在水沟及管网后绘制，避免深度裁切 (Reviewer Warning Fixed)
+    this.roadMesh.renderOrder = 12; // 保证在水沟后绘制并支持半透明叠加解耦
 
     this.ditchMesh = new THREE.InstancedMesh(ditchGeo, ditchMat, nMax);
     this.ditchMesh.frustumCulled = false;
