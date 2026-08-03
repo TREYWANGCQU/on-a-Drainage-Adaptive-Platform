@@ -93,7 +93,7 @@ export class ReinforcementManager {
     // 原始注浆圈（半透明青色），构建封闭马蹄形环状截面
     const r_base = config.base_r ?? (config.r2 ? config.r2 / 1.18 : 5.5);
     const shapeInitial = buildHorseshoeShape(r_base, config.rg || (config.r2 + 1.5), config.r2 || 6.5, 0, 0.7);
-    let groutingGeom: THREE.BufferGeometry = new THREE.ExtrudeGeometry(shapeInitial, { depth: 1.0, bevelEnabled: false, curveSegments: 32 });
+    let groutingGeom: THREE.BufferGeometry = new THREE.ExtrudeGeometry(shapeInitial, { depth: 1.0, bevelEnabled: false, curveSegments: 64 });
     groutingGeom = removeExtrudeEndCaps(groutingGeom);
     groutingGeom = processHorseshoeLiningGeometry(groutingGeom);
 
@@ -116,14 +116,14 @@ export class ReinforcementManager {
     this.groutingMesh.count = 0;
     this.groutingMesh.renderOrder = 5;
 
-    // 临界注浆圈常驻初始化（支持动态解算结果注入与显隐切换）
+    // 临界注浆圈常驻初始化（暖琥珀半透明水晶体范式，支持动态解算结果注入与双范式切换）
     const criticalMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffd700,
-      roughness: 0.15,
-      metalness: 0.92,
+      color: 0xf59e0b,
+      roughness: 0.28,
+      metalness: 0.08,
       emissive: new THREE.Color(0x000000),
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.40,
       depthWrite: false,
       side: THREE.FrontSide
     });
@@ -139,7 +139,7 @@ export class ReinforcementManager {
   }
 
   /**
-   * 切换范式材质 (影棚抛光黄金 PBR vs 赛博暗夜微光)
+   * 切换范式材质 (暖琥珀水晶 PBR vs 赛博暗夜琥珀微光)
    */
   public setVisualParadigm(mode: 'studio' | 'cyber'): void {
     if (this.criticalGroutingMesh) {
@@ -147,19 +147,19 @@ export class ReinforcementManager {
       mat.depthWrite = false;
       mat.side = THREE.FrontSide;
       if (mode === 'studio') {
-        mat.color.setHex(0xffd700); // 纯黄金 PBR 金属材质 (#FFD700)
-        mat.metalness = 0.95;
-        mat.roughness = 0.18;
-        mat.opacity = 0.85;
+        mat.color.setHex(0xf59e0b); // 暖琥珀半透明水晶体 (Amber-500)
+        mat.metalness = 0.08;
+        mat.roughness = 0.28;
+        mat.opacity = 0.40;
         mat.emissive.setHex(0x000000);
         mat.emissiveIntensity = 0.0;
       } else {
-        mat.color.setHex(0xd4af37); // 暗夜香槟金辅助防护带
-        mat.metalness = 0.90;
-        mat.roughness = 0.20;
-        mat.opacity = 0.85;
-        mat.emissive.setHex(0x221800);
-        mat.emissiveIntensity = 0.15;
+        mat.color.setHex(0xd97706); // 深琥珀暖色带 (Amber-600)
+        mat.metalness = 0.08;
+        mat.roughness = 0.32;
+        mat.opacity = 0.42;
+        mat.emissive.setHex(0xb45309); // 暖琥珀悬浮微光
+        mat.emissiveIntensity = 0.25;
       }
       mat.needsUpdate = true;
     }
@@ -227,8 +227,8 @@ export class ReinforcementManager {
         config.start_chainage,
         config.r2,
         hasCritical ? config.rg_crit : config.r2,
-        hasCritical ? 0xffd700 : 0x888888,
-        hasCritical ? 0.85 : 0.1,
+        hasCritical ? 0xf59e0b : 0x888888,
+        hasCritical ? 0.40 : 0.1,
         config.tunnel_type,
         config.D_spacing,
         baseRadius
@@ -277,7 +277,7 @@ export class ReinforcementManager {
     }
 
     // 构建 3D 几何体，并进行端面盖板剔除与顶点法线离散化处理
-    let newGeom: THREE.BufferGeometry = new THREE.ExtrudeGeometry(shapes, { depth: 1.0, bevelEnabled: false, curveSegments: 32 });
+    let newGeom: THREE.BufferGeometry = new THREE.ExtrudeGeometry(shapes, { depth: 1.0, bevelEnabled: false, curveSegments: 64 });
     newGeom = removeExtrudeEndCaps(newGeom);
     newGeom = processHorseshoeLiningGeometry(newGeom);
 
