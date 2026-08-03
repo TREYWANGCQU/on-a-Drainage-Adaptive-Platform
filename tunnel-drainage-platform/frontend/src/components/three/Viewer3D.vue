@@ -70,11 +70,44 @@
             </div>
           </div>
           <div class="layer-divider"></div>
-          <label class="layer-item">
-            <input type="checkbox" v-model="layerVisibility.lining" @change="updateLayerVisibility" />
-            <span class="layer-color-dot lining-dot"></span>
-            <span class="layer-label">隧道衬砌</span>
-          </label>
+          <!-- 隧道衬砌图层组 (支持折叠与 3 个次级图层控制) -->
+          <div class="layer-group-header">
+            <label class="layer-item">
+              <input 
+                ref="liningParentCheckboxRef"
+                type="checkbox" 
+                :checked="isLiningParentChecked" 
+                @change="toggleLiningParentGroup" 
+              />
+              <span class="layer-color-dot lining-dot"></span>
+              <span class="layer-label">隧道衬砌</span>
+            </label>
+            <span 
+              class="group-toggle-btn" 
+              @click.stop="isLiningGroupOpen = !isLiningGroupOpen"
+              :title="isLiningGroupOpen ? '折叠次级图层' : '展开次级图层'"
+            >
+              {{ isLiningGroupOpen ? '▼' : '▶' }}
+            </span>
+          </div>
+          <div v-if="isLiningGroupOpen" class="sub-layer-container">
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.liningSecondary" @change="onLiningSubLayerChange" />
+              <span class="layer-color-dot lining-dot"></span>
+              <span class="layer-label">└ 隧道二衬</span>
+            </label>
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.liningPrimary" @change="onLiningSubLayerChange" />
+              <span class="layer-color-dot initial-grouting-dot"></span>
+              <span class="layer-label">└ 初支</span>
+            </label>
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.liningRoadDitch" @change="onLiningSubLayerChange" />
+              <span class="layer-color-dot env-dot"></span>
+              <span class="layer-label">└ 路面与排水沟</span>
+            </label>
+          </div>
+
           <label class="layer-item">
             <input type="checkbox" v-model="layerVisibility.initialGrouting" @change="updateLayerVisibility" />
             <span class="layer-color-dot initial-grouting-dot"></span>
@@ -533,10 +566,17 @@ const currentProbeStateTab = ref<'original' | 'critical'>('original');
 
 // 图层显隐控制状态
 const isLayerPanelOpen = ref(true);
+const isLiningGroupOpen = ref(true);
 const isPipesGroupOpen = ref(true);
 const isEnvGroupOpen = ref(true);
+
+const liningParentCheckboxRef = ref<HTMLInputElement | null>(null);
+
 const layerVisibility = reactive({
-  lining: true,
+  lining: true,             // 隧道衬砌 (主图层总控)
+  liningSecondary: true,    // └ 隧道二衬 (r -> r1)
+  liningPrimary: true,      // └ 初支 (r1 -> r2)
+  liningRoadDitch: true,    // └ 路面与排水沟
   initialGrouting: true,
   criticalGrouting: true,
   pipes: true,
@@ -548,13 +588,57 @@ const layerVisibility = reactive({
   probe: true
 });
 
+const isLiningParentChecked = computed(() => {
+  return layerVisibility.liningSecondary && layerVisibility.liningPrimary && layerVisibility.liningRoadDitch;
+});
+
+const isLiningParentSomeChecked = computed(() => {
+  return layerVisibility.liningSecondary || layerVisibility.liningPrimary || layerVisibility.liningRoadDitch;
+});
+
+watch([isLiningParentChecked, isLiningParentSomeChecked, isLiningGroupOpen], () => {
+  if (liningParentCheckboxRef.value) {
+    liningParentCheckboxRef.value.indeterminate = isLiningParentSomeChecked.value && !isLiningParentChecked.value;
+  }
+}, { flush: 'post' });
+
+const toggleLiningParentGroup = (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  const val = target.checked;
+  layerVisibility.lining = val;
+  layerVisibility.liningSecondary = val;
+  layerVisibility.liningPrimary = val;
+  layerVisibility.liningRoadDitch = val;
+  updateLayerVisibility();
+};
+
+const onLiningSubLayerChange = () => {
+  layerVisibility.lining = isLiningParentSomeChecked.value;
+  updateLayerVisibility();
+};
+
 const updateLayerVisibility = () => {
-  // 1. 衬砌 (含二衬、内部路面板与水沟槽)
+  // 1. 隧道衬砌 (分控二衬、初支、内部路面板与水沟槽)
+  const liningParentVisible = layerVisibility.lining;
   tGenInstances.forEach(tGen => {
-    const meshes = tGen.getMeshes();
-    meshes.forEach(m => {
-      m.visible = layerVisibility.lining;
-    });
+    // 隧道二衬
+    if (tGen.mesh) {
+      tGen.mesh.visible = liningParentVisible && layerVisibility.liningSecondary;
+    }
+    // 隧道初支
+    if (tGen.primaryMesh) {
+      tGen.primaryMesh.visible = liningParentVisible && layerVisibility.liningPrimary;
+    }
+    // 路面与排水沟
+    if (tGen.roadMesh) {
+      tGen.roadMesh.visible = liningParentVisible && layerVisibility.liningRoadDitch;
+    }
+    if (tGen.ditchMesh) {
+      tGen.ditchMesh.visible = liningParentVisible && layerVisibility.liningRoadDitch;
+    }
+    if (tGen.ditchEdgeMesh) {
+      tGen.ditchEdgeMesh.visible = liningParentVisible && layerVisibility.liningRoadDitch;
+    }
   });
 
   // 2. 注浆加固圈（支持原始与临界）
