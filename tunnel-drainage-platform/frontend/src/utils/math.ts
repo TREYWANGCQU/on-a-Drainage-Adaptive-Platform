@@ -159,8 +159,29 @@ export class HorseshoeArcCurve extends THREE.Curve<THREE.Vector3> {
     let aRight = Math.atan2(-dy, dx);
     if (aRight < 0) aRight += Math.PI * 2;
 
+    // 侧边水沟槽底中心 X 坐标与 Y 标高解算 (绝对对齐 TunnelGenerator.ts)
+    const invertCenterY = -H_side + dy;
+    const ditchH = 0.8;
+    const dy_road = R3_base - ditchH;
+    const roadY = invertCenterY - dy_road;
+    const yBot_side = roadY - 0.3;
+    const max_x_lining = Math.sqrt(Math.max(0, R3_base * R3_base - Math.pow(invertCenterY - yBot_side, 2)));
+    const sideDitchX = max_x_lining - 0.25;
+
     const points: THREE.Vector3[] = [];
     const normals: THREE.Vector3[] = [];
+
+    // 0. 左侧脚端延伸段 (从左侧水沟槽底 (-sideDitchX, yBot_side) 精准收口延伸至拱脚 aLeft)
+    const legSteps = 8;
+    const pLeftStart = new THREE.Vector3(-sideDitchX, yBot_side, 0);
+    const pLeftEnd = new THREE.Vector3(-dx + R2 * Math.cos(aLeft), -H_side + R2 * Math.sin(aLeft), 0);
+    for (let i = 0; i < legSteps; i++) {
+      const frac = i / legSteps;
+      const px = pLeftStart.x + (pLeftEnd.x - pLeftStart.x) * frac;
+      const py = pLeftStart.y + (pLeftEnd.y - pLeftStart.y) * frac;
+      points.push(new THREE.Vector3(px, py, 0));
+      normals.push(new THREE.Vector3(-1, 0, 0));
+    }
 
     // 1. 左侧墙下半段圆弧 (从左墙脚 aLeft ~225° 逆时针至 180° / PI)
     const leftSteps = 16;
@@ -210,6 +231,17 @@ export class HorseshoeArcCurve extends THREE.Curve<THREE.Vector3> {
       const py = -H_side + R2 * Math.sin(angle);
       points.push(new THREE.Vector3(px, py, 0));
       normals.push(new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0).normalize());
+    }
+
+    // 6. 右侧脚端延伸段 (从右墙脚 aRight 精准收口延伸至右侧水沟槽底 (sideDitchX, yBot_side))
+    const pRightStart = new THREE.Vector3(dx + R2 * Math.cos(aRight), -H_side + R2 * Math.sin(aRight), 0);
+    const pRightEnd = new THREE.Vector3(sideDitchX, yBot_side, 0);
+    for (let i = 1; i <= legSteps; i++) {
+      const frac = i / legSteps;
+      const px = pRightStart.x + (pRightEnd.x - pRightStart.x) * frac;
+      const py = pRightStart.y + (pRightEnd.y - pRightStart.y) * frac;
+      points.push(new THREE.Vector3(px, py, 0));
+      normals.push(new THREE.Vector3(1, 0, 0));
     }
 
     this.points = points;
