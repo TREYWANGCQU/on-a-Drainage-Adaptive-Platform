@@ -224,7 +224,7 @@ def solve_rg_double_high(p, h0):
     if p.P_crit >= P_max - 1e-4:
         return p.r_p
 
-    C0 = ln_rs_r0 + B * ln(R_map) - A * ln(p.r_p) + inner
+    C0 = B * ln(R_map) - A * ln(p.r_p) + inner
     den_t = p.gamma * R_map * ln_rs_r0 / p.P_crit
     ln_rg = (den_t - C0) / (A - B)
     rg = math.exp(ln_rg)
