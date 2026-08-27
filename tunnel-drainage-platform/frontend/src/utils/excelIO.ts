@@ -27,6 +27,10 @@ const fieldMapping: Record<string, string> = {
   '注浆圈外半径(m)': 'r_g',
   '隧道中心埋深(m)': 'h_1',
   '隧道高宽比(3D专用)': 'aspect_ratio',
+  '中间排水沟(3D专用)': 'has_central_ditch',
+  '中间排水沟': 'has_central_ditch',
+  '是否有中间排水沟': 'has_central_ditch',
+  '中央排水沟': 'has_central_ditch',
   '混凝土标号': 'concrete_grade',
   '配筋面积(mm²)': 'Ag',
   '双洞间距(m)': 'D_spacing',
@@ -66,7 +70,7 @@ const fieldMapping: Record<string, string> = {
 const standardExportKeys = [
   'start_chainage', 'end_chainage', 'tunnel_type', 'k_r', 'H', 'p_mm',
   'k_g', 'k_p', 'k_s', 'cn_condition', 'land_use', 'grades',
-  'r_0', 'r_s', 'r_p', 'r_g', 'h_1', 'aspect_ratio', 'concrete_grade', 'Ag',
+  'r_0', 'r_s', 'r_p', 'r_g', 'h_1', 'aspect_ratio', 'has_central_ditch', 'concrete_grade', 'Ag',
   'D_spacing', 'I_long', 'as_mm', 'gamma', 'n_long', 'n_ring', 'I_ring',
   'n_lat', 'I_lat', 'S_code_max', 'S_min', 'd_ring_default', 'd_long_default',
   'd_lat_default', 'tol_safety_factor'
@@ -80,6 +84,18 @@ const reverseFieldMapping = Object.fromEntries(
 );
 
 /**
+ * 安全解析布尔型单元格值，彻底规避 JS 假真值陷阱
+ */
+export function parseBooleanCell(val: any, defaultVal = true): boolean {
+  if (val === undefined || val === null || val === '') return defaultVal;
+  if (typeof val === 'boolean') return val;
+  const str = String(val).trim().toLowerCase();
+  if (['是', '有', 'true', '1', 'yes'].includes(str)) return true;
+  if (['否', '无', 'false', '0', 'no'].includes(str)) return false;
+  return defaultVal;
+}
+
+/**
  * 生成并下载包含标准表头和数据有效性提示的空 Excel 模板
  * 根据 Pydantic Schema 模型自动匹配对应的默认字段与占位数据
  */
@@ -91,6 +107,7 @@ export const downloadTemplate = () => {
     if (key === 'cn_condition') return '灌溉良好';
     if (key === 'land_use') return '居住地';
     if (key === 'concrete_grade') return 'C35';
+    if (key === 'has_central_ditch') return '是'; // 对应三沟式标杆工况
 
     // 里程与围岩
     if (key === 'start_chainage') return 0.0;
@@ -127,10 +144,14 @@ export const downloadTemplate = () => {
  */
 export const exportCurrentData = (): void => {
   const store = useParameterStore();
-  const payload = store.currentPayload;
+  const payload = store.currentPayload as any;
 
   const headers = Object.keys(payload).map(key => reverseFieldMapping[key] || key);
-  const dataRow = Object.values(payload);
+  const dataRow = Object.keys(payload).map(key => {
+    const val = payload[key];
+    if (key === 'has_central_ditch') return val ? '是' : '否';
+    return val;
+  });
 
   const ws = XLSX.utils.aoa_to_sheet([headers, dataRow]);
   const wb = XLSX.utils.book_new();
@@ -155,7 +176,19 @@ export const parseUploadFile = (file: File, sequenceName: string): Promise<void>
         const snapshotStore = useSnapshotStore();
         const snapshots = data.map(row => {
           const params: any = {};
-          Object.keys(row).forEach(key => { if (fieldMapping[key]) params[fieldMapping[key]] = row[key]; });
+          Object.keys(row).forEach(key => { 
+            if (fieldMapping[key]) {
+              const paramKey = fieldMapping[key];
+              if (paramKey === 'has_central_ditch') {
+                params[paramKey] = parseBooleanCell(row[key], true);
+              } else {
+                params[paramKey] = row[key];
+              }
+            } 
+          });
+          if (params.has_central_ditch === undefined) {
+            params.has_central_ditch = true;
+          }
           return {
             id: `snap_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
             timestamp: Date.now(),
@@ -175,6 +208,7 @@ export const parseUploadFile = (file: File, sequenceName: string): Promise<void>
     reader.readAsArrayBuffer(file);
   });
 };
+
 /**
  * 分段下载单个计算快照的结果为独立 Excel
  * 支持由外部 UI (如 SnapshotSidebar.vue) 调用
@@ -192,6 +226,11 @@ export const exportSnapshotResult = (snapshot: any): void => {
   const cleanParams = Object.fromEntries(
     Object.entries(snapshot.params || {}).filter(([k]) => !deprecatedKeys.has(k))
   );
+
+  // 格式化布尔型值
+  if ('has_central_ditch' in cleanParams) {
+    cleanParams.has_central_ditch = cleanParams.has_central_ditch ? '是' : '否';
+  }
 
   // 展平快照数据结构，便于二维表格展示
   const exportData = {

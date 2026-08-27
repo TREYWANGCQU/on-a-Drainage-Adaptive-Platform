@@ -20,6 +20,8 @@ export class TunnelGenerator {
   private readonly delta_l_min: number; // 最小排布间距 (单位长度1m)
   private readonly c_ring: number = 1;  // 隧道主体单环实例数恒定为1
 
+  private readonly has_central_ditch: boolean;
+
   constructor(
     type: TunnelType,
     start_chainage: number,
@@ -31,11 +33,13 @@ export class TunnelGenerator {
     r2: number = 6.5,
     rg: number = 8.0,
     c: number = 50.0,
-    delta_l_min: number = 1.0
+    delta_l_min: number = 1.0,
+    has_central_ditch: boolean = true
   ) {
     // 从 store 传入的空间里程推导纵深 L_max
     this.L_max = Math.abs(end_chainage - start_chainage);
     this.delta_l_min = delta_l_min;
+    this.has_central_ditch = has_central_ditch;
 
     // 构建二衬 (r -> r1 - eps) 与 初支 (r1 - eps -> r2) 拓扑无缝衔接几何体，彻底消除洞口端面 2mm 缝隙与侧壁 Z-fighting
     const eps = 0.0005;
@@ -98,7 +102,7 @@ export class TunnelGenerator {
     this.primaryMesh.renderOrder = 1;
 
     // 创建独立 PBR 沥青路面与防渗混凝土水沟槽 Mesh
-    this.createInternalRoadAndDitchGeometry(type, r, aspect_ratio, D_spacing, nMax);
+    this.createInternalRoadAndDitchGeometry(type, r, aspect_ratio, D_spacing, nMax, has_central_ditch);
 
     // 地表平面生成与埋深推演
     secondaryGeometry.computeBoundingBox();
@@ -113,14 +117,15 @@ export class TunnelGenerator {
   }
 
   /**
-   * 构建精确贴合仰拱内壁、带三沟凹槽切割与双洞偏移的路面与三沟组合几何体
+   * 构建精确贴合仰拱内壁、带三沟/双侧沟凹槽切割与双洞偏移的路面与水沟组合几何体
    */
   private createInternalRoadAndDitchGeometry(
     type: TunnelType,
     r: number,
     aspect_ratio: number,
     spacing: number,
-    nMax: number
+    nMax: number,
+    has_central_ditch: boolean = true
   ): void {
     const R3_base = 1.80 * r;
     const ditchH = 0.8;
@@ -137,19 +142,27 @@ export class TunnelGenerator {
     const invertCenterY = -H_side + dy_offset;
     const roadY = invertCenterY - dy_road;
 
-    // 根据侧边沟底高程计算二衬仰拱在水沟底部的物理安全极值边界 max_x_lining (WBS 1)
-    const yBot_side = roadY - 0.3;
-    const max_x_lining = Math.sqrt(Math.max(0, R3_base * R3_base - Math.pow(invertCenterY - yBot_side, 2)));
+    // 拱脚内轮廓几何参数
+    const cosFoot = dx_offset / (R3_base - R2_base);
+    const xFoot = R3_base * cosFoot; // 二衬内轮廓拱脚 X 坐标
 
-    // 计算三沟与路面挖槽的具体 X 坐标分布 (严格控制在二衬极值内侧)
-    const sideLeftX = -max_x_lining + 0.05;
-    const sideLeftXInner = -max_x_lining + 0.45;
-    const sideRightXInner = max_x_lining - 0.45;
-    const sideRightX = max_x_lining - 0.05;
+    // 根据侧边沟底高程计算二衬仰拱在水沟底部的物理安全极值边界 max_x_lining
+    const yBot_side_nominal = roadY - 0.3;
+    const max_x_lining = Math.sqrt(Math.max(0, R3_base * R3_base - Math.pow(invertCenterY - yBot_side_nominal, 2)));
+
+    // 侧沟定位：三沟式位于路缘，双侧沟式自适应外移至拱脚承接区
+    const sideRightX = has_central_ditch ? (max_x_lining - 0.05) : (xFoot - 0.05);
+    const sideRightXInner = has_central_ditch ? (max_x_lining - 0.45) : (sideRightX - 0.40);
+    const sideLeftX = -sideRightX;
+    const sideLeftXInner = -sideRightXInner;
+
+    // 侧沟槽底安全高程（严格高出仰拱内表面 5cm 防穿模）
+    const yLiningAtDitch = invertCenterY - Math.sqrt(Math.max(0, R3_base * R3_base - sideRightX * sideRightX));
+    const yBot_side = Math.max(roadY - 0.3, yLiningAtDitch + 0.05);
 
     const centralLeftX = -0.35;
     const centralRightX = 0.35;
-    // 中心排水沟底标高向下延展至仰拱底部上方 5cm 处 (WBS 2)
+    // 中心排水沟底标高向下延展至仰拱底部上方 5cm 处 (严格防穿模)
     const yBot_central = invertCenterY - R3_base + 0.05;
 
     // 根据单/双洞确定 X 轴偏移数组
@@ -159,8 +172,6 @@ export class TunnelGenerator {
 
     offsets.forEach(ox => {
       // 1. 路面 Shape：顶点采样拓扑解耦 (底沿弧线采样与顶沿细分槽口节点)
-      // 顶沿按 X 轴倒序细分采样 (与底沿 16 节点一一对应)，彻底消除跨越 9.8m 的大对角线剖分三角形；
-      // 在水沟区间下沉 0.05m 避开水沟内腔，暴露 ditchMesh 100% 敞口 U 型槽，解决水沟被遮挡问题。
       const roadShape = new THREE.Shape();
       const steps = 16;
 
@@ -185,7 +196,18 @@ export class TunnelGenerator {
 
       roadShape.lineTo(halfRoadW + ox, roadY);
       addDitchNotch(sideRightX, sideRightXInner, yBot_side);
-      addDitchNotch(centralRightX, centralLeftX, yBot_central);
+
+      if (has_central_ditch) {
+        addDitchNotch(centralRightX, centralLeftX, yBot_central);
+      } else {
+        // 双侧沟模式：在中央平直段插入采样点，防止 Earcut 大跨度剖分退化
+        const midSteps = 8;
+        for (let i = 1; i < midSteps; i++) {
+          const mx = sideRightXInner - (i / midSteps) * (sideRightXInner - sideLeftXInner);
+          roadShape.lineTo(mx + ox, roadY);
+        }
+      }
+
       addDitchNotch(sideLeftXInner, sideLeftX, yBot_side);
       roadShape.lineTo(-halfRoadW + ox, roadY);
 
@@ -193,7 +215,6 @@ export class TunnelGenerator {
       roadShapes.push(roadShape);
 
       // 2. 排水沟 Shapes 构造: 单圈 8 顶点 CCW 凹多边形 U 型槽 (createUShape)
-      // 单圈 8 顶点 CCW 顺序多边形构建 100% 敞口防渗 U 型防渗水沟，自适应嵌套在路面下方，消除拼装缝隙与重叠
       const delta_x = 0.008;
       const delta_y = 0.005;
 
@@ -217,7 +238,9 @@ export class TunnelGenerator {
         return uShape;
       };
 
-      ditchShapes.push(createUShape(centralLeftX, centralRightX, roadY, yBot_central, 0.05)); // 中央深水沟
+      if (has_central_ditch) {
+        ditchShapes.push(createUShape(centralLeftX, centralRightX, roadY, yBot_central, 0.05)); // 中央深水沟
+      }
       ditchShapes.push(createUShape(sideLeftX, sideLeftXInner, roadY, yBot_side, 0.05)); // 左侧沟槽
       ditchShapes.push(createUShape(sideRightXInner, sideRightX, roadY, yBot_side, 0.05)); // 右侧沟槽
     });

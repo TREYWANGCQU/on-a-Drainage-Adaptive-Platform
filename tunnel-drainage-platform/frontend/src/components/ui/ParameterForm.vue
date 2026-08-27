@@ -124,6 +124,19 @@
               </el-form-item>
             </el-col>
           </el-row>
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="中间排水沟(3D)">
+                <el-radio-group 
+                  :model-value="formData.has_central_ditch ?? true" 
+                  @change="(val) => paramStore.updateParam('has_central_ditch', val)"
+                >
+                  <el-radio :value="true">设置(三沟式)</el-radio>
+                  <el-radio :value="false">不设置(双侧沟)</el-radio>
+                </el-radio-group>
+              </el-form-item>
+            </el-col>
+          </el-row>
         </el-collapse-item>
 
         <el-collapse-item title="🧱 材料属性参数" name="3">

@@ -152,6 +152,7 @@ const PARAM_META_DICT: Record<string, ParamMeta> = {
   r_g: { label: '注浆圈外半径(r_g)', unit: 'm', comment: '注浆加固圈外边界半径，解算临界注浆半径' },
   h_1: { label: '隧道中心埋深', unit: 'm', comment: '标准物理参数(h_1)，隧道中心轴线垂直埋深' },
   aspect_ratio: { label: '隧道高宽比', unit: '-', comment: '隧道断面高度与宽度之比例系数 (仅3D视口建模使用)' },
+  has_central_ditch: { label: '中间排水沟', unit: '-', comment: '是否设置路面中央深排水沟(是:三沟式, 否:双侧沟式，仅3D视口建模专用)' },
   D_spacing: { label: '双洞中心间距', unit: 'm', comment: '双洞隧道两洞心轴线间的水平距离（双洞特有，单洞模式下取0）' },
 
   // 5. 材料与结构配筋参数
@@ -182,6 +183,9 @@ const formatParamValue = (key: string, val: any): string => {
   if (val === undefined || val === null || val === '') return '-';
   if (key === 'tunnel_type') {
     return val === 'single' ? '单洞' : val === 'double' ? '双洞' : String(val);
+  }
+  if (key === 'has_central_ditch') {
+    return (val === false || val === 'false' || val === '否') ? '否 (双侧沟)' : '是 (三沟式)';
   }
   return String(val);
 };
@@ -248,7 +252,15 @@ const parseJSON = (jsonStr: string) => { try { return JSON.parse(jsonStr); } cat
 const isDifferent = (key: string) => {
   if (selectedRows.value.length < 2) return false;
   const firstVal = parseJSON(selectedRows.value[0].parameters_json)[key];
-  return selectedRows.value.some(row => parseJSON(row.parameters_json)[key] !== firstVal);
+  return selectedRows.value.some(row => {
+    const rowVal = parseJSON(row.parameters_json)[key];
+    if (key === 'has_central_ditch') {
+      const b1 = (firstVal !== false && firstVal !== 'false' && firstVal !== '否');
+      const b2 = (rowVal !== false && rowVal !== 'false' && rowVal !== '否');
+      return b1 !== b2;
+    }
+    return rowVal !== firstVal;
+  });
 };
 const getTagType = (type: string) => {
   const map: Record<string, string> = { '城市道路': 'primary', '公路': 'success', '水工': 'info', '综合管廊': 'warning' };

@@ -19,7 +19,7 @@ interface AdvancedParams {
   tol_safety_factor: number;
 }
 
-// 单洞参数结构 (23个核心/复选参数 + 13个高级参数)
+// 单洞参数结构 (23个核心/复选参数 + 13个高级参数 + has_central_ditch)
 export interface SingleTubeParams extends AdvancedParams {
   tunnel_type: 'single';
   k_r: number; H: number; p_mm: number; k_g: number; k_p: number; k_s: number;
@@ -28,9 +28,10 @@ export interface SingleTubeParams extends AdvancedParams {
   start_chainage: number; end_chainage: number; // 分区里程
   concrete_grade: string; Ag: number;
   I_long: number;
+  has_central_ditch: boolean; // 是否设置中间排水沟 (3D视口与台账专用)
 }
 
-// 双洞参数结构 (24个核心/复选参数 + 13个高级参数)
+// 双洞参数结构 (24个核心/复选参数 + 13个高级参数 + has_central_ditch)
 export interface DoubleTubeParams extends AdvancedParams {
   tunnel_type: 'double';
   k_r: number; H: number; p_mm: number; k_g: number; k_p: number; k_s: number;
@@ -40,6 +41,7 @@ export interface DoubleTubeParams extends AdvancedParams {
   concrete_grade: string; Ag: number;
   D_spacing: number;
   I_long: number;
+  has_central_ditch: boolean; // 是否设置中间排水沟 (3D视口与台账专用)
 }
 
 // 统一的默认高级参数对象（规范推荐值/经验值）
@@ -77,6 +79,7 @@ export const useParameterStore = defineStore('parameter', {
       start_chainage: 0, end_chainage: 47,
       concrete_grade: 'C35', Ag: 1000.0,
       I_long: 0.02,
+      has_central_ditch: true,
       ...defaultAdvancedSettings
     } as SingleTubeParams,
 
@@ -90,6 +93,7 @@ export const useParameterStore = defineStore('parameter', {
       concrete_grade: 'C35', Ag: 1000.0,
       D_spacing: 40.0,
       I_long: 0.02,
+      has_central_ditch: true,
       ...defaultAdvancedSettings
     } as DoubleTubeParams
   }),
@@ -139,7 +143,8 @@ export const useParameterStore = defineStore('parameter', {
         k_s: data.k_s ?? data.K2 ?? 0.000864,
         k_p: data.k_p ?? data.K1 ?? 0.00864,
         k_g: data.k_g ?? data.Kg ?? 0.00864,
-        h_1: data.h_1 ?? data.c ?? 130.0
+        h_1: data.h_1 ?? data.c ?? 130.0,
+        has_central_ditch: data.has_central_ditch !== undefined ? Boolean(data.has_central_ditch) : true
       };
       
       // 深度删除旧别名残留键

@@ -1360,14 +1360,15 @@ const renderSceneData = () => {
     const tunnel_type = extractSnapshotValue<string>(rawData, 'tunnel_type', 'single') as 'single' | 'double';
     const aspect_ratio = extractSnapshotValue(rawData, 'aspect_ratio', 0.7);
     const D_spacing = extractSnapshotValue(rawData, 'D_spacing', 30.0);
+    const has_central_ditch = extractSnapshotValue<boolean>(rawData, 'has_central_ditch', true);
 
     maxChainageLength.value = Math.abs(end_chainage - start_chainage);
     startChainageVal.value = start_chainage;
 
     const tType = tunnel_type === 'double' ? TunnelType.DOUBLE : TunnelType.SINGLE;
 
-    // 1. 隧道主洞体与路面水沟生成
-    const tGen = new TunnelGenerator(tType, start_chainage, end_chainage, r, aspect_ratio, D_spacing, r1, r2, rg, c);
+    // 1. 隧道主洞体与路面水沟生成 (传入 has_central_ditch)
+    const tGen = new TunnelGenerator(tType, start_chainage, end_chainage, r, aspect_ratio, D_spacing, r1, r2, rg, c, 1.0, has_central_ditch);
     tGen.setVisualParadigm(visualParadigm.value);
     tGen.getMeshes().forEach(mesh => {
       mesh.castShadow = false;
@@ -1409,7 +1410,7 @@ const renderSceneData = () => {
     });
     rManagerInstances.push(rManager);
 
-    // 3. 排水管网生成器
+    // 3. 排水管网生成器 (传入 hasCentralDitch)
     const pipeGen = new DrainagePipeGenerator({
       ringDiam: extractSnapshotValue(rawData, 'ring_diam_recommend', 0.05),
       ringSpacing: extractSnapshotValue(rawData, 'ring_spacing_recommend', 10.0),
@@ -1421,7 +1422,8 @@ const renderSceneData = () => {
       endChainage: end_chainage,
       tunnelRadius: r,
       outerRadius: r2,
-      dSpacing: D_spacing
+      dSpacing: D_spacing,
+      hasCentralDitch: has_central_ditch
     });
     pipeGen.setVisualParadigm(visualParadigm.value);
     pipeGen.setPipeScaleFactor(pipeScaleFactor.value);

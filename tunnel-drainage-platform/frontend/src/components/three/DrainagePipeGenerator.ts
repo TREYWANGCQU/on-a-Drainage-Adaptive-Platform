@@ -34,13 +34,15 @@ export interface DrainagePipeConfig {
   outerRadius?: number;
   /** 双洞间距 (m)，对应 D_spacing，双洞模式下有效 */
   dSpacing?: number;
+  /** 是否设置中央深排水沟 (默认 true) */
+  hasCentralDitch?: boolean;
 }
 
 export class DrainagePipeGenerator {
   public ringMesh: THREE.InstancedMesh;        // 主洞环向排水盲管 (270°马蹄拱形半环)
   // public radialMesh?: THREE.InstancedMesh;   // (已注销) 径向打孔排水管
-  public longMesh: THREE.InstancedMesh;        // 主洞纵向排水管 (槽底卧铺)
-  public latMesh: THREE.InstancedMesh;         // 主洞横向连接管 (倾斜重力自流)
+  public longMesh: THREE.InstancedMesh;        // 主洞纵向排水管 (拱脚交界面)
+  public latMesh: THREE.InstancedMesh;         // 主洞横向连接管 (穿衬 3% 下倾汇流)
 
   public leftRingMesh?: THREE.InstancedMesh;   // 双洞副洞环向管
   // public leftRadialMesh?: THREE.InstancedMesh; // (已注销) 双洞副洞径向管
@@ -54,7 +56,7 @@ export class DrainagePipeGenerator {
   private scaleFactor: number = 1.0;          // 排水管径放大倍率 (默认 1.0x 物理真实管径)
 
   constructor(config: DrainagePipeConfig) {
-    this.config = config;
+    this.config = { ...config, hasCentralDitch: config.hasCentralDitch !== undefined ? config.hasCentralDitch : true };
     this.annotationGroup = new THREE.Group();
     this.annotationGroup.name = 'DrainagePipeAnnotations';
     this.annotationGroup.renderOrder = 999;
@@ -65,17 +67,12 @@ export class DrainagePipeGenerator {
     const ringCount = this.calculateRingCount();
     this.ringMesh = this.createRingInstancedMesh(config.ringDiam, ringCount, 0xf59e0b);
 
-    // 2. 径向打孔排水管：已根据要求注销代码
-    // const radialPerRing = 7;
-    // const radialCount = ringCount * radialPerRing;
-    // this.radialMesh = this.createRadialInstancedMesh(radialCount, 0x3498db);
-
-    // 3. 纵向排水管：侧边沟槽底 + 中心水沟槽底 (深金 #D97706)
+    // 2. 纵向排水管：左右拱脚二衬外/初支内交界面共 2 根 (深金 #D97706)
     const longCount = this.calculateLongCount();
     this.longMesh = this.createCylinderInstancedMesh(config.longDiam / 2, 1.0, longCount, 0xd97706, 0.95, 0.12);
 
-    // 4. 横向连接管：连接侧沟槽底与中心沟槽底 (亮金 #EAB308)
-    const latCount = this.calculateLatCount() * (config.doubleSide ? 2 : 1);
+    // 3. 横向排水管：穿透二衬以 3% 坡度自拱脚引向水沟 (亮金 #EAB308)
+    const latCount = this.calculateLatCount() * 2;
     this.latMesh = this.createCylinderInstancedMesh(config.latDiam / 2, 1.0, latCount, 0xeab308, 0.90, 0.18);
 
     // 双洞模式：创建副洞实例
@@ -83,7 +80,6 @@ export class DrainagePipeGenerator {
       this.leftRingMesh = this.createRingInstancedMesh(config.ringDiam, ringCount, 0xf59e0b);
       this.leftRingMesh.geometry.dispose(); // 销毁二度实例默认几何体，共享主洞 Geometry 节约显存
       this.leftRingMesh.geometry = this.ringMesh.geometry;
-      // this.leftRadialMesh = this.createRadialInstancedMesh(radialCount, 0x3498db);
       this.leftLongMesh = this.createCylinderInstancedMesh(config.longDiam / 2, 1.0, longCount, 0xd97706, 0.95, 0.12);
       this.leftLatMesh = this.createCylinderInstancedMesh(config.latDiam / 2, 1.0, latCount, 0xeab308, 0.90, 0.18);
     }
@@ -131,10 +127,12 @@ export class DrainagePipeGenerator {
   }
 
   /**
-   * 解算马蹄形衬砌底部水沟与路面物理几何参数 (与 TunnelGenerator.ts 100% 精确对齐)
+   * 解算马蹄形衬砌拱脚、水沟与管网空间几何参数 (与 TunnelGenerator.ts 100% 精确对齐)
    */
   private getDitchGeometry() {
     const r = this.config.tunnelRadius;
+    const r2 = this.config.outerRadius ?? (r + 1.0);
+    const t = Math.max(0, r2 - r);
     const aspect_ratio = 0.7;
     const R1_base = 1.05 * r;
     const R2_base = 0.65 * r;
@@ -152,15 +150,38 @@ export class DrainagePipeGenerator {
     const dy_road = R3_base - ditchH;
     const roadY = invertCenterY - dy_road;
 
+    const cosFoot = dx_offset / (R3_base - R2_base);
+    const sinFoot = dy_offset / (R3_base - R2_base);
+
+    // 拱脚纵向管坐标（二衬外、初支内交界面）
+    const xLongFoot = (R3_base + t) * cosFoot;
+    const yLongFoot = -H_side - (R2_base + t) * sinFoot;
+
+    // 二衬内轮廓拱脚 X 坐标
+    const xFootInner = R3_base * cosFoot;
+    // 双侧沟工况下自适应外移的侧沟外壁 X 坐标
+    const xSideDual = xFootInner - 0.05;
+
     const yBot_side = roadY - 0.3;
     const max_x_lining = Math.sqrt(Math.max(0, R3_base * R3_base - Math.pow(invertCenterY - yBot_side, 2)));
-    const sideDitchX = max_x_lining - 0.25;
+    const sideDitchX = max_x_lining - 0.05;
     const sideDitchBottomY = yBot_side;
 
     const yBot_central = invertCenterY - R3_base + 0.05;
     const ditchBottomY = yBot_central;
 
-    return { sideDitchX, roadY, sideDitchBottomY, ditchBottomY };
+    return { 
+      xLongFoot, 
+      yLongFoot, 
+      xSideDual, 
+      sideDitchX, 
+      roadY, 
+      sideDitchBottomY, 
+      ditchBottomY,
+      invertCenterY,
+      R3_base,
+      r2
+    };
   }
 
   /**
@@ -276,7 +297,7 @@ export class DrainagePipeGenerator {
   }
 
   private calculateLongCount(): number {
-    return this.config.doubleSide ? 3 : 2;
+    return 2; // 拱脚纵向排水管固定为左右各 1 根 (二衬外、初支内)
   }
 
   private calculateLatCount(): number {
@@ -327,6 +348,7 @@ export class DrainagePipeGenerator {
     this.config.longDiam = targetState.long_diam_recommend ?? targetState.d_long ?? params.d_long_default ?? this.config.longDiam;
     this.config.latDiam = targetState.lateral_diam_recommend ?? targetState.d_lat ?? params.d_lat_default ?? this.config.latDiam;
     this.config.doubleSide = params.double_side ?? this.config.doubleSide;
+    this.config.hasCentralDitch = snapshot.has_central_ditch ?? snapshot.params?.has_central_ditch ?? params.has_central_ditch ?? this.config.hasCentralDitch ?? true;
 
     if (this.config.tunnelType === 'double') {
       this.config.dSpacing = params.D_spacing ?? this.config.dSpacing;
@@ -339,6 +361,9 @@ export class DrainagePipeGenerator {
     let stateColor = 0xf59e0b; // 正常工况：黄铜金 (#F59E0B)
     if (qDrain > 3.0) {
       stateColor = 0xe74c3c; // 堵塞过载：警示红
+      if (isCriticalEmpty) {
+        stateColor = 0x00ff88;
+      }
     } else if (qDrain > 1.0) {
       stateColor = 0xf39c12; // 富水预警：琥珀黄
     }
@@ -354,13 +379,11 @@ export class DrainagePipeGenerator {
 
     // 刷新各管网图层实例
     this.updateRingPipes(mainXOffset, this.ringMesh);
-    // if (this.radialMesh) this.updateRadialPipes(mainXOffset, this.radialMesh); // (已注销)
     this.updateLongPipes(mainXOffset, this.longMesh);
     this.updateLatPipes(mainXOffset, this.latMesh);
 
     if (isDouble) {
       if (this.leftRingMesh) this.updateRingPipes(subXOffset, this.leftRingMesh);
-      // if (this.leftRadialMesh) this.updateRadialPipes(subXOffset, this.leftRadialMesh); // (已注销)
       if (this.leftLongMesh) this.updateLongPipes(subXOffset, this.leftLongMesh);
       if (this.leftLatMesh) this.updateLatPipes(subXOffset, this.leftLatMesh);
     }
@@ -388,64 +411,7 @@ export class DrainagePipeGenerator {
   }
 
   /**
-   * (已注销) 更新径向打孔排水管图层
-   */
-  /*
-  private updateRadialPipes(xOffset: number = 0, targetMesh: THREE.InstancedMesh = this.radialMesh): void {
-    targetMesh.visible = false;
-    const lengthVal = Math.abs(this.config.endChainage - this.config.startChainage);
-    const ringCount = Math.max(1, Math.ceil(lengthVal / this.config.ringSpacing));
-    const sampledPoints = this.horseshoeCurve.sampledPoints;
-    const sampledNormals = this.horseshoeCurve.sampledNormals;
-
-    // 选择 7 个分布角度的索引
-    const sampleIndices = [4, 12, 20, 32, 44, 52, 60].filter(idx => idx < sampledPoints.length);
-    const radialsPerRing = sampleIndices.length;
-    const totalRadials = ringCount * radialsPerRing;
-    targetMesh.count = Math.min(totalRadials, targetMesh.instanceMatrix.count);
-
-    const matrix = new THREE.Matrix4();
-    const radialLen = 4.0;
-
-    let idx = 0;
-    for (let i = 0; i < ringCount; i++) {
-      const z = -(i * this.config.ringSpacing);
-
-      for (const sampleIdx of sampleIndices) {
-        if (idx >= targetMesh.count) break;
-
-        const pt = sampledPoints[sampleIdx];
-        const normal = sampledNormals[sampleIdx];
-
-        // 径向管中点坐标：自拱面向围岩深部延伸 2.0m
-        const centerPos = new THREE.Vector3(
-          xOffset + pt.x + normal.x * (radialLen / 2),
-          pt.y + normal.y * (radialLen / 2),
-          z
-        );
-
-        // 顺法向旋转四元数
-        const targetPos = new THREE.Vector3(
-          xOffset + pt.x + normal.x * radialLen,
-          pt.y + normal.y * radialLen,
-          z
-        );
-        const quat = calculateNormalQuaternion(targetPos, new THREE.Vector3(xOffset + pt.x, pt.y, z));
-
-        matrix.compose(centerPos, quat, new THREE.Vector3(1, 1, 1));
-        targetMesh.setMatrixAt(idx, matrix);
-        idx++;
-      }
-    }
-
-    targetMesh.instanceMatrix.needsUpdate = true;
-  }
-  */
-
-  /**
-   * 更新纵向排水管 (引入 scaleFactor Scaling 矩阵与管道底面定位解耦)
-   * 侧边管精准沉入 sideDitchBottomY (roadY - 0.4)
-   * 中心管精准沉入 ditchBottomY
+   * 更新拱脚纵向排水管 (共 2 根，敷设于左右拱脚二衬外/初支内交界面)
    */
   private updateLongPipes(xOffset: number = 0, targetMesh: THREE.InstancedMesh = this.longMesh): void {
     const count = this.calculateLongCount();
@@ -455,78 +421,70 @@ export class DrainagePipeGenerator {
     const length = Math.abs(this.config.endChainage - this.config.startChainage);
     // 局部 Scaling 矩阵: [S_scale, L_length, S_scale] 保持长度不变，横截面直径动态放缩
     const scale = new THREE.Vector3(this.scaleFactor, length, this.scaleFactor);
-    const { sideDitchX, sideDitchBottomY, ditchBottomY } = this.getDitchGeometry();
-    const longRadius = this.config.longDiam / 2;
-    const scaledRadius = longRadius * this.scaleFactor;
+    const { xLongFoot, yLongFoot } = this.getDitchGeometry();
 
     const quaternion = new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(1, 0, 0),
       Math.PI / 2
     );
 
-    // 0: 右侧边沟管 (沉入侧边沟槽底，依据放大后半径定位管道轴心 height)
+    // 0: 右侧拱脚纵向管 (二衬外初支内拱脚)
     if (targetMesh.count > 0) {
-      const posRight = new THREE.Vector3(xOffset + sideDitchX, sideDitchBottomY + scaledRadius, -length / 2);
+      const posRight = new THREE.Vector3(xOffset + xLongFoot, yLongFoot, -length / 2);
       matrix.compose(posRight, quaternion, scale);
       targetMesh.setMatrixAt(0, matrix);
     }
 
-    // 1: 左侧边沟管 (若双侧排水，沉入侧边沟槽底)
-    if (this.config.doubleSide && targetMesh.count > 1) {
-      const posLeft = new THREE.Vector3(xOffset - sideDitchX, sideDitchBottomY + scaledRadius, -length / 2);
+    // 1: 左侧拱脚纵向管 (二衬外初支内拱脚)
+    if (targetMesh.count > 1) {
+      const posLeft = new THREE.Vector3(xOffset - xLongFoot, yLongFoot, -length / 2);
       matrix.compose(posLeft, quaternion, scale);
       targetMesh.setMatrixAt(1, matrix);
-    }
-
-    // 2: 中心水沟管 (沉入中心水沟槽底)
-    const centerIdx = this.config.doubleSide ? 2 : 1;
-    if (targetMesh.count > centerIdx) {
-      const posCenter = new THREE.Vector3(xOffset, ditchBottomY + scaledRadius, -length / 2);
-      matrix.compose(posCenter, quaternion, scale);
-      targetMesh.setMatrixAt(centerIdx, matrix);
     }
 
     targetMesh.instanceMatrix.needsUpdate = true;
   }
 
   /**
-   * 更新横向连接管 (引入 scaleFactor Scaling 矩阵与管道底面定位解耦)
-   * 具备 3% 横向下倾坡度：由 (sideDitchX, sideDitchBottomY) 倾斜下泄至 (0, ditchBottomY)
+   * 更新穿衬横向排水管 (严禁取消，固定 3% 坡度自拱脚纵向管穿透二衬汇流)
+   * 1. 三沟模式: 左右拱脚向中央深水沟侧壁 (X = ±0.35m) 汇流
+   * 2. 双侧沟模式: 左右拱脚向自适应外移后的侧沟外壁汇流
    */
   private updateLatPipes(xOffset: number = 0, targetMesh: THREE.InstancedMesh = this.latMesh): void {
     const count = this.calculateLatCount();
-    const isDoubleSide = this.config.doubleSide;
-    const totalPipes = isDoubleSide ? count * 2 : count;
+    const totalPipes = count * 2; // 左右各一根横向管
     targetMesh.count = Math.min(totalPipes, targetMesh.instanceMatrix.count);
 
     const matrix = new THREE.Matrix4();
-    const { sideDitchX, sideDitchBottomY, ditchBottomY } = this.getDitchGeometry();
-    const latRadius = this.config.latDiam / 2;
-    const scaledRadius = latRadius * this.scaleFactor;
+    const { xLongFoot, yLongFoot, xSideDual } = this.getDitchGeometry();
+    const hasCentral = this.config.hasCentralDitch !== false;
+    const kSlope = 0.03; // 固定 3% 下倾坡度
 
-    // 单根横向管矢量计算 (侧沟底 -> 中心沟底)
-    const dy = ditchBottomY - sideDitchBottomY; // 负值，代表下倾
-    const pipeLength = Math.sqrt(sideDitchX * sideDitchX + dy * dy);
-    // 局部 Scaling 矩阵: [S_scale, L_length, S_scale]
+    // 确定横向管出水口 X 目标绝对值
+    const xOutletAbs = hasCentral ? 0.35 : xSideDual;
+    const dxAbs = Math.abs(xLongFoot - xOutletAbs);
+    const dy = -kSlope * dxAbs; // 负值代表下坡
+
+    const pipeLength = Math.sqrt(dxAbs * dxAbs + dy * dy);
     const scale = new THREE.Vector3(this.scaleFactor, pipeLength, this.scaleFactor);
 
-    // 右侧倾斜 Quaternion (从 (sideDitchX, sideDitchBottomY) 倾斜指向量 (0, ditchBottomY))
-    const dirRight = new THREE.Vector3(-sideDitchX, dy, 0).normalize();
+    // 右侧倾斜 Quaternion (从 (xLongFoot, yLongFoot) 指向 (xOutletAbs, yLongFoot + dy))
+    const dirRight = new THREE.Vector3(-dxAbs, dy, 0).normalize();
     const qRight = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirRight);
 
-    // 左侧倾斜 Quaternion (从 (-sideDitchX, sideDitchBottomY) 倾斜指向量 (0, ditchBottomY))
-    const dirLeft = new THREE.Vector3(sideDitchX, dy, 0).normalize();
+    // 左侧倾斜 Quaternion (从 (-xLongFoot, yLongFoot) 指向 (-xOutletAbs, yLongFoot + dy))
+    const dirLeft = new THREE.Vector3(dxAbs, dy, 0).normalize();
     const qLeft = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirLeft);
 
     let idx = 0;
     for (let i = 0; i < count; i++) {
       const z = -(i * this.config.ringSpacing * 2);
 
-      // 右侧边沟 -> 中心水沟
+      // 右侧横向管：右拱脚 -> 水沟侧壁
       if (idx < targetMesh.count) {
         const midPosRight = new THREE.Vector3(
-          xOffset + sideDitchX / 2,
-          (sideDitchBottomY + ditchBottomY) / 2 + scaledRadius,
+          xOffset + (xLongFoot + xOutletAbs) / 2,
+          yLongFoot + dy / 2,
           z
         );
         matrix.compose(midPosRight, qRight, scale);
@@ -534,11 +492,11 @@ export class DrainagePipeGenerator {
         idx++;
       }
 
-      // 左侧边沟 -> 中心水沟 (双侧排水)
-      if (isDoubleSide && idx < targetMesh.count) {
+      // 左侧横向管：左拱脚 -> 水沟侧壁
+      if (idx < targetMesh.count) {
         const midPosLeft = new THREE.Vector3(
-          xOffset - sideDitchX / 2,
-          (sideDitchBottomY + ditchBottomY) / 2 + scaledRadius,
+          xOffset - (xLongFoot + xOutletAbs) / 2,
+          yLongFoot + dy / 2,
           z
         );
         matrix.compose(midPosLeft, qLeft, scale);
@@ -556,13 +514,11 @@ export class DrainagePipeGenerator {
   public getMeshes(): THREE.InstancedMesh[] {
     const meshes: THREE.InstancedMesh[] = [
       this.ringMesh,
-      // this.radialMesh, // (已注销：已在三维模型中彻底移除径向打孔排水管)
       this.longMesh,
       this.latMesh
     ];
 
     if (this.leftRingMesh) meshes.push(this.leftRingMesh);
-    // if (this.leftRadialMesh) meshes.push(this.leftRadialMesh); // (已注销)
     if (this.leftLongMesh) meshes.push(this.leftLongMesh);
     if (this.leftLatMesh) meshes.push(this.leftLatMesh);
 
@@ -696,16 +652,16 @@ export class DrainagePipeGenerator {
     };
     this.annotationGroup.add(ringSprite);
 
-    // 2. 纵向排水管标注
+    // 2. 纵向排水管标注 (拱脚管位)
     const longDiamMm = Math.round(this.config.longDiam * 1000);
-    const longText = `${prefix}纵向排水管: Φ${longDiamMm}mm 🔍`;
+    const longText = `${prefix}拱脚纵向排水管: Φ${longDiamMm}mm 🔍`;
     const longSprite = this.createTextSprite(longText, '#2ecc71');
-    longSprite.position.set(mainXOffset + ditchGeo.sideDitchX, ditchGeo.sideDitchBottomY + 0.5, -this.config.startChainage - length * 0.4);
+    longSprite.position.set(mainXOffset + ditchGeo.xLongFoot, ditchGeo.yLongFoot + 0.5, -this.config.startChainage - length * 0.4);
     longSprite.userData = {
       isAnnotation: true,
       pipeCategory: 'longitudinal',
       nodeType: 'standard',
-      name: '纵向主排水管',
+      name: '拱脚纵向主排水管',
       diameter: longDiamMm,
       spacing: 50.0,
       permeability: '2.5×10⁻² cm/s',
@@ -716,14 +672,17 @@ export class DrainagePipeGenerator {
 
     // 3. 横向排水管标注
     const latDiamMm = Math.round(this.config.latDiam * 1000);
-    const latText = `${prefix}横向排水管: Φ${latDiamMm}mm 🔍`;
+    const latText = `${prefix}穿衬横向排水管 (3%坡度): Φ${latDiamMm}mm 🔍`;
     const latSprite = this.createTextSprite(latText, '#e74c3c');
-    latSprite.position.set(mainXOffset + ditchGeo.sideDitchX / 2, (ditchGeo.sideDitchBottomY + ditchGeo.ditchBottomY) / 2 + 0.5, -this.config.startChainage - length * 0.2);
+    const xOutlet = this.config.hasCentralDitch !== false ? 0.35 : ditchGeo.xSideDual;
+    const midX = (ditchGeo.xLongFoot + xOutlet) / 2;
+    const midY = ditchGeo.yLongFoot - 0.03 * Math.abs(ditchGeo.xLongFoot - xOutlet) / 2 + 0.5;
+    latSprite.position.set(mainXOffset + midX, midY, -this.config.startChainage - length * 0.2);
     latSprite.userData = {
       isAnnotation: true,
       pipeCategory: 'lateral',
       nodeType: 'standard',
-      name: '横向连通排水管',
+      name: '穿衬横向排水管',
       diameter: latDiamMm,
       spacing: parseFloat(ringSpacingM) * 2,
       permeability: '1.8×10⁻² cm/s',
@@ -732,12 +691,12 @@ export class DrainagePipeGenerator {
     };
     this.annotationGroup.add(latSprite);
 
-    // 4. 环向盲管与纵向排水管三通连接节点标注 (仅保留 1 个三通演示)
-    const threeWayText = `${prefix}三通连接节点: 环向盲管-纵向排水管 🔍`;
+    // 4. 环向盲管与纵向排水管三通连接节点标注
+    const threeWayText = `${prefix}拱脚三通连接节点: 环向盲管-纵向排水管 🔍`;
     const threeWaySprite = this.createTextSprite(threeWayText, '#a855f7');
     threeWaySprite.position.set(
-      mainXOffset + ditchGeo.sideDitchX, 
-      ditchGeo.sideDitchBottomY + 0.4, 
+      mainXOffset + ditchGeo.xLongFoot, 
+      ditchGeo.yLongFoot + 0.4, 
       -this.config.startChainage - length * 0.25
     );
     threeWaySprite.userData = {
