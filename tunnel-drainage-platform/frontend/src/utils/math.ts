@@ -120,7 +120,7 @@ export const calculateNormalQuaternion = (
 
 /**
  * 270° 马蹄形拱形半环三维曲线
- * 离散化构建贴合初支背水面 (r2) 的拱形半环，用于生成环向排水盲管 TubeGeometry
+ * 离散化构建贴合二衬背水面/初支内壁 (r1) 的拱形半环，用于生成环向排水盲管 TubeGeometry
  */
 export class HorseshoeArcCurve extends THREE.Curve<THREE.Vector3> {
   private points: THREE.Vector3[] = [];
@@ -129,14 +129,15 @@ export class HorseshoeArcCurve extends THREE.Curve<THREE.Vector3> {
 
   constructor(
     r: number, 
-    r2: number = 6.5,
-    aspect_ratio: number = 0.7
+    r_interface: number = 8.35,
+    aspect_ratio: number = 0.7,
+    yLongFoot?: number
   ) {
     super();
-    this.buildPoints(r, r2, aspect_ratio);
+    this.buildPoints(r, r_interface, aspect_ratio, yLongFoot);
   }
 
-  private buildPoints(r: number, r2: number, aspect_ratio: number): void {
+  private buildPoints(r: number, r_interface: number, aspect_ratio: number, yLongFoot?: number): void {
     const R1_base = 1.05 * r;
     const R2_base = 0.65 * r;
     const R3_base = 1.80 * r;
@@ -148,21 +149,28 @@ export class HorseshoeArcCurve extends THREE.Curve<THREE.Vector3> {
     const h = w * aspect_ratio;
     const H_side = Math.max(0.0, h - R1_base + dy - R3_base);
 
-    // 衬砌背水面（初支外壁）外廓半径：t = r2 - r
-    const t = Math.max(0, r2 - r);
+    // 衬砌背水面（二衬外壁/初支内壁交界面 r1）外廓半径：t = r_interface - r
+    const t = Math.max(0, r_interface - r);
     const R1 = R1_base + t;
     const R2 = R2_base + t;
 
-    // 极角推导（与 TunnelGenerator.ts 外轮廓全同）
+    // 极角推导：若传入 yLongFoot，则根据目标高程动态解算收口角度；否则使用默认相切角 aLeft / aRight
     let aLeft = Math.atan2(-dy, -dx);
     if (aLeft < 0) aLeft += Math.PI * 2;
     let aRight = Math.atan2(-dy, dx);
     if (aRight < 0) aRight += Math.PI * 2;
 
+    if (yLongFoot !== undefined && R2 > 0) {
+      const sinVal = Math.max(-1.0, Math.min(0.0, (yLongFoot + H_side) / R2));
+      const asinVal = Math.asin(sinVal); // 负角区间 [-PI/2, 0]
+      aLeft = Math.PI - asinVal;        // 第三象限区间 [PI, 3*PI/2]
+      aRight = Math.PI * 2 + asinVal;   // 第四象限区间 [3*PI/2, 2*PI]
+    }
+
     const points: THREE.Vector3[] = [];
     const normals: THREE.Vector3[] = [];
 
-    // 1. 左侧墙下半段圆弧 (从左墙脚 aLeft ~225° 逆时针至 180° / PI，精确收口于拱脚纵向管)
+    // 1. 左侧墙下半段圆弧 (从左墙脚 aLeft 逆时针至 180° / PI，精确收口于拱脚纵向管)
     const leftSteps = 16;
     for (let i = 0; i <= leftSteps; i++) {
       const angle = aLeft + (Math.PI - aLeft) * (i / leftSteps);

@@ -146,13 +146,13 @@ export class TunnelGenerator {
     const cosFoot = dx_offset / (R3_base - R2_base);
     const xFoot = R3_base * cosFoot; // 二衬内轮廓拱脚 X 坐标
 
-    // 根据侧边沟底高程计算二衬仰拱在水沟底部的物理安全极值边界 max_x_lining
+    // 根据侧边沟底高程计算二衬仰拱在水沟底部的物理安全极值边界 max_x_lining (确保水沟不穿模二衬且在路面宽 halfRoadW 范围内)
     const yBot_side_nominal = roadY - 0.3;
     const max_x_lining = Math.sqrt(Math.max(0, R3_base * R3_base - Math.pow(invertCenterY - yBot_side_nominal, 2)));
 
-    // 侧沟定位：三沟式位于路缘，双侧沟式自适应外移至拱脚承接区
-    const sideRightX = has_central_ditch ? (max_x_lining - 0.05) : (xFoot - 0.05);
-    const sideRightXInner = has_central_ditch ? (max_x_lining - 0.45) : (sideRightX - 0.40);
+    // 侧沟定位：基于二衬仰拱内表面防穿模物理极值边界，固定位于路缘两侧 (槽宽 0.40m，外壁距二衬保留 5cm 安全间距)
+    const sideRightX = max_x_lining - 0.05;
+    const sideRightXInner = max_x_lining - 0.45;
     const sideLeftX = -sideRightX;
     const sideLeftXInner = -sideRightXInner;
 

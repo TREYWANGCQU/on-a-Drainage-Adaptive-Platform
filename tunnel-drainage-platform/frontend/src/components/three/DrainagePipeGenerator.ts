@@ -30,7 +30,7 @@ export interface DrainagePipeConfig {
   endChainage: number;
   /** 隧道等效内半径 (m)，对应 r，用于定位管位 */
   tunnelRadius: number;
-  /** 衬砌外轮廓半径 (m)，对应 r2，初支背水面交界面 */
+  /** 二衬外轮廓/初支内轮廓半径 (m)，对应 r1，背水面交界面 */
   outerRadius?: number;
   /** 双洞间距 (m)，对应 D_spacing，双洞模式下有效 */
   dSpacing?: number;
@@ -60,8 +60,9 @@ export class DrainagePipeGenerator {
     this.annotationGroup = new THREE.Group();
     this.annotationGroup.name = 'DrainagePipeAnnotations';
     this.annotationGroup.renderOrder = 999;
-    const r2 = config.outerRadius ?? (config.tunnelRadius + 1.0);
-    this.horseshoeCurve = new HorseshoeArcCurve(config.tunnelRadius, r2, 0.7);
+    const r1 = config.outerRadius ?? (config.tunnelRadius + 0.4);
+    const ditchGeo = this.getDitchGeometry();
+    this.horseshoeCurve = new HorseshoeArcCurve(config.tunnelRadius, r1, 0.7, ditchGeo.yLongFoot);
 
     // 1. 环向盲管：使用 HorseshoeArcCurve 导出的 TubeGeometry 270° 马蹄形半环 (黄铜金 #F59E0B)
     const ringCount = this.calculateRingCount();
@@ -110,9 +111,12 @@ export class DrainagePipeGenerator {
   }
 
   /**
-   * 安全刷新环向管 TubeGeometry (支持双洞共享指针回收保护)
+   * 安全刷新环向管 TubeGeometry (支持双洞共享指针回收保护，并依据纵向管标高动态收口)
    */
   private refreshRingGeometry(): void {
+    const r1 = this.config.outerRadius ?? (this.config.tunnelRadius + 0.4);
+    const ditchGeo = this.getDitchGeometry();
+    this.horseshoeCurve = new HorseshoeArcCurve(this.config.tunnelRadius, r1, 0.7, ditchGeo.yLongFoot);
     const pipeRadius = Math.max(0.01, (this.config.ringDiam / 2.0) * this.scaleFactor);
     const newTubeGeo = new THREE.TubeGeometry(this.horseshoeCurve, 64, pipeRadius, 8, false);
 
@@ -131,8 +135,8 @@ export class DrainagePipeGenerator {
    */
   private getDitchGeometry() {
     const r = this.config.tunnelRadius;
-    const r2 = this.config.outerRadius ?? (r + 1.0);
-    const t = Math.max(0, r2 - r);
+    const r1 = this.config.outerRadius ?? (r + 0.4);
+    const t = Math.max(0, r1 - r);
     const aspect_ratio = 0.7;
     const R1_base = 1.05 * r;
     const R2_base = 0.65 * r;
@@ -153,34 +157,42 @@ export class DrainagePipeGenerator {
     const cosFoot = dx_offset / (R3_base - R2_base);
     const sinFoot = dy_offset / (R3_base - R2_base);
 
-    // 拱脚纵向管坐标（二衬外、初支内交界面）
-    const xLongFoot = (R3_base + t) * cosFoot;
-    const yLongFoot = -H_side - (R2_base + t) * sinFoot;
+    const hasCentral = this.config.hasCentralDitch !== false;
 
-    // 二衬内轮廓拱脚 X 坐标
-    const xFootInner = R3_base * cosFoot;
-    // 双侧沟工况下自适应外移的侧沟外壁 X 坐标
-    const xSideDual = xFootInner - 0.05;
-
+    // 侧沟槽底标高与防穿模边界
     const yBot_side = roadY - 0.3;
     const max_x_lining = Math.sqrt(Math.max(0, R3_base * R3_base - Math.pow(invertCenterY - yBot_side, 2)));
     const sideDitchX = max_x_lining - 0.05;
     const sideDitchBottomY = yBot_side;
 
+    // 拱脚纵向管基准坐标（二衬外、初支内交界面 r1）
+    const R2 = R2_base + t;
+    const nominalXLongFoot = (R3_base + t) * cosFoot;
+    const nominalYLongFoot = -H_side - (R2_base + t) * sinFoot;
+
+    // 双侧沟模式下：侧沟壁厚 0.05m (内底 yBot_side + 0.05m)，出水口汇流位设为 yBot_side + 0.20m
+    // 依 3% 坡度自侧沟出水口反推拱脚纵向管标高，确保横向管全程 3% 坡度自流且低点精确位于沟底上方侧壁
+    const yOutletSide = yBot_side + 0.2;
+    const dxSide = Math.max(0, nominalXLongFoot - sideDitchX);
+    const yLongFootDual = yOutletSide + 0.03 * dxSide;
+
+    const yLongFoot = hasCentral ? nominalYLongFoot : yLongFootDual;
+    // 关键修正：xLongFoot 必须根据目标 yLongFoot 在侧墙圆弧 (dx, -H_side, R2) 上严密解算，确保与环向盲管末端 100% 同步！
+    const xLongFoot = dx_offset + Math.sqrt(Math.max(0, R2 * R2 - Math.pow(yLongFoot + H_side, 2)));
+
     const yBot_central = invertCenterY - R3_base + 0.05;
     const ditchBottomY = yBot_central;
 
-    return { 
-      xLongFoot, 
-      yLongFoot, 
-      xSideDual, 
-      sideDitchX, 
-      roadY, 
-      sideDitchBottomY, 
+    return {
+      xLongFoot,
+      yLongFoot,
+      sideDitchX,
+      roadY,
+      sideDitchBottomY,
       ditchBottomY,
       invertCenterY,
       R3_base,
-      r2
+      r1
     };
   }
 
@@ -191,7 +203,7 @@ export class DrainagePipeGenerator {
     // 入参 radius 为管径 (Diameter)，需除以 2 转换为物理半径，并乘上 scaleFactor
     const pipeRadius = Math.max(0.01, (radius / 2.0) * this.scaleFactor);
     const tubeGeometry = new THREE.TubeGeometry(this.horseshoeCurve, 64, pipeRadius, 8, false);
-    
+
     const material = new THREE.MeshStandardMaterial({
       color,
       roughness: 0.15,
@@ -239,11 +251,11 @@ export class DrainagePipeGenerator {
    * 创建标准圆柱 实例化网格 (纵向/横向管)
    */
   private createCylinderInstancedMesh(
-    radius: number, 
-    length: number, 
-    count: number, 
-    color: number, 
-    metalness: number = 0.92, 
+    radius: number,
+    length: number,
+    count: number,
+    color: number,
+    metalness: number = 0.92,
     roughness: number = 0.15
   ): THREE.InstancedMesh {
     const geometry = new THREE.CylinderGeometry(radius, radius, length, 12);
@@ -340,7 +352,7 @@ export class DrainagePipeGenerator {
 
     const params = snapshot.input_parameter ?? snapshot.params ?? {};
     const qDrain = targetState.q_drain ?? targetState.q ?? snapshot.results?.q_drain ?? params.q_drain ?? 0.8;
-    
+
     this.config.ringDiam = targetState.ring_diam_recommend ?? targetState.d_ring ?? params.d_ring_default ?? this.config.ringDiam;
     const baseSpacing = targetState.ring_spacing_recommend ?? targetState.S_ring ?? params.S_code_max ?? this.config.ringSpacing;
     this.config.ringSpacing = baseSpacing;
@@ -448,7 +460,7 @@ export class DrainagePipeGenerator {
   /**
    * 更新穿衬横向排水管 (严禁取消，固定 3% 坡度自拱脚纵向管穿透二衬汇流)
    * 1. 三沟模式: 左右拱脚向中央深水沟侧壁 (X = ±0.35m) 汇流
-   * 2. 双侧沟模式: 左右拱脚向自适应外移后的侧沟外壁汇流
+   * 2. 双侧沟模式: 左右拱脚向侧边水沟外壁 (X = ±sideDitchX) 汇流
    */
   private updateLatPipes(xOffset: number = 0, targetMesh: THREE.InstancedMesh = this.latMesh): void {
     const count = this.calculateLatCount();
@@ -456,12 +468,12 @@ export class DrainagePipeGenerator {
     targetMesh.count = Math.min(totalPipes, targetMesh.instanceMatrix.count);
 
     const matrix = new THREE.Matrix4();
-    const { xLongFoot, yLongFoot, xSideDual } = this.getDitchGeometry();
+    const { xLongFoot, yLongFoot, sideDitchX } = this.getDitchGeometry();
     const hasCentral = this.config.hasCentralDitch !== false;
     const kSlope = 0.03; // 固定 3% 下倾坡度
 
-    // 确定横向管出水口 X 目标绝对值
-    const xOutletAbs = hasCentral ? 0.35 : xSideDual;
+    // 确定横向管出水口 X 目标绝对值 (三沟模式汇入中央深水沟侧壁，双侧沟模式汇入侧水沟外壁)
+    const xOutletAbs = hasCentral ? 0.35 : sideDitchX;
     const dxAbs = Math.abs(xLongFoot - xOutletAbs);
     const dy = -kSlope * dxAbs; // 负值代表下坡
 
@@ -619,7 +631,7 @@ export class DrainagePipeGenerator {
     const ditchGeo = this.getDitchGeometry();
     const isDouble = this.config.tunnelType === 'double';
     const mainXOffset = isDouble ? (this.config.dSpacing ?? 30.0) / 2 : 0;
-    const r2 = this.config.outerRadius ?? (this.config.tunnelRadius + 1.0);
+    const rInterface = this.config.outerRadius ?? (this.config.tunnelRadius + 0.4);
     const length = Math.abs(this.config.endChainage - this.config.startChainage);
 
     // 构造状态区分前缀文本与颜色
@@ -638,7 +650,7 @@ export class DrainagePipeGenerator {
     const ringSpacingM = this.config.ringSpacing.toFixed(1);
     const ringText = `${prefix}环向盲管: Φ${ringDiamMm}mm @ ${ringSpacingM}m 🔍`;
     const ringSprite = this.createTextSprite(ringText, labelColor);
-    ringSprite.position.set(mainXOffset, r2 + 0.6, -this.config.startChainage);
+    ringSprite.position.set(mainXOffset, rInterface + 0.6, -this.config.startChainage);
     ringSprite.userData = {
       isAnnotation: true,
       pipeCategory: 'ring',
@@ -674,7 +686,7 @@ export class DrainagePipeGenerator {
     const latDiamMm = Math.round(this.config.latDiam * 1000);
     const latText = `${prefix}穿衬横向排水管 (3%坡度): Φ${latDiamMm}mm 🔍`;
     const latSprite = this.createTextSprite(latText, '#e74c3c');
-    const xOutlet = this.config.hasCentralDitch !== false ? 0.35 : ditchGeo.xSideDual;
+    const xOutlet = this.config.hasCentralDitch !== false ? 0.35 : ditchGeo.sideDitchX;
     const midX = (ditchGeo.xLongFoot + xOutlet) / 2;
     const midY = ditchGeo.yLongFoot - 0.03 * Math.abs(ditchGeo.xLongFoot - xOutlet) / 2 + 0.5;
     latSprite.position.set(mainXOffset + midX, midY, -this.config.startChainage - length * 0.2);
@@ -695,8 +707,8 @@ export class DrainagePipeGenerator {
     const threeWayText = `${prefix}拱脚三通连接节点: 环向盲管-纵向排水管 🔍`;
     const threeWaySprite = this.createTextSprite(threeWayText, '#a855f7');
     threeWaySprite.position.set(
-      mainXOffset + ditchGeo.xLongFoot, 
-      ditchGeo.yLongFoot + 0.4, 
+      mainXOffset + ditchGeo.xLongFoot,
+      ditchGeo.yLongFoot + 0.4,
       -this.config.startChainage - length * 0.25
     );
     threeWaySprite.userData = {

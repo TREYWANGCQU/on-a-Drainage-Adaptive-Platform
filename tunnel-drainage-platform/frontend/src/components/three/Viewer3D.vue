@@ -1410,7 +1410,7 @@ const renderSceneData = () => {
     });
     rManagerInstances.push(rManager);
 
-    // 3. 排水管网生成器 (传入 hasCentralDitch)
+    // 3. 排水管网生成器 (传入 hasCentralDitch，背水面交界面半径为 r1)
     const pipeGen = new DrainagePipeGenerator({
       ringDiam: extractSnapshotValue(rawData, 'ring_diam_recommend', 0.05),
       ringSpacing: extractSnapshotValue(rawData, 'ring_spacing_recommend', 10.0),
@@ -1421,7 +1421,7 @@ const renderSceneData = () => {
       startChainage: start_chainage,
       endChainage: end_chainage,
       tunnelRadius: r,
-      outerRadius: r2,
+      outerRadius: r1,
       dSpacing: D_spacing,
       hasCentralDitch: has_central_ditch
     });
