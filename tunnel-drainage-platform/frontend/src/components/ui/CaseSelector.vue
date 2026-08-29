@@ -1,11 +1,12 @@
+<!-- frontend/src/components/ui/CaseSelector.vue -->
 <template>
   <div class="case-selector">
-    <span class="label">典型工程案例快速预设：</span>
+    <span class="label">案例快速预设:</span>
     <el-select 
       v-model="selectedCase" 
-      placeholder="请选择典型工况案例" 
+      placeholder="选择工况案例" 
       @change="handleCaseChange"
-      style="width: 240px;"
+      class="case-select-input"
     >
       <el-option
         v-for="item in caseOptions"
@@ -68,11 +69,25 @@ const handleCaseChange = (val: string) => {
 .case-selector {
   display: flex;
   align-items: center;
-  
+  gap: 6px;
+  flex-shrink: 0;
 }
 .label {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--el-text-color-regular);
-  font-weight: bold;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.case-select-input {
+  width: 175px;
+}
+
+@media (max-width: 1450px) {
+  .label {
+    display: none;
+  }
+  .case-select-input {
+    width: 145px;
+  }
 }
 </style>

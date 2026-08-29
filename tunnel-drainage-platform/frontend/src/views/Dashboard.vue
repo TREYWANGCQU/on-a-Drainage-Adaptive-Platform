@@ -1,42 +1,75 @@
+<!-- frontend/src/views/Dashboard.vue -->
 <template>
   <div class="dashboard-layout" :class="{ 'theme-tech-blue': themeStore.isTechBlue }">
     <header class="toolbar">
-      <div class="title">隧道工程多维协同智能排水自适应平台</div>
+      <!-- 品牌与标题区 -->
+      <div class="brand-box">
+        <span class="brand-logo">🚇</span>
+        <div class="title title-full">隧道工程多维协同智能排水自适应平台</div>
+        <div class="title title-short">智能排水自适应平台</div>
+      </div>
+
       <div class="actions">
-        <!-- [新增] 视图控制与主题切换 -->
+        <!-- 1. 核心视图模式切换 -->
         <div class="view-controls">
-          <!-- 1. [新增] 视窗一键聚焦切换 -->
           <el-radio-group v-model="focusMode" size="small" @change="handleFocusMode" class="focus-switch">
             <el-radio-button value="all">协同</el-radio-button>
             <el-radio-button value="input">输入</el-radio-button>
             <el-radio-button value="3d">三维全景</el-radio-button>
             <el-radio-button value="result">结果</el-radio-button>
           </el-radio-group>
-          
-          <!-- 2. [美化] 重新设计的参数数据库与双视角对比入口 -->
-          <el-button type="primary" color="#4f46e5" icon="Coin" @click="dbDialogVisible = true" class="db-btn">
+        </div>
+
+        <!-- 2. 宽屏直列模式 (>= 1550px) -->
+        <div class="wide-tools">
+          <el-button type="primary" color="#4f46e5" icon="Coin" @click="dbDialogVisible = true" class="db-btn" size="default">
             参数数据库
           </el-button>
-          <el-button type="warning" color="#e6a23c" icon="Files" @click="compareDialogVisible = true" class="compare-btn">
+          <el-button type="warning" color="#e6a23c" icon="Files" @click="compareDialogVisible = true" class="compare-btn" size="default">
             双视角对比
           </el-button>
+          <el-button-group class="io-btn-group">
+            <el-button type="primary" icon="Download" @click="downloadTemplate()">下载模板</el-button>
+            <el-button type="primary" icon="Upload" @click="triggerUpload">批量导入</el-button>
+          </el-button-group>
+        </div>
+
+        <!-- 3. 中窄屏收纳工具箱 (< 1550px) -->
+        <div class="compact-tools">
+          <el-dropdown trigger="click">
+            <el-button type="primary" plain icon="Tools">
+              工程工具箱<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item icon="Coin" @click="dbDialogVisible = true">参数台账库</el-dropdown-item>
+                <el-dropdown-item icon="Files" @click="compareDialogVisible = true">3D 双视角对比</el-dropdown-item>
+                <el-dropdown-item icon="Download" divided @click="downloadTemplate()">下载隧道参数模板</el-dropdown-item>
+                <el-dropdown-item icon="Upload" @click="triggerUpload">批量导入 Excel</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
         
-        <!-- 修改 2: 将 v-model 改为单向的 :model-value -->
+        <!-- 4. 典型案例选择器 -->
+        <CaseSelector />
+
+        <!-- 5. 主题切换 -->
         <el-switch 
           :model-value="themeStore.isTechBlue" 
           inline-prompt 
           active-text="科技蓝" 
           inactive-text="明亮白" 
           @change="themeStore.toggleTheme" 
+          class="theme-switch"
         />
-        <CaseSelector />
-        <el-button-group>
-          <el-button type="primary" icon="Download" @click="downloadTemplate()">下载隧道参数模板</el-button>
-          <el-button type="primary" icon="Upload" @click="triggerUpload">批量导入 Excel</el-button>
-        </el-button-group>
+
+        <!-- 6. 核心云计算主按钮 -->
+        <el-button type="success" icon="VideoPlay" @click="executeCalculation" class="calc-btn">
+          执行云计算
+        </el-button>
+
         <input type="file" ref="fileInput" v-show="false" accept=".xlsx,.xls" @change="handleFileChange" />
-        <el-button type="success" icon="VideoPlay" @click="executeCalculation">执行云计算</el-button>
       </div>
     </header>
 
@@ -382,6 +415,9 @@ onMounted(() => {
 /* ------------------------------------------
    替换原先写死的色彩值为 var() 
    ------------------------------------------ */
+/* ------------------------------------------
+   Toolbar 响应式布局与防挤压规则
+   ------------------------------------------ */
 .toolbar {
   height: 60px;
   background-color: var(--sys-bg-toolbar);
@@ -389,45 +425,128 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 16px;
   box-shadow: 0 2px 4px var(--sys-shadow);
   transition: all 0.3s ease;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.brand-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+
+.brand-logo {
+  font-size: 20px;
 }
 
 .toolbar .title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--sys-text-main);
+  white-space: nowrap;
+}
+
+.title-short {
+  display: none;
 }
 
 .toolbar .actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .view-controls {
   display: flex;
   align-items: center;
-  margin-right: 15px;
+  flex-shrink: 0;
 }
 
 .focus-switch {
-  margin-right: 12px;
   box-shadow: 0 2px 4px var(--sys-shadow);
   border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+:deep(.focus-switch .el-radio-button__inner) {
+  white-space: nowrap !important;
+  padding: 8px 12px;
+}
+
+.wide-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.compact-tools {
+  display: none;
+  flex-shrink: 0;
 }
 
 .db-btn {
   font-weight: bold;
   box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
   transition: all 0.3s ease;
+  white-space: nowrap;
 }
 
 .db-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.6);
 }
+
+.compare-btn {
+  white-space: nowrap;
+}
+
+.io-btn-group {
+  white-space: nowrap;
+}
+
+.calc-btn {
+  font-weight: bold;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(103, 194, 58, 0.4);
+}
+
+.theme-switch {
+  flex-shrink: 0;
+}
+
+/* 响应式断点 1: < 1550px 切换为工具箱收折模式 */
+@media (max-width: 1550px) {
+  .wide-tools {
+    display: none;
+  }
+  .compact-tools {
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* 响应式断点 2: < 1250px 标题切换为短标题 */
+@media (max-width: 1250px) {
+  .title-full {
+    display: none;
+  }
+  .title-short {
+    display: inline-block;
+  }
+  .toolbar {
+    padding: 0 10px;
+  }
+}
+
 .main-content {
   flex: 1;
   display: flex;
