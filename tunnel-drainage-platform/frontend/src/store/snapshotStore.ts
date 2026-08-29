@@ -67,13 +67,26 @@ export const useSnapshotStore = defineStore('snapshot', {
   state: () => ({
     snapshots: [] as Snapshot[],           // 散列快照池
     sequences: [] as SnapshotSequence[],   // 聚合序列池（针对多分区）
-    refresh3DTrigger: 0                    // 手动刷新 3D 触发因子
+    refresh3DTrigger: 0,                   // 手动刷新 3D 触发因子
+    activeSegmentId: null as string | null // 当前 3D 视口聚焦与受力分析选中的活动分段 ID
   }),
+
+  getters: {
+    activeSnapshot(state): Snapshot | null {
+      if (!state.activeSegmentId) return null;
+      return state.snapshots.find(s => s.id === state.activeSegmentId) || null;
+    }
+  },
 
   actions: {
     // 触发 3D 重新绘制
     trigger3DRefresh() {
       this.refresh3DTrigger++;
+    },
+
+    // 设置当前活动计算段
+    setActiveSegment(id: string | null) {
+      this.activeSegmentId = id;
     },
 
     // ==========================================

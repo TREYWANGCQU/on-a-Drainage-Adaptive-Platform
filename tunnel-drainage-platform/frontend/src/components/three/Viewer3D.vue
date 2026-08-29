@@ -3,206 +3,135 @@
   <div class="viewer-container" ref="containerRef">
     <canvas ref="canvasRef"></canvas>
 
+    <!-- 顶部可折叠计算分段选区控制器 (支持 1~500+ 计算段全景检索与宏观热力色带) -->
+    <div 
+      v-if="renderedSegments.length > 0" 
+      class="segment-selector-bar glass-card"
+      :class="{ 'is-collapsed': isSelectorCollapsed }"
+      @click.stop
+      @pointerdown.stop
+    >
+      <!-- 1. 顶部状态摘要行 -->
+      <div class="selector-header" @click="isSelectorCollapsed = !isSelectorCollapsed">
+        <div class="header-left">
+          <span class="collapse-toggle-btn" :title="isSelectorCollapsed ? '展开分段选区栏' : '折叠分段选区栏'">
+            {{ isSelectorCollapsed ? '▼' : '▲' }}
+          </span>
+          <span class="selector-title">📌 计算分段总览</span>
+          <div class="stats-pills">
+            <span class="stat-pill total">共 {{ segmentStats.total }} 段 ({{ segmentStats.totalKm }}km)</span>
+            <span v-if="segmentStats.danger > 0" class="stat-pill danger">🔴 {{ segmentStats.danger }} 危险</span>
+            <span v-if="segmentStats.warning > 0" class="stat-pill warning">🟡 {{ segmentStats.warning }} 预警</span>
+            <span v-if="segmentStats.safe > 0" class="stat-pill safe">🟢 {{ segmentStats.safe }} 安全</span>
+          </div>
+        </div>
+
+        <div class="header-right" @click.stop>
+          <!-- 搜索过滤框 -->
+          <div class="search-box">
+            <input 
+              type="text" 
+              v-model="selectorSearch" 
+              placeholder="🔍 搜索桩号/备注..." 
+              class="selector-search-input"
+            />
+            <button v-if="selectorSearch" class="clear-search-btn" @click="selectorSearch = ''">✕</button>
+          </div>
+
+          <!-- 独占聚焦模式切换 -->
+          <button 
+            class="focus-mode-btn" 
+            :class="{ active: isFocusIsolationMode }"
+            @click="toggleFocusIsolation"
+            :title="isFocusIsolationMode ? '退出独占聚焦，恢复全线全景' : '开启独占聚焦，虚化其余分段'"
+          >
+            {{ isFocusIsolationMode ? '🔲 独占聚焦中' : '🌐 全线贯通' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 2. 展开态主体区 (Mini-map 全线热力色带 + 虚拟化水平胶囊流) -->
+      <div v-if="!isSelectorCollapsed" class="selector-body">
+        <!-- 2.1 宏观全线安全热力色带 Mini-map -->
+        <div class="minimap-wrapper" title="全线安全热力色带 (点击快速定位对应工况)">
+          <canvas 
+            ref="miniMapCanvasRef" 
+            class="minimap-canvas" 
+            @click="handleMiniMapClick" 
+            @mousemove="handleMiniMapMouseMove" 
+            @mouseleave="hoveredMiniMapSnap = null"
+          ></canvas>
+          <!-- 悬停浮窗 Tooltip -->
+          <div 
+            v-if="hoveredMiniMapSnap" 
+            class="minimap-tooltip" 
+            :style="{ left: `${hoveredMiniMapX}px` }"
+          >
+            <div class="tt-title">#{{ hoveredMiniMapIndex + 1 }} {{ hoveredMiniMapSnap.remark || '分段工况' }}</div>
+            <div class="tt-desc">K{{ formatChain(hoveredMiniMapSnap.start_chainage) }} ~ K{{ formatChain(hoveredMiniMapSnap.end_chainage) }}</div>
+            <div class="tt-fs" :class="getFsClass(snapFs(hoveredMiniMapSnap))">
+              Fs = {{ snapFsText(hoveredMiniMapSnap) }}
+            </div>
+          </div>
+        </div>
+
+        <!-- 2.2 微观分段水平滚动胶囊滑轨 -->
+        <div class="pill-slider-container">
+          <button class="step-btn step-left" @click="scrollPills('left')" title="向左滚动">◀</button>
+          <div class="pill-slider-track" ref="pillTrackRef">
+            <!-- 全局不聚焦/全线概览胶囊 -->
+            <div 
+              class="segment-pill all-overview-pill"
+              :class="{ active: !activeSegment }"
+              @click="unselectSegment"
+              title="点击取消单段聚焦，进入全线贯通无选框状态"
+            >
+              <span class="pill-icon">🌐</span>
+              <span class="pill-chain">全线概览 (不聚焦)</span>
+            </div>
+
+            <div 
+              v-for="snap in filteredSelectorSegments" 
+              :key="snap.id"
+              class="segment-pill"
+              :class="{ 
+                active: activeSegment?.id === snap.id,
+                danger: snapFs(snap) != null && snapFs(snap) < 1.0,
+                warning: snapFs(snap) != null && snapFs(snap) >= 1.0 && snapFs(snap) < 2.0,
+                safe: snapFs(snap) != null && snapFs(snap) >= 2.0
+              }"
+              @click="onPillClick(snap)"
+              :title="activeSegment?.id === snap.id ? '再次点击取消选中' : `点击聚焦 # ${getOriginalSegmentIndex(snap) + 1}: ${snap.remark || ''} (K${formatChain(snap.start_chainage)} ~ K${formatChain(snap.end_chainage)})`"
+            >
+              <span class="pill-index">#{{ getOriginalSegmentIndex(snap) + 1 }}</span>
+              <span class="pill-chain">K{{ formatChain(snap.start_chainage) }}</span>
+              <span class="pill-badge" :class="getFsClass(snapFs(snap))">
+                K={{ snapFsText(snap) }}
+              </span>
+            </div>
+            <div v-if="filteredSelectorSegments.length === 0" class="no-match-hint">
+              未找到匹配分段
+            </div>
+          </div>
+          <button class="step-btn step-right" @click="scrollPills('right')" title="向右滚动">▶</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 左侧控制面板自适应流动栈容器 -->
     <div class="left-controls-stack">
-      <!-- 剖切交互控制面板 -->
-      <div class="clipping-panel glass-card">
-        <div class="panel-header">
-          <span class="panel-title">3D 剖切分析</span>
-          <label class="switch-toggle">
-            <input type="checkbox" v-model="isClippingEnabled" @change="updateClipping" />
-            <span class="switch-slider"></span>
-          </label>
-        </div>
-        <div v-if="isClippingEnabled" class="panel-body">
-          <div class="control-row">
-            <span class="control-label">轴向:</span>
-            <div class="btn-group">
-              <button 
-                v-for="axis in (['z', 'x', 'y'] as const)" 
-                :key="axis"
-                class="axis-btn"
-                :class="{ active: clippingAxis === axis }"
-                @click="clippingAxis = axis; updateClipping()"
-              >
-                {{ axis.toUpperCase() }}
-              </button>
-            </div>
-          </div>
-          <div class="control-row">
-            <span class="control-label">位置: {{ clippingOffset.toFixed(1) }}m</span>
-            <input 
-              type="range" 
-              :min="clippingAxis === 'z' ? 0 : -30" 
-              :max="clippingAxis === 'z' ? maxChainageLength : 30" 
-              step="0.5" 
-              v-model.number="clippingOffset"
-              @input="updateClipping"
-              class="range-slider"
-            />
-          </div>
-          <div class="control-row inline-row">
-            <span class="control-label">反向剖切:</span>
-            <input type="checkbox" v-model="isClippingInverted" @change="updateClipping" />
-          </div>
-        </div>
-      </div>
-      
-      <!-- 图层隐显控制 Floating Toolbar -->
-      <div class="layer-panel glass-card">
-        <div class="panel-header" @click="isLayerPanelOpen = !isLayerPanelOpen">
-          <span class="panel-title">图层显隐控制</span>
-          <span class="collapse-icon">{{ isLayerPanelOpen ? '▲' : '▼' }}</span>
-        </div>
-        <div v-if="isLayerPanelOpen" class="panel-body layer-body">
-          <div class="layer-action-header">
-            <label class="layer-item select-all-item">
-              <input 
-                ref="selectAllCheckboxRef"
-                type="checkbox" 
-                :checked="isAllLayersVisible" 
-                @change="toggleAllLayersVisibility" 
-              />
-              <span class="layer-label select-all-title">全选</span>
-            </label>
-            <div class="quick-btn-group">
-              
-            </div>
-          </div>
-          <div class="layer-divider"></div>
-          <!-- 隧道衬砌图层组 (支持折叠与 3 个次级图层控制) -->
-          <div class="layer-group-header">
-            <label class="layer-item">
-              <input 
-                ref="liningParentCheckboxRef"
-                type="checkbox" 
-                :checked="isLiningParentChecked" 
-                @change="toggleLiningParentGroup" 
-              />
-              <span class="layer-color-dot lining-dot"></span>
-              <span class="layer-label">隧道衬砌</span>
-            </label>
-            <span 
-              class="group-toggle-btn" 
-              @click.stop="isLiningGroupOpen = !isLiningGroupOpen"
-              :title="isLiningGroupOpen ? '折叠次级图层' : '展开次级图层'"
-            >
-              {{ isLiningGroupOpen ? '▼' : '▶' }}
+      <!-- 1. 排水管径全局放大会显控制面板 (置顶呈现，杜绝被遮挡) -->
+      <div v-if="layerVisibility.pipes" class="pipe-scale-card glass-card" :class="{ collapsed: isPipeScaleCollapsed }">
+        <div class="panel-header" @click="isPipeScaleCollapsed = !isPipeScaleCollapsed" style="cursor: pointer;">
+          <span class="panel-title">🔍 全局管径放大会显</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="scale-badge" :class="{ active: pipeScaleFactor > 1.0 }">
+              {{ pipeScaleFactor === 1.0 ? '1.0x 真实' : `${pipeScaleFactor.toFixed(1)}x` }}
             </span>
+            <span class="collapse-icon">{{ isPipeScaleCollapsed ? '▼' : '▲' }}</span>
           </div>
-          <div v-if="isLiningGroupOpen" class="sub-layer-container">
-            <label class="layer-item sub-layer-item">
-              <input type="checkbox" v-model="layerVisibility.liningSecondary" @change="onLiningSubLayerChange" />
-              <span class="layer-color-dot lining-dot"></span>
-              <span class="layer-label">└ 隧道二衬</span>
-            </label>
-            <label class="layer-item sub-layer-item">
-              <input type="checkbox" v-model="layerVisibility.liningPrimary" @change="onLiningSubLayerChange" />
-              <span class="layer-color-dot initial-grouting-dot"></span>
-              <span class="layer-label">└ 初支</span>
-            </label>
-            <label class="layer-item sub-layer-item">
-              <input type="checkbox" v-model="layerVisibility.liningRoadDitch" @change="onLiningSubLayerChange" />
-              <span class="layer-color-dot env-dot"></span>
-              <span class="layer-label">└ 路面与排水沟</span>
-            </label>
-          </div>
-
-          <label class="layer-item">
-            <input type="checkbox" v-model="layerVisibility.initialGrouting" @change="updateLayerVisibility" />
-            <span class="layer-color-dot initial-grouting-dot"></span>
-            <span class="layer-label">初始注浆圈 (rg)</span>
-          </label>
-          <label class="layer-item">
-            <input type="checkbox" v-model="layerVisibility.criticalGrouting" @change="updateLayerVisibility" />
-            <span class="layer-color-dot critical-grouting-dot"></span>
-            <span class="layer-label">临界注浆加固圈 (tg_crit)</span>
-          </label>
-
-          <!-- 排水管网图层组 (支持折叠) -->
-          <div class="layer-group-header">
-            <label class="layer-item">
-              <input type="checkbox" v-model="layerVisibility.pipes" @change="updateLayerVisibility" />
-              <span class="layer-color-dot pipes-dot"></span>
-              <span class="layer-label">排水管网</span>
-            </label>
-            <span 
-              class="group-toggle-btn" 
-              @click.stop="isPipesGroupOpen = !isPipesGroupOpen"
-              :title="isPipesGroupOpen ? '折叠子图层' : '展开子图层'"
-            >
-              {{ isPipesGroupOpen ? '▼' : '▶' }}
-            </span>
-          </div>
-          <div v-if="isPipesGroupOpen" class="sub-layer-container">
-            <label class="layer-item sub-layer-item">
-              <input type="checkbox" v-model="layerVisibility.pipeAnnotations" @change="updateLayerVisibility" />
-              <span class="layer-color-dot annotation-dot"></span>
-              <span class="layer-label">└ 排水管网参数标注</span>
-            </label>
-          </div>
-
-          <!-- 水文环境图层组 (支持折叠) -->
-          <div class="layer-group-header">
-            <label class="layer-item">
-              <input type="checkbox" v-model="layerVisibility.environment" @change="updateLayerVisibility" />
-              <span class="layer-color-dot env-dot"></span>
-              <span class="layer-label">水文环境</span>
-            </label>
-            <span 
-              class="group-toggle-btn" 
-              @click.stop="isEnvGroupOpen = !isEnvGroupOpen"
-              :title="isEnvGroupOpen ? '折叠子图层' : '展开子图层'"
-            >
-              {{ isEnvGroupOpen ? '▼' : '▶' }}
-            </span>
-          </div>
-          <div v-if="isEnvGroupOpen" class="sub-layer-container">
-            <label class="layer-item sub-layer-item">
-              <input type="checkbox" v-model="layerVisibility.ground" @change="updateLayerVisibility" />
-              <span class="layer-color-dot ground-dot"></span>
-              <span class="layer-label">└ 地面/地表</span>
-            </label>
-            <label class="layer-item sub-layer-item">
-              <input type="checkbox" v-model="layerVisibility.flowLines" @change="updateLayerVisibility" />
-              <span class="layer-color-dot flowline-dot"></span>
-              <span class="layer-label">└ 地下水流线</span>
-            </label>
-            <label class="layer-item sub-layer-item inline-between">
-              <div class="left-group">
-                <input type="checkbox" v-model="layerVisibility.waterParticles" @change="updateLayerVisibility" />
-                <span class="layer-color-dot particle-dot"></span>
-                <span class="layer-label">└ 地下水粒子特效</span>
-              </div>
-              <button 
-                v-if="layerVisibility.environment && layerVisibility.waterParticles"
-                class="mini-anim-btn" 
-                :class="{ paused: !isWaterParticleAnimated }"
-                @click.stop="toggleWaterParticleAnimation"
-                :title="isWaterParticleAnimated ? '暂停粒子流动' : '启动粒子流动'"
-              >
-                {{ isWaterParticleAnimated ? '⏸ 动态' : '▶ 冻结' }}
-              </button>
-            </label>
-          </div>
-
-          <label class="layer-item">
-            <input type="checkbox" v-model="layerVisibility.probe" @change="updateLayerVisibility" />
-            <span class="layer-color-dot probe-dot"></span>
-            <span class="layer-label">最不利探针</span>
-          </label>
         </div>
-      </div>
-
-      <!-- 排水管径放大会显控制面板 -->
-      <div v-if="layerVisibility.pipes" class="pipe-scale-card glass-card">
-        <div class="panel-header">
-          <span class="panel-title">排水管径放大会显</span>
-          <span class="scale-badge" :class="{ active: pipeScaleFactor > 1.0 }">
-            {{ pipeScaleFactor === 1.0 ? '1.0x 真实' : `${pipeScaleFactor.toFixed(1)}x` }}
-          </span>
-        </div>
-        <div class="panel-body">
+        <div v-if="!isPipeScaleCollapsed" class="panel-body">
           <!-- 连续倍率滑动条 -->
           <div class="control-row">
             <span class="control-label">管径倍率:</span>
@@ -236,13 +165,13 @@
               @click="resetPipeScale"
               title="重置为真实物理管径 (1.0x)"
             >
-              ↺ 一键还原
+              ↺ 还原
             </button>
           </div>
         </div>
       </div>
-      
-      <!-- 受力表达模式切换器 (K | M | N | 综合受力) 及 可折叠数值图例 -->
+
+      <!-- 2. 受力表达模式切换器 (K | M | N | 综合受力) 及 可折叠数值图例 -->
       <div v-if="layerVisibility.probe" class="force-mode-panel glass-card">
         <div class="panel-header" @click="isLegendPanelCollapsed = !isLegendPanelCollapsed" style="cursor: pointer;">
           <span class="panel-title">受力表达模式</span>
@@ -334,43 +263,276 @@
           </div>
         </div>
       </div>
+      
+      <!-- 3. 图层显隐控制 Floating Toolbar -->
+      <div class="layer-panel glass-card">
+        <div class="panel-header" @click="isLayerPanelOpen = !isLayerPanelOpen">
+          <span class="panel-title">图层显隐控制</span>
+          <span class="collapse-icon">{{ isLayerPanelOpen ? '▲' : '▼' }}</span>
+        </div>
+        <div v-if="isLayerPanelOpen" class="panel-body layer-body">
+          <div class="layer-action-header">
+            <label class="layer-item select-all-item">
+              <input 
+                ref="selectAllCheckboxRef"
+                type="checkbox" 
+                :checked="isAllLayersVisible" 
+                @change="toggleAllLayersVisibility" 
+              />
+              <span class="layer-label select-all-title">全选</span>
+            </label>
+            <div class="quick-btn-group"></div>
+          </div>
+          <div class="layer-divider"></div>
+          <!-- 隧道衬砌图层组 -->
+          <div class="layer-group-header">
+            <label class="layer-item">
+              <input 
+                ref="liningParentCheckboxRef"
+                type="checkbox" 
+                :checked="isLiningParentChecked" 
+                @change="toggleLiningParentGroup" 
+              />
+              <span class="layer-color-dot lining-dot"></span>
+              <span class="layer-label">隧道衬砌</span>
+            </label>
+            <span 
+              class="group-toggle-btn" 
+              @click.stop="isLiningGroupOpen = !isLiningGroupOpen"
+              :title="isLiningGroupOpen ? '折叠次级图层' : '展开次级图层'"
+            >
+              {{ isLiningGroupOpen ? '▼' : '▶' }}
+            </span>
+          </div>
+          <div v-if="isLiningGroupOpen" class="sub-layer-container">
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.liningSecondary" @change="onLiningSubLayerChange" />
+              <span class="layer-color-dot lining-dot"></span>
+              <span class="layer-label">└ 隧道二衬</span>
+            </label>
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.liningPrimary" @change="onLiningSubLayerChange" />
+              <span class="layer-color-dot initial-grouting-dot"></span>
+              <span class="layer-label">└ 初支</span>
+            </label>
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.liningRoadDitch" @change="onLiningSubLayerChange" />
+              <span class="layer-color-dot env-dot"></span>
+              <span class="layer-label">└ 路面与排水沟</span>
+            </label>
+          </div>
+
+          <label class="layer-item">
+            <input type="checkbox" v-model="layerVisibility.initialGrouting" @change="updateLayerVisibility" />
+            <span class="layer-color-dot initial-grouting-dot"></span>
+            <span class="layer-label">初始注浆圈 (rg)</span>
+          </label>
+          <label class="layer-item">
+            <input type="checkbox" v-model="layerVisibility.criticalGrouting" @change="updateLayerVisibility" />
+            <span class="layer-color-dot critical-grouting-dot"></span>
+            <span class="layer-label">临界注浆加固圈 (tg_crit)</span>
+          </label>
+
+          <!-- 排水管网图层组 -->
+          <div class="layer-group-header">
+            <label class="layer-item">
+              <input type="checkbox" v-model="layerVisibility.pipes" @change="updateLayerVisibility" />
+              <span class="layer-color-dot pipes-dot"></span>
+              <span class="layer-label">排水管网</span>
+            </label>
+            <span 
+              class="group-toggle-btn" 
+              @click.stop="isPipesGroupOpen = !isPipesGroupOpen"
+              :title="isPipesGroupOpen ? '折叠子图层' : '展开子图层'"
+            >
+              {{ isPipesGroupOpen ? '▼' : '▶' }}
+            </span>
+          </div>
+          <div v-if="isPipesGroupOpen" class="sub-layer-container">
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.pipeAnnotations" @change="updateLayerVisibility" />
+              <span class="layer-color-dot annotation-dot"></span>
+              <span class="layer-label">└ 排水管网参数标注</span>
+            </label>
+          </div>
+
+          <!-- 水文环境图层组 -->
+          <div class="layer-group-header">
+            <label class="layer-item">
+              <input type="checkbox" v-model="layerVisibility.environment" @change="updateLayerVisibility" />
+              <span class="layer-color-dot env-dot"></span>
+              <span class="layer-label">水文环境</span>
+            </label>
+            <span 
+              class="group-toggle-btn" 
+              @click.stop="isEnvGroupOpen = !isEnvGroupOpen"
+              :title="isEnvGroupOpen ? '折叠子图层' : '展开子图层'"
+            >
+              {{ isEnvGroupOpen ? '▼' : '▶' }}
+            </span>
+          </div>
+          <div v-if="isEnvGroupOpen" class="sub-layer-container">
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.ground" @change="updateLayerVisibility" />
+              <span class="layer-color-dot ground-dot"></span>
+              <span class="layer-label">└ 地面/地表</span>
+            </label>
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.flowLines" @change="updateLayerVisibility" />
+              <span class="layer-color-dot flowline-dot"></span>
+              <span class="layer-label">└ 地下水流线</span>
+            </label>
+            <label class="layer-item sub-layer-item inline-between">
+              <div class="left-group">
+                <input type="checkbox" v-model="layerVisibility.waterParticles" @change="updateLayerVisibility" />
+                <span class="layer-color-dot particle-dot"></span>
+                <span class="layer-label">└ 地下水粒子特效</span>
+              </div>
+              <button 
+                v-if="layerVisibility.environment && layerVisibility.waterParticles"
+                class="mini-anim-btn" 
+                :class="{ paused: !isWaterParticleAnimated }"
+                @click.stop="toggleWaterParticleAnimation"
+                :title="isWaterParticleAnimated ? '暂停粒子流动' : '启动粒子流动'"
+              >
+                {{ isWaterParticleAnimated ? '⏸ 动态' : '▶ 冻结' }}
+              </button>
+            </label>
+          </div>
+
+          <label class="layer-item">
+            <input type="checkbox" v-model="layerVisibility.probe" @change="updateLayerVisibility" />
+            <span class="layer-color-dot probe-dot"></span>
+            <span class="layer-label">最不利探针</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 4. 剖切交互控制面板 -->
+      <div class="clipping-panel glass-card">
+        <div class="panel-header">
+          <span class="panel-title">3D 剖切分析</span>
+          <label class="switch-toggle">
+            <input type="checkbox" v-model="isClippingEnabled" @change="updateClipping" />
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+        <div v-if="isClippingEnabled" class="panel-body">
+          <div class="control-row">
+            <span class="control-label">轴向:</span>
+            <div class="btn-group">
+              <button 
+                v-for="axis in (['z', 'x', 'y'] as const)" 
+                :key="axis"
+                class="axis-btn"
+                :class="{ active: clippingAxis === axis }"
+                @click="clippingAxis = axis; updateClipping()"
+              >
+                {{ axis.toUpperCase() }}
+              </button>
+            </div>
+          </div>
+          <div class="control-row">
+            <span class="control-label">位置: {{ clippingOffset.toFixed(1) }}m</span>
+            <input 
+              type="range" 
+              :min="clippingAxis === 'z' ? 0 : -30" 
+              :max="clippingAxis === 'z' ? maxChainageLength : 30" 
+              step="0.5" 
+              v-model.number="clippingOffset"
+              @input="updateClipping"
+              class="range-slider"
+            />
+          </div>
+          <div class="control-row">
+            <button 
+              class="snap-clip-btn"
+              @click="snapClippingToActiveSegment"
+              title="一键将剖切位置对齐到当前活动分段中心"
+            >
+              📍 对齐当前段 ({{ activeSegmentChainageText }})
+            </button>
+          </div>
+          <div class="control-row inline-row">
+            <span class="control-label">反向剖切:</span>
+            <input type="checkbox" v-model="isClippingInverted" @change="updateClipping" />
+          </div>
+        </div>
+      </div>
     </div>
     
-    <!-- 顶层 Overlay 标量看板/探针悬浮框 (默认折叠: isProbeTooltipCollapsed=true) -->
-    <div v-if="probeInfo && showOverlay" class="probe-tooltip glass-card" :class="{ collapsed: isProbeTooltipCollapsed }">
-      <div class="tooltip-header" @click="isProbeTooltipCollapsed = !isProbeTooltipCollapsed" style="cursor: pointer;">
-        <span class="pulse-dot" :class="{ danger: probeInfo.isCritical }"></span>
-        <span class="title">最不利受力单元 #{{ probeInfo.controlIdx }} ({{ probeInfo.chainageText }}) <small style="font-size: 11px; opacity: 0.85; margin-left: 4px;">{{ probeInfo.stateTag }}</small></span>
-        <span class="collapse-icon">{{ isProbeTooltipCollapsed ? '▲' : '▼' }}</span>
+    <!-- 右侧控制面板自适应流动栈容器 (杜绝绝对定位硬编码重叠) -->
+    <div class="right-controls-stack">
+      <!-- 1. 最不利受力单元看板 (默认折叠: isProbeTooltipCollapsed=true) -->
+      <div v-if="probeInfo && showOverlay" class="probe-tooltip glass-card" :class="{ collapsed: isProbeTooltipCollapsed }">
+        <div class="tooltip-header" @click="isProbeTooltipCollapsed = !isProbeTooltipCollapsed" style="cursor: pointer;">
+          <span class="pulse-dot" :class="{ danger: probeInfo.isCritical }"></span>
+          <span class="title">最不利受力单元 #{{ probeInfo.controlIdx }} ({{ probeInfo.chainageText }}) <small style="font-size: 11px; opacity: 0.85; margin-left: 4px;">{{ probeInfo.stateTag }}</small></span>
+          <span class="collapse-icon">{{ isProbeTooltipCollapsed ? '▲' : '▼' }}</span>
+        </div>
+        <div v-if="!isProbeTooltipCollapsed" class="tooltip-body">
+          <div v-if="props.mode === 'all'" class="state-tab-row">
+            <button 
+              class="probe-tab-btn" 
+              :class="{ active: currentProbeStateTab === 'original' }" 
+              @click.stop="currentProbeStateTab = 'original'; renderActiveSegmentProbe()"
+            >
+              原始超限态
+            </button>
+            <button 
+              class="probe-tab-btn" 
+              :class="{ active: currentProbeStateTab === 'critical' }" 
+              @click.stop="currentProbeStateTab = 'critical'; renderActiveSegmentProbe()"
+            >
+              临界加固态
+            </button>
+          </div>
+          <div class="metric-row">
+            <span class="label">最小安全系数 K:</span>
+            <span class="value" :class="{ danger: probeInfo.isCritical }">{{ probeInfo.minK.toFixed(2) }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="label">控制轴力 N:</span>
+            <span class="value">{{ (Math.abs(probeInfo.controlN) > 5000 ? probeInfo.controlN / 1000 : probeInfo.controlN).toFixed(1) }} kN</span>
+          </div>
+          <div class="metric-row">
+            <span class="label">控制弯矩 M:</span>
+            <span class="value">{{ (Math.abs(probeInfo.controlM) > 5000 ? probeInfo.controlM / 1000 : probeInfo.controlM).toFixed(1) }} kN·m</span>
+          </div>
+        </div>
       </div>
-      <div v-if="!isProbeTooltipCollapsed" class="tooltip-body">
-        <div v-if="props.mode === 'all'" class="state-tab-row">
-          <button 
-            class="probe-tab-btn" 
-            :class="{ active: currentProbeStateTab === 'original' }" 
-            @click.stop="currentProbeStateTab = 'original'; renderSceneData()"
-          >
-            原始超限态
-          </button>
-          <button 
-            class="probe-tab-btn" 
-            :class="{ active: currentProbeStateTab === 'critical' }" 
-            @click.stop="currentProbeStateTab = 'critical'; renderSceneData()"
-          >
-            临界加固态
-          </button>
+
+      <!-- 2. 当前活动计算段工程指标看板 (仅当有活动段时呈现，支持一键取消聚焦) -->
+      <div 
+        v-if="activeSegment && showOverlay && renderedSegments.length > 0" 
+        class="segment-hud-card glass-card"
+        :class="{ collapsed: isSegmentHudCollapsed }"
+        @click.stop
+        @pointerdown.stop
+      >
+        <div class="tooltip-header" @click="isSegmentHudCollapsed = !isSegmentHudCollapsed" style="cursor: pointer;">
+          <span class="pulse-dot" :class="{ danger: (probeInfo?.minK ?? 2.5) < 2.0 }"></span>
+          <span class="title">活动段 #{{ activeSegmentIndex + 1 }} ({{ activeSegmentChainageText }})</span>
+          <button class="unselect-hud-btn" @click.stop="unselectSegment" title="取消单段选中，退出聚焦选框">✕</button>
+          <span class="collapse-icon">{{ isSegmentHudCollapsed ? '▲' : '▼' }}</span>
         </div>
-        <div class="metric-row">
-          <span class="label">最小安全系数 K:</span>
-          <span class="value" :class="{ danger: probeInfo.isCritical }">{{ probeInfo.minK.toFixed(2) }}</span>
-        </div>
-        <div class="metric-row">
-          <span class="label">控制轴力 N:</span>
-          <span class="value">{{ (Math.abs(probeInfo.controlN) > 5000 ? probeInfo.controlN / 1000 : probeInfo.controlN).toFixed(1) }} kN</span>
-        </div>
-        <div class="metric-row">
-          <span class="label">控制弯矩 M:</span>
-          <span class="value">{{ (Math.abs(probeInfo.controlM) > 5000 ? probeInfo.controlM / 1000 : probeInfo.controlM).toFixed(1) }} kN·m</span>
+        <div v-if="!isSegmentHudCollapsed" class="tooltip-body">
+          <div class="metric-row">
+            <span class="label">里程范围:</span>
+            <span class="value">K{{ formatChain(activeSegment.start_chainage) }} ~ K{{ formatChain(activeSegment.end_chainage) }}</span>
+          </div>
+          <div class="metric-row">
+            <span class="label">段长 / 埋深:</span>
+            <span class="value">{{ Math.abs(activeSegment.end_chainage - activeSegment.start_chainage).toFixed(1) }}m / {{ extractSnapshotValue(activeSegment, 'h_1', 130) }}m</span>
+          </div>
+          <div class="metric-row">
+            <span class="label">环向盲管:</span>
+            <span class="value">φ{{ (extractSnapshotValue(activeSegment, 'ring_diam_recommend', 0.05)*1000).toFixed(0) }} @ {{ extractSnapshotValue(activeSegment, 'ring_spacing_recommend', 10) }}m</span>
+          </div>
+          <div class="metric-row">
+            <span class="label">加固圈厚度:</span>
+            <span class="value">tg={{ (extractSnapshotValue(activeSegment, 'tg_crit', 0)).toFixed(2) }}m</span>
+          </div>
         </div>
       </div>
     </div>
@@ -460,7 +622,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, toRaw } from 'vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick, toRaw } from 'vue';
 import * as THREE from 'three';
 import { useSnapshotStore, extractSnapshotValue, Snapshot } from '@/store/snapshotStore';
 import { useParameterStore } from '@/store/parameterStore';
@@ -578,6 +740,12 @@ const emit = defineEmits<{
 // DOM 引用
 const containerRef = ref<HTMLElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
+const miniMapCanvasRef = ref<HTMLCanvasElement | null>(null);
+const pillTrackRef = ref<HTMLElement | null>(null);
+
+// 状态库绑定
+const snapshotStore = useSnapshotStore();
+const parameterStore = useParameterStore();
 
 // Three.js 核心上下文
 let renderer: THREE.WebGLRenderer;
@@ -637,20 +805,33 @@ const toggleWaterParticleAnimation = () => {
 // 追踪已挂载对象与组件实例 (升级为 List 数组管理，解耦多快照组装单例覆盖)
 let activeMeshes: THREE.Object3D[] = [];
 let probeManager: StressProbeManager | null = null;
+const focusHighlightGroup = new THREE.Group();
 
 let tGenInstances: TunnelGenerator[] = [];
 let rManagerInstances: ReinforcementManager[] = [];
 let pipeGenInstances: DrainagePipeGenerator[] = [];
 let envInstances: Environment[] = [];
 
+// 多分段场景状态
+const renderedSegments = ref<Snapshot[]>([]);
+const isSelectorCollapsed = ref(false);
+const selectorSearch = ref('');
+const isFocusIsolationMode = ref(false);
+const isSegmentHudCollapsed = ref(false);
+
+const hoveredMiniMapSnap = ref<Snapshot | null>(null);
+const hoveredMiniMapX = ref(0);
+const hoveredMiniMapIndex = ref(0);
+
 // 探针在 mode === 'all' 下的解算态选择 (原始超限态 | 临界加固态)
 const currentProbeStateTab = ref<'original' | 'critical'>('original');
 
-// 图层显隐控制状态
+// 图层显隐与面板折叠状态
+const isPipeScaleCollapsed = ref(false);
 const isLayerPanelOpen = ref(true);
-const isLiningGroupOpen = ref(true);
-const isPipesGroupOpen = ref(true);
-const isEnvGroupOpen = ref(true);
+const isLiningGroupOpen = ref(false);
+const isPipesGroupOpen = ref(false);
+const isEnvGroupOpen = ref(false);
 
 const liningParentCheckboxRef = ref<HTMLInputElement | null>(null);
 
@@ -873,6 +1054,17 @@ const updateClipping = () => {
   scheduleRender();
 };
 
+const snapClippingToActiveSegment = () => {
+  if (!activeSegment.value) return;
+  const start = extractSnapshotValue(activeSegment.value, 'start_chainage', 0);
+  const end = extractSnapshotValue(activeSegment.value, 'end_chainage', 50);
+  const centerOffset = Math.abs((start + end) / 2 - startChainageVal.value);
+  clippingAxis.value = 'z';
+  clippingOffset.value = Math.max(0, Math.min(maxChainageLength.value, centerOffset));
+  isClippingEnabled.value = true;
+  updateClipping();
+};
+
 const applyClippingPlanes = (planes: THREE.Plane[]) => {
   activeMeshes.forEach(mesh => {
     if (mesh instanceof THREE.Mesh || mesh instanceof THREE.InstancedMesh) {
@@ -889,9 +1081,342 @@ const applyClippingPlanes = (planes: THREE.Plane[]) => {
   });
 };
 
-// 状态库绑定
-const snapshotStore = useSnapshotStore();
-const parameterStore = useParameterStore();
+// ==========================================
+// 多计算分段计算属性与辅助函数
+// ==========================================
+const activeSegment = computed<Snapshot | null>(() => {
+  if (renderedSegments.value.length === 0) return null;
+  if (snapshotStore.activeSegmentId) {
+    const found = renderedSegments.value.find(s => s.id === snapshotStore.activeSegmentId);
+    if (found) return found;
+  }
+  return null; // 全部不选状态返回 null
+});
+
+const activeSegmentIndex = computed(() => {
+  if (!activeSegment.value) return -1;
+  return renderedSegments.value.findIndex(s => s.id === activeSegment.value?.id);
+});
+
+const activeSegmentChainageText = computed(() => {
+  if (!activeSegment.value) return '全线概览 (未聚焦)';
+  const start = extractSnapshotValue(activeSegment.value, 'start_chainage', 0);
+  const end = extractSnapshotValue(activeSegment.value, 'end_chainage', 50);
+  return `K${formatChain(start)} ~ K${formatChain(end)}`;
+});
+
+const segmentStats = computed(() => {
+  const list = renderedSegments.value;
+  let danger = 0;
+  let warning = 0;
+  let safe = 0;
+  let minStart = Infinity;
+  let maxEnd = -Infinity;
+
+  list.forEach(s => {
+    const fs = snapFs(s);
+    if (fs != null) {
+      if (fs < 1.0) danger++;
+      else if (fs < 2.0) warning++;
+      else safe++;
+    }
+    const start = extractSnapshotValue(s, 'start_chainage', 0);
+    const end = extractSnapshotValue(s, 'end_chainage', 50);
+    if (start < minStart) minStart = start;
+    if (end > maxEnd) maxEnd = end;
+  });
+
+  const totalKm = (minStart !== Infinity && maxEnd !== -Infinity)
+    ? (Math.abs(maxEnd - minStart) / 1000).toFixed(2)
+    : '0.00';
+
+  return {
+    total: list.length,
+    danger,
+    warning,
+    safe,
+    totalKm
+  };
+});
+
+const filteredSelectorSegments = computed(() => {
+  if (!selectorSearch.value.trim()) return renderedSegments.value;
+  const kw = selectorSearch.value.trim().toLowerCase();
+  return renderedSegments.value.filter(s => {
+    const remark = String(s.remark || '').toLowerCase();
+    const start = String(extractSnapshotValue(s, 'start_chainage', 0));
+    const end = String(extractSnapshotValue(s, 'end_chainage', 50));
+    const chainText = `k${formatChain(Number(start))}~k${formatChain(Number(end))}`.toLowerCase();
+    return remark.includes(kw) || chainText.includes(kw) || start.includes(kw) || end.includes(kw);
+  });
+});
+
+function getOriginalSegmentIndex(snap: Snapshot): number {
+  return Math.max(0, renderedSegments.value.findIndex(s => s.id === snap.id));
+}
+
+function formatChain(num: number): string {
+  const km = Math.floor(num / 1000);
+  const m = num % 1000;
+  return `${km}+${m.toFixed(0).padStart(3, '0')}`;
+}
+
+function snapFs(snap: Snapshot | null): number | null {
+  if (!snap || !snap.results) return null;
+  return snap.results.original_state?.safety_factor ?? snap.results.critical_state?.final_safety_factor ?? null;
+}
+
+function snapFsText(snap: Snapshot | null): string {
+  const fs = snapFs(snap);
+  if (fs == null) return '--';
+  return fs.toFixed(2);
+}
+
+function getFsClass(fs: number | null): string {
+  if (fs == null) return '';
+  if (fs < 1.0) return 'danger';
+  if (fs < 2.0) return 'warning';
+  return 'safe';
+}
+
+const scrollPills = (dir: 'left' | 'right') => {
+  if (!pillTrackRef.value) return;
+  const offset = dir === 'left' ? -220 : 220;
+  pillTrackRef.value.scrollBy({ left: offset, behavior: 'smooth' });
+};
+
+// 全部不选 / 取消聚焦状态
+const unselectSegment = () => {
+  snapshotStore.setActiveSegment(null);
+  updateFocusHighlightBox(null);
+  if (isFocusIsolationMode.value) {
+    isFocusIsolationMode.value = false;
+    applyFocusIsolation();
+  }
+  renderActiveSegmentProbe(null);
+  drawMiniMap();
+  scheduleRender();
+};
+
+// 点击胶囊：已选中则取消，未选中则聚焦
+const onPillClick = (snap: Snapshot) => {
+  if (activeSegment.value?.id === snap.id) {
+    unselectSegment();
+  } else {
+    selectSegment(snap, true);
+  }
+};
+
+// 切换选择活动分段
+const selectSegment = (snap: Snapshot, shouldFly: boolean = true) => {
+  snapshotStore.setActiveSegment(snap.id);
+  renderActiveSegmentProbe(snap);
+  updateFocusHighlightBox(snap);
+  if (shouldFly) {
+    flyToSegment(snap);
+  }
+  drawMiniMap();
+  scheduleRender();
+};
+
+// 独占聚焦模式切换 (虚化非活动分段)
+const toggleFocusIsolation = () => {
+  isFocusIsolationMode.value = !isFocusIsolationMode.value;
+  applyFocusIsolation();
+  scheduleRender();
+};
+
+const applyFocusIsolation = () => {
+  const activeId = activeSegment.value?.id;
+  const isIso = isFocusIsolationMode.value;
+
+  tGenInstances.forEach((tg, idx) => {
+    const snap = renderedSegments.value[idx];
+    const isCur = snap && snap.id === activeId;
+    const meshes = tg.getMeshes();
+    meshes.forEach((m: any) => {
+      if (m && m.material) {
+        if (Array.isArray(m.material)) {
+          m.material.forEach((mat: any) => {
+            mat.transparent = true;
+            mat.opacity = (!isIso || isCur) ? 1.0 : 0.2;
+            mat.needsUpdate = true;
+          });
+        } else {
+          m.material.transparent = true;
+          m.material.opacity = (!isIso || isCur) ? 1.0 : 0.2;
+          m.material.needsUpdate = true;
+        }
+      }
+    });
+  });
+};
+
+// 绘制宏观全线 Mini-map 安全色带
+const drawMiniMap = () => {
+  const canvas = miniMapCanvasRef.value;
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const w = canvas.width = canvas.parentElement?.clientWidth || 600;
+  const h = canvas.height = 14;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const list = renderedSegments.value;
+  if (list.length === 0) return;
+
+  let minStart = Infinity;
+  let maxEnd = -Infinity;
+  list.forEach(s => {
+    const start = extractSnapshotValue(s, 'start_chainage', 0);
+    const end = extractSnapshotValue(s, 'end_chainage', 50);
+    if (start < minStart) minStart = start;
+    if (end > maxEnd) maxEnd = end;
+  });
+
+  const totalLen = Math.max(1, maxEnd - minStart);
+
+  // 背景底槽
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.fillRect(0, 0, w, h);
+
+  list.forEach((s, idx) => {
+    const start = extractSnapshotValue(s, 'start_chainage', 0);
+    const end = extractSnapshotValue(s, 'end_chainage', 50);
+    const segLen = Math.max(1, end - start);
+
+    const x = ((start - minStart) / totalLen) * w;
+    const segW = Math.max(3, (segLen / totalLen) * w);
+
+    const fs = snapFs(s);
+    let color = '#64748b'; // 待算灰
+    if (fs != null) {
+      if (fs < 1.0) color = '#ef4444'; // 危险红
+      else if (fs < 2.0) color = '#f59e0b'; // 预警黄
+      else color = '#10b981'; // 安全绿
+    }
+
+    ctx.fillStyle = color;
+    ctx.fillRect(x, 2, segW, h - 4);
+
+    // 分隔线
+    ctx.strokeStyle = 'rgba(15, 23, 42, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, 2, segW, h - 4);
+
+    // 活动段高亮边框 (仅当有选中段时绘制)
+    if (activeSegment.value && activeSegment.value.id === s.id) {
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x - 1, 0, segW + 2, h);
+    }
+  });
+};
+
+const handleMiniMapClick = (e: MouseEvent) => {
+  const canvas = miniMapCanvasRef.value;
+  if (!canvas || renderedSegments.value.length === 0) return;
+  const rect = canvas.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+
+  let minStart = Infinity;
+  let maxEnd = -Infinity;
+  renderedSegments.value.forEach(s => {
+    const start = extractSnapshotValue(s, 'start_chainage', 0);
+    const end = extractSnapshotValue(s, 'end_chainage', 50);
+    if (start < minStart) minStart = start;
+    if (end > maxEnd) maxEnd = end;
+  });
+
+  const totalLen = Math.max(1, maxEnd - minStart);
+  const targetChain = minStart + ratio * totalLen;
+
+  const match = renderedSegments.value.find(s => {
+    const start = extractSnapshotValue(s, 'start_chainage', 0);
+    const end = extractSnapshotValue(s, 'end_chainage', 50);
+    return targetChain >= start && targetChain <= end;
+  }) || renderedSegments.value[Math.min(renderedSegments.value.length - 1, Math.floor(ratio * renderedSegments.value.length))];
+
+  if (match) {
+    if (activeSegment.value?.id === match.id) {
+      unselectSegment();
+    } else {
+      selectSegment(match, true);
+    }
+  }
+};
+
+const handleMiniMapMouseMove = (e: MouseEvent) => {
+  const canvas = miniMapCanvasRef.value;
+  if (!canvas || renderedSegments.value.length === 0) return;
+  const rect = canvas.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  hoveredMiniMapX.value = Math.max(10, Math.min(rect.width - 160, e.clientX - rect.left));
+
+  let minStart = Infinity;
+  let maxEnd = -Infinity;
+  renderedSegments.value.forEach(s => {
+    const start = extractSnapshotValue(s, 'start_chainage', 0);
+    const end = extractSnapshotValue(s, 'end_chainage', 50);
+    if (start < minStart) minStart = start;
+    if (end > maxEnd) maxEnd = end;
+  });
+
+  const totalLen = Math.max(1, maxEnd - minStart);
+  const targetChain = minStart + ratio * totalLen;
+
+  const idx = renderedSegments.value.findIndex(s => {
+    const start = extractSnapshotValue(s, 'start_chainage', 0);
+    const end = extractSnapshotValue(s, 'end_chainage', 50);
+    return targetChain >= start && targetChain <= end;
+  });
+
+  if (idx !== -1) {
+    hoveredMiniMapSnap.value = renderedSegments.value[idx];
+    hoveredMiniMapIndex.value = idx;
+  } else {
+    const fallbackIdx = Math.min(renderedSegments.value.length - 1, Math.floor(ratio * renderedSegments.value.length));
+    hoveredMiniMapSnap.value = renderedSegments.value[fallbackIdx];
+    hoveredMiniMapIndex.value = fallbackIdx;
+  }
+};
+
+// 3D 场景活动分段聚焦线框高亮
+const updateFocusHighlightBox = (snap: Snapshot | null) => {
+  while (focusHighlightGroup.children.length > 0) {
+    const child = focusHighlightGroup.children[0];
+    focusHighlightGroup.remove(child);
+    if ((child as any).geometry) (child as any).geometry.dispose();
+    if ((child as any).material) (child as any).material.dispose();
+  }
+
+  if (!snap || !scene) return;
+
+  const start = extractSnapshotValue(snap, 'start_chainage', 0);
+  const end = extractSnapshotValue(snap, 'end_chainage', 50);
+  const r0 = extractSnapshotValue(snap, 'r_0', extractSnapshotValue(snap, 'r', 7.95));
+  const tunnelType = extractSnapshotValue<string>(snap, 'tunnel_type', 'single');
+  const dSpacing = extractSnapshotValue(snap, 'D_spacing', 30.0);
+  const isDouble = tunnelType === 'double';
+
+  const segLen = Math.abs(end - start);
+  const totalW = isDouble ? (dSpacing + 2.4 * r0) : (2.4 * r0);
+  const totalH = 2.4 * r0;
+
+  const boxGeo = new THREE.BoxGeometry(totalW, totalH, segLen);
+  const boxEdges = new THREE.EdgesGeometry(boxGeo);
+  const boxMat = new THREE.LineBasicMaterial({
+    color: 0x38bdf8,
+    linewidth: 2,
+    transparent: true,
+    opacity: 0.85
+  });
+  const wireframe = new THREE.LineSegments(boxEdges, boxMat);
+  wireframe.position.set(0, 0, -(start + end) / 2);
+  focusHighlightGroup.add(wireframe);
+};
 
 // 节流阀控制状态
 let renderFrameId: number | null = null;
@@ -916,18 +1441,16 @@ const initWebGL = () => {
   renderer.setSize(width, height);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.localClippingEnabled = true; // 使能局部剖切平面剔除
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; // ACESFilmic 色调映射，防止高亮荧光线条爆光
+  renderer.localClippingEnabled = true;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1d24);
 
-  // 1. 初始化透视相机 (压缩 near/far 优化 Z-Buffer 深度精度，根治 Z-Fighting) (WBS 1.3)
   perspectiveCamera = new THREE.PerspectiveCamera(45, aspect, 0.5, 2000);
   perspectiveCamera.position.set(0, 25, 60);
 
-  // 2. 初始化正交相机
   const initD = perspectiveCamera.position.distanceTo(new THREE.Vector3(0, 0, -20));
   const halfH = initD * Math.tan((45 * Math.PI) / 360);
   const halfW = halfH * aspect;
@@ -937,7 +1460,7 @@ const initWebGL = () => {
   activeCamera = cameraMode.value === 'orthographic' ? orthographicCamera : perspectiveCamera;
   camera = activeCamera as any;
 
-  // 影棚级三点光源阵列 (Key Light + Fill Light + Rim Light)
+  // 影棚级三点光源阵列
   const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
   keyLight.position.set(50, 80, 50);
   keyLight.castShadow = true;
@@ -956,7 +1479,6 @@ const initWebGL = () => {
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
   scene.add(ambientLight);
 
-  // PMREMGenerator 动态生成双范式 HDRI 光照贴图，赋予金属与玻璃逼真反射
   updateEnvironmentMap(visualParadigm.value);
   controls = new OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 0, -20);
@@ -973,11 +1495,12 @@ const initWebGL = () => {
 
   probeManager = new StressProbeManager(scene);
   scene.add(measureGroup);
+  scene.add(focusHighlightGroup);
   scheduleRender();
 };
 
 /**
- * 悬停 Raycasting 检测，实现 3D 悬浮卡片与管网 Hover 光标 pointer 提示
+ * 悬停 Raycasting 检测
  */
 const handleCanvasPointerMove = (event: MouseEvent) => {
   if (!canvasRef.value || !camera) return;
@@ -1025,7 +1548,6 @@ const setCameraProjectionMode = (mode: 'perspective' | 'orthographic') => {
   const distance = currentPos.distanceTo(currentTarget);
 
   if (mode === 'orthographic') {
-    // 透视 -> 正交：根据观察距离精准算定 Frustum 视锥范围
     const halfH = distance * Math.tan((perspectiveCamera.fov * Math.PI) / 360);
     const halfW = halfH * aspect;
 
@@ -1040,7 +1562,6 @@ const setCameraProjectionMode = (mode: 'perspective' | 'orthographic') => {
     activeCamera = orthographicCamera;
     camera = orthographicCamera as any;
   } else {
-    // 正交 -> 透视
     perspectiveCamera.aspect = aspect;
     perspectiveCamera.position.copy(currentPos);
     perspectiveCamera.quaternion.copy(orthographicCamera.quaternion);
@@ -1065,7 +1586,79 @@ const mouseVec = new THREE.Vector2();
 let cameraAnimFrameId: number | null = null;
 
 /**
- * 切换标准工程视角 (0.8s 平滑动画过渡)
+ * 相机平滑飞行动画 (Lerp Ease-in-out Tween)
+ */
+const flyToSegment = (snap: Snapshot) => {
+  if (!camera || !controls || !snap) return;
+  if (cameraAnimFrameId !== null) cancelAnimationFrame(cameraAnimFrameId);
+
+  const start = extractSnapshotValue(snap, 'start_chainage', 0);
+  const end = extractSnapshotValue(snap, 'end_chainage', 50);
+  const r0 = extractSnapshotValue(snap, 'r_0', extractSnapshotValue(snap, 'r', 7.95));
+  const tunnelType = extractSnapshotValue<string>(snap, 'tunnel_type', 'single');
+  const dSpacing = extractSnapshotValue(snap, 'D_spacing', 30.0);
+  const isDouble = tunnelType === 'double';
+
+  const segLen = Math.abs(end - start);
+  const targetZ = -(start + end) / 2;
+  const targetLookAt = new THREE.Vector3(0, r0 * 0.3, targetZ);
+
+  const wEffective = isDouble ? (dSpacing + 2.2 * r0) : (2.2 * r0);
+  const fovRad = (perspectiveCamera.fov * Math.PI) / 360;
+  const dOptimal = Math.max(
+    segLen / (2 * Math.tan(fovRad)),
+    wEffective / Math.tan(fovRad),
+    25.0
+  );
+
+  const targetPos = targetLookAt.clone().add(new THREE.Vector3(
+    0.707 * dOptimal,
+    0.5 * dOptimal,
+    0.5 * dOptimal
+  ));
+
+  const startPos = camera.position.clone();
+  const startTarget = controls.target.clone();
+  const startTime = performance.now();
+  const durationMs = 800;
+
+  const animateStep = (now: number) => {
+    const elapsed = now - startTime;
+    const progress = Math.min(1.0, elapsed / durationMs);
+    const ease = progress < 0.5
+      ? 4 * progress * progress * progress
+      : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+    camera.position.lerpVectors(startPos, targetPos, ease);
+    controls.target.lerpVectors(startTarget, targetLookAt, ease);
+
+    if (camera instanceof THREE.OrthographicCamera && perspectiveCamera && containerRef.value) {
+      const distance = camera.position.distanceTo(controls.target);
+      const aspect = containerRef.value.clientWidth / containerRef.value.clientHeight;
+      const halfH = distance * Math.tan((perspectiveCamera.fov * Math.PI) / 360);
+      const halfW = halfH * aspect;
+      camera.left = -halfW;
+      camera.right = halfW;
+      camera.top = halfH;
+      camera.bottom = -halfH;
+      camera.updateProjectionMatrix();
+    }
+
+    controls.update();
+    scheduleRender();
+
+    if (progress < 1.0) {
+      cameraAnimFrameId = requestAnimationFrame(animateStep);
+    } else {
+      cameraAnimFrameId = null;
+    }
+  };
+
+  cameraAnimFrameId = requestAnimationFrame(animateStep);
+};
+
+/**
+ * 切换标准工程视角
  */
 const switchToStandardView = (viewKey: string) => {
   if (!camera || !controls) return;
@@ -1141,9 +1734,6 @@ const switchToStandardView = (viewKey: string) => {
   cameraAnimFrameId = requestAnimationFrame(animateStep);
 };
 
-/**
- * 切换距离量测模式
- */
 const toggleMeasurementMode = () => {
   isMeasuring.value = !isMeasuring.value;
   if (!isMeasuring.value) {
@@ -1151,9 +1741,6 @@ const toggleMeasurementMode = () => {
   }
 };
 
-/**
- * 清除所有量测标注与虚线
- */
 const clearMeasurements = () => {
   measurePoints.value = [];
   while (measureGroup.children.length > 0) {
@@ -1171,9 +1758,6 @@ const clearMeasurements = () => {
   scheduleRender();
 };
 
-/**
- * Canvas 点击事件处理器 (3D 交互拾取测距 & 排水管线 PIP 局部放大)
- */
 const handleCanvasClick = (event: MouseEvent) => {
   if (!canvasRef.value || !camera || !scene) return;
 
@@ -1189,7 +1773,6 @@ const handleCanvasClick = (event: MouseEvent) => {
       const point = intersects[0].point;
       measurePoints.value.push(point);
 
-      // 点选标记球
       const sphereGeo = new THREE.SphereGeometry(0.15, 16, 16);
       const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
       const sphere = new THREE.Mesh(sphereGeo, sphereMat);
@@ -1201,7 +1784,6 @@ const handleCanvasClick = (event: MouseEvent) => {
         const p2 = measurePoints.value[1];
         const dist = p1.distanceTo(p2);
 
-        // 1. 虚线连接
         const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
         const lineMat = new THREE.LineDashedMaterial({
           color: 0xffea00,
@@ -1213,7 +1795,6 @@ const handleCanvasClick = (event: MouseEvent) => {
         line.computeLineDistances();
         measureGroup.add(line);
 
-        // 2. 中点 Sprite 距离标签
         const midPoint = p1.clone().add(p2).multiplyScalar(0.5);
         const canvas = document.createElement('canvas');
         canvas.width = 256;
@@ -1252,7 +1833,6 @@ const handleCanvasClick = (event: MouseEvent) => {
     return;
   }
 
-  // 非测距模式：仅当点击 3D 悬浮文字标注框 (isAnnotation === true) 时才弹出 PIP 局部放大镜
   if (intersects.length > 0) {
     const hit = intersects[0].object;
     if (hit && hit.userData && hit.userData.isAnnotation === true && (hit.userData.pipeCategory || hit.userData.name)) {
@@ -1262,7 +1842,6 @@ const handleCanvasClick = (event: MouseEvent) => {
     }
   }
 
-  // 点击 3D 画布空白区域，自动平滑收起 PIP 画中画镜头
   if (isPipActive.value) {
     isPipActive.value = false;
   }
@@ -1286,7 +1865,6 @@ const scheduleRender = () => {
   });
 };
 
-// 矩阵同步接口：供分屏 CompareView 双视角联动
 const setCameraState = (state: { position: number[]; target: number[] }) => {
   if (!camera || !controls) return;
   camera.position.set(state.position[0], state.position[1], state.position[2]);
@@ -1297,7 +1875,62 @@ const setCameraState = (state: { position: number[]; target: number[] }) => {
 
 defineExpose({ setCameraState });
 
-// 渲染主逻辑
+// 仅更新当前活动分段的 3D 最不利探针与云图 (全部不选时自动回退至全线最危险截面)
+const renderActiveSegmentProbe = (snapOverride?: Snapshot | null) => {
+  if (!probeManager) return;
+  let targetSnap: Snapshot | null = null;
+  let isGlobalFallback = false;
+
+  if (snapOverride !== undefined) {
+    targetSnap = snapOverride;
+  } else if (activeSegment.value) {
+    targetSnap = activeSegment.value;
+  }
+
+  // 全部不选状态时，默认提取全线最危险 (Fs 最小) 的分段展示探针
+  if (!targetSnap && renderedSegments.value.length > 0) {
+    isGlobalFallback = true;
+    let worstSnap = renderedSegments.value[0];
+    let minFs = Infinity;
+    renderedSegments.value.forEach(s => {
+      const fs = snapFs(s);
+      if (fs != null && fs < minFs) {
+        minFs = fs;
+        worstSnap = s;
+      }
+    });
+    targetSnap = worstSnap;
+  }
+
+  if (!targetSnap) return;
+
+  const rawData = toRaw(targetSnap);
+  const start_chainage = extractSnapshotValue(rawData, 'start_chainage', 0);
+  const r = extractSnapshotValue(rawData, 'r_0', extractSnapshotValue(rawData, 'r', 7.95));
+  const targetViewMode = props.mode === 'all' ? currentProbeStateTab.value : props.mode;
+
+  const probeRes = probeManager.updateFromSnapshot(rawData, r, -start_chainage, 2.0, targetViewMode);
+  probeManager.setForceMode(currentForceMode.value);
+
+  const modeTag = targetViewMode === 'original' ? '原始超限态' : '临界加固态';
+  const prefixTag = isGlobalFallback ? '全线最不利·' : '';
+
+  probeInfo.value = {
+    controlIdx: probeRes.controlIdx,
+    controlM: probeRes.controlM,
+    controlN: probeRes.controlN,
+    minK: probeRes.minK,
+    isCritical: probeRes.minK <= 2.0,
+    chainageText: probeRes.chainageText,
+    stateTag: `[${prefixTag}${modeTag}]`
+  };
+
+  if (probeRes.ranges) {
+    probeRanges.value = probeRes.ranges;
+  }
+};
+
+// 渲染场景全量几何主体
 const renderSceneData = () => {
   if (!scene) return;
 
@@ -1332,7 +1965,6 @@ const renderSceneData = () => {
   } else {
     snapshotsToRender = snapshotStore.snapshots.filter((s: any) => s.selectedFor3D);
     if (snapshotsToRender.length === 0) {
-      // 兜底使用 parameterStore 当前表单构建
       const currentParam = parameterStore.currentPayload;
       snapshotsToRender = [{
         id: 'live_current',
@@ -1345,6 +1977,18 @@ const renderSceneData = () => {
       }];
     }
   }
+
+  renderedSegments.value = snapshotsToRender;
+
+  // 默认折叠单段或对比模式下的选区条
+  if (snapshotsToRender.length <= 1 || props.snapshotOverride) {
+    isSelectorCollapsed.value = true;
+  } else {
+    isSelectorCollapsed.value = false;
+  }
+
+  let minGlobalStart = Infinity;
+  let maxGlobalEnd = -Infinity;
 
   snapshotsToRender.forEach((snap: Snapshot) => {
     const rawData = toRaw(snap);
@@ -1362,12 +2006,12 @@ const renderSceneData = () => {
     const D_spacing = extractSnapshotValue(rawData, 'D_spacing', 30.0);
     const has_central_ditch = extractSnapshotValue<boolean>(rawData, 'has_central_ditch', true);
 
-    maxChainageLength.value = Math.abs(end_chainage - start_chainage);
-    startChainageVal.value = start_chainage;
+    if (start_chainage < minGlobalStart) minGlobalStart = start_chainage;
+    if (end_chainage > maxGlobalEnd) maxGlobalEnd = end_chainage;
 
     const tType = tunnel_type === 'double' ? TunnelType.DOUBLE : TunnelType.SINGLE;
 
-    // 1. 隧道主洞体与路面水沟生成 (传入 has_central_ditch)
+    // 1. 隧道主洞体与路面水沟生成
     const tGen = new TunnelGenerator(tType, start_chainage, end_chainage, r, aspect_ratio, D_spacing, r1, r2, rg, c, 1.0, has_central_ditch);
     tGen.setVisualParadigm(visualParadigm.value);
     tGen.getMeshes().forEach(mesh => {
@@ -1410,7 +2054,7 @@ const renderSceneData = () => {
     });
     rManagerInstances.push(rManager);
 
-    // 3. 排水管网生成器 (传入 hasCentralDitch，背水面交界面半径为 r1)
+    // 3. 排水管网生成器
     const pipeGen = new DrainagePipeGenerator({
       ringDiam: extractSnapshotValue(rawData, 'ring_diam_recommend', 0.05),
       ringSpacing: extractSnapshotValue(rawData, 'ring_spacing_recommend', 10.0),
@@ -1440,7 +2084,7 @@ const renderSceneData = () => {
     }
     pipeGenInstances.push(pipeGen);
 
-    // 4. 水文环境建模随动 (注入 activeMeshes 支持 3D 剖切分析)
+    // 4. 水文环境建模随动
     const envInstance = new Environment(scene, {
       startChainage: start_chainage,
       endChainage: end_chainage,
@@ -1455,30 +2099,23 @@ const renderSceneData = () => {
       activeMeshes.push(mesh);
     });
     envInstances.push(envInstance);
-
-    // 5. 受力云图与探针挂载
-    if (probeManager) {
-      const targetViewMode = props.mode === 'all' ? currentProbeStateTab.value : props.mode;
-      const probeRes = probeManager.updateFromSnapshot(rawData, r, -start_chainage, 2.0, targetViewMode);
-      probeManager.setForceMode(currentForceMode.value);
-      probeInfo.value = {
-        controlIdx: probeRes.controlIdx,
-        controlM: probeRes.controlM,
-        controlN: probeRes.controlN,
-        minK: probeRes.minK,
-        isCritical: probeRes.minK <= 2.0,
-        chainageText: probeRes.chainageText,
-        stateTag: targetViewMode === 'original' ? '[原始超限态]' : '[临界加固态]'
-      };
-      if (probeRes.ranges) {
-        probeRanges.value = probeRes.ranges;
-      }
-    }
   });
 
-  // 同步当前视觉美学范式模式 (Studio vs Cyber)
-  switchVisualParadigm(visualParadigm.value);
+  if (minGlobalStart !== Infinity && maxGlobalEnd !== -Infinity) {
+    maxChainageLength.value = Math.abs(maxGlobalEnd - minGlobalStart);
+    startChainageVal.value = minGlobalStart;
+  }
 
+  // 渲染当前活动分段的探针与聚焦线框 (解耦单例覆盖)
+  renderActiveSegmentProbe();
+  updateFocusHighlightBox(activeSegment.value);
+  applyFocusIsolation();
+
+  nextTick(() => {
+    drawMiniMap();
+  });
+
+  switchVisualParadigm(visualParadigm.value);
   updateClipping();
   updateLayerVisibility();
   scheduleRender();
@@ -1487,6 +2124,21 @@ const renderSceneData = () => {
 watch(
   [() => snapshotStore.refresh3DTrigger, () => props.mode, () => props.snapshotOverride],
   () => renderSceneData()
+);
+
+watch(
+  () => snapshotStore.activeSegmentId,
+  (newId) => {
+    if (!newId) return;
+    const found = renderedSegments.value.find(s => s.id === newId);
+    if (found) {
+      renderActiveSegmentProbe(found);
+      updateFocusHighlightBox(found);
+      drawMiniMap();
+      applyFocusIsolation();
+      scheduleRender();
+    }
+  }
 );
 
 let resizeObserver: ResizeObserver | null = null;
@@ -1512,6 +2164,7 @@ const handleResize = () => {
     camera.updateProjectionMatrix();
   }
   renderer.setSize(width, height);
+  drawMiniMap();
   scheduleRender();
 };
 
@@ -1520,6 +2173,8 @@ onMounted(() => {
   renderSceneData();
   window.addEventListener('resize', handleResize);
   canvasRef.value?.addEventListener('click', handleCanvasClick);
+  canvasRef.value?.addEventListener('mousemove', handleCanvasPointerMove);
+  window.addEventListener('keydown', handleKeyDown);
 
   if (containerRef.value) {
     resizeObserver = new ResizeObserver(() => {
@@ -1536,6 +2191,8 @@ onBeforeUnmount(() => {
   }
   window.removeEventListener('resize', handleResize);
   canvasRef.value?.removeEventListener('click', handleCanvasClick);
+  canvasRef.value?.removeEventListener('mousemove', handleCanvasPointerMove);
+  window.removeEventListener('keydown', handleKeyDown);
   if (cameraAnimFrameId !== null) cancelAnimationFrame(cameraAnimFrameId);
   if (renderFrameId !== null) cancelAnimationFrame(renderFrameId);
   if (particleAnimFrameId !== null) cancelAnimationFrame(particleAnimFrameId);
@@ -1573,25 +2230,431 @@ canvas {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
-.probe-tooltip {
+/* 顶部可折叠计算分段控制器样式 */
+.segment-selector-bar {
   position: absolute;
-  top: 56px;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 560px);
+  max-width: 820px;
+  min-width: 320px;
+  z-index: 20;
+  padding: 8px 14px;
+  color: #e0e6ed;
+  transition: all 0.25s ease;
+}
+
+.segment-selector-bar.is-collapsed {
+  padding: 5px 12px;
+  max-width: fit-content;
+  width: auto;
+}
+
+.selector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.collapse-toggle-btn {
+  font-size: 11px;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.collapse-toggle-btn:hover {
+  background: rgba(56, 189, 248, 0.3);
+}
+
+.selector-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f8fafc;
+  white-space: nowrap;
+}
+
+.stats-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stat-pill {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.stat-pill.total {
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+
+.stat-pill.danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.stat-pill.warning {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.stat-pill.safe {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.selector-search-input {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: #f8fafc;
+  font-size: 11px;
+  padding: 3px 20px 3px 8px;
+  width: 130px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.selector-search-input:focus {
+  border-color: #38bdf8;
+  width: 160px;
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 4px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.focus-mode-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.focus-mode-btn:hover {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.focus-mode-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+.selector-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.minimap-wrapper {
+  position: relative;
+  width: 100%;
+  height: 14px;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 3px;
+  overflow: hidden;
+  cursor: crosshair;
+}
+
+.minimap-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.minimap-tooltip {
+  position: absolute;
+  top: 18px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #f8fafc;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  z-index: 30;
+}
+
+.minimap-tooltip .tt-title {
+  font-weight: 600;
+  color: #38bdf8;
+}
+
+.minimap-tooltip .tt-desc {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.minimap-tooltip .tt-fs {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.minimap-tooltip .tt-fs.danger { color: #f87171; }
+.minimap-tooltip .tt-fs.warning { color: #fbbf24; }
+.minimap-tooltip .tt-fs.safe { color: #34d399; }
+
+.pill-slider-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.step-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #94a3b8;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.step-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.pill-slider-track {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 0;
+}
+
+.pill-slider-track::-webkit-scrollbar {
+  display: none;
+}
+
+.segment-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  color: #cbd5e1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.segment-pill:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.segment-pill.active {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+}
+
+.all-overview-pill {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+}
+
+.all-overview-pill:hover {
+  background: rgba(56, 189, 248, 0.25);
+  color: #ffffff;
+}
+
+.all-overview-pill.active {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+}
+
+.pill-index {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.segment-pill.active .pill-index {
+  color: #e0f2fe;
+}
+
+.pill-chain {
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.pill-badge {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.pill-badge.danger { color: #f87171; }
+.pill-badge.warning { color: #fbbf24; }
+.pill-badge.safe { color: #34d399; }
+
+.no-match-hint {
+  font-size: 11px;
+  color: #94a3b8;
+  padding: 2px 8px;
+}
+
+.snap-clip-btn {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.snap-clip-btn:hover {
+  background: rgba(56, 189, 248, 0.3);
+  color: #ffffff;
+}
+
+/* 右侧控制面板自适应流动栈容器 (杜绝绝对定位硬编码重叠) */
+.right-controls-stack {
+  position: absolute;
+  top: 200px;
   right: 16px;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+  pointer-events: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.right-controls-stack > .glass-card {
+  pointer-events: auto;
+  position: static;
+  min-width: 230px;
+  max-width: 280px;
+}
+
+/* 探针受力看板样式 */
+.probe-tooltip {
   padding: 12px 16px;
   color: #e0e6ed;
   font-size: 13px;
-  z-index: 10;
-  min-width: 200px;
+}
+
+.probe-tooltip.collapsed {
+  padding: 8px 12px;
+}
+
+/* 活动段工程看板样式 */
+.segment-hud-card {
+  padding: 12px 16px;
+  color: #e0e6ed;
+  font-size: 13px;
+}
+
+.segment-hud-card.collapsed {
+  padding: 8px 12px;
+}
+
+.unselect-hud-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #94a3b8;
+  border-radius: 3px;
+  font-size: 10px;
+  padding: 1px 5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-left: auto;
+  margin-right: 4px;
+}
+
+.unselect-hud-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+  color: #f87171;
 }
 
 .tooltip-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-weight: 600;
   margin-bottom: 8px;
   padding-bottom: 6px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.segment-hud-card.collapsed .tooltip-header,
+.probe-tooltip.collapsed .tooltip-header {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .pulse-dot {
@@ -1600,6 +2663,7 @@ canvas {
   border-radius: 50%;
   background-color: #00ff88;
   box-shadow: 0 0 8px #00ff88;
+  flex-shrink: 0;
 }
 
 .pulse-dot.danger {
@@ -1636,13 +2700,13 @@ canvas {
 /* 左侧控制面板自适应流动栈容器 */
 .left-controls-stack {
   position: absolute;
-  top: 48px;
+  top: 16px;
   left: 16px;
-  z-index: 10;
+  z-index: 15;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: calc(100% - 64px);
+  max-height: calc(100% - 32px);
   overflow-y: auto;
   pointer-events: none;
   scrollbar-width: thin;
@@ -1768,6 +2832,93 @@ input:checked + .switch-slider:before {
   width: 100%;
   accent-color: #64b5f6;
   cursor: pointer;
+}
+
+/* 排水管径放大会显控制面板样式 */
+.pipe-scale-card {
+  padding: 12px 16px;
+  color: #e0e6ed;
+  font-size: 13px;
+  min-width: 220px;
+}
+
+.pipe-scale-card.collapsed {
+  padding: 8px 12px;
+}
+
+.scale-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.scale-badge.active {
+  background: rgba(56, 189, 248, 0.2);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.scale-action-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.preset-btn-group {
+  display: flex;
+  gap: 4px;
+}
+
+.preset-pill-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.preset-pill-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+.preset-pill-btn.active {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.reset-scale-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #94a3b8;
+  border-radius: 4px;
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reset-scale-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+  color: #f87171;
+}
+
+.reset-scale-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* 图层控制面板样式 */

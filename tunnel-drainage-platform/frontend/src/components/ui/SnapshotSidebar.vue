@@ -429,11 +429,22 @@ const toggleCardExpand = (id: string) => {
   };
 };
 
-// 点击卡片头部：同时触发回溯与切换展开
+// 点击卡片头部：同时触发回溯与切换展开并同步 3D 聚焦段
 const handleCardHeaderClick = (id: string) => {
+  snapshotStore.setActiveSegment(id);
   restoreSnapshot(id);
   toggleCardExpand(id);
 };
+
+// 监听 3D 视图发起的活动分段切换，同步侧边栏选中态
+watch(
+  () => snapshotStore.activeSegmentId,
+  (newId) => {
+    if (newId && newId !== selectedSnapshotId.value) {
+      selectedSnapshotId.value = newId;
+    }
+  }
+);
 
 // 全量展开/折叠切换
 const toggleAllCollapse = () => {

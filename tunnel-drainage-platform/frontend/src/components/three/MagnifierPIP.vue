@@ -461,7 +461,7 @@ onBeforeUnmount(() => {
 .pip-magnifier-container {
   position: absolute;
   bottom: 24px;
-  right: 24px;
+  right: 260px;
   width: 360px;
   background: rgba(15, 23, 42, 0.88);
   backdrop-filter: blur(16px);
