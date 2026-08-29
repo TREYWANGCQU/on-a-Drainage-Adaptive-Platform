@@ -237,23 +237,26 @@ defineProps<{
 .formula-box {
   background: #f8fafc;
   border-left: 3px solid #3b82f6;
-  padding: 6px 12px;
-  margin: 8px 0;
+  padding: 6px 10px;
+  margin: 6px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-radius: 0 4px 4px 0;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .formula-content {
   flex: 1;
-  overflow-x: auto;
-  font-size: 9.5pt;
+  min-width: 0;
+  font-size: 9pt;
 }
 .formula-tag {
   font-family: 'Consolas', monospace;
   font-size: 8.5pt;
   color: #64748b;
-  margin-left: 12px;
+  margin-left: 8px;
+  flex-shrink: 0;
 }
 .verify-note {
   background-color: #f0fdf4;

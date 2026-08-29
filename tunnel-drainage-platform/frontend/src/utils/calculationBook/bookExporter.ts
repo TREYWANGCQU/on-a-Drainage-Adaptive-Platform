@@ -1,17 +1,18 @@
 // tunnel-drainage-platform/frontend/src/utils/calculationBook/bookExporter.ts
 
 import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import type { CalculationBookData } from './bookDataModel';
 import { generateCalculationBook } from './bookGenerator';
 
 /**
- * 获取完整的打印与 A4 渲染样式表
+ * 获取完整的打印与 A4 渲染样式表 (严格支持 CSS Paged Media 与精确分页)
  */
 function getPrintStyles(): string {
   return `
     @page {
       size: A4 portrait;
-      margin: 18mm 14mm 18mm 14mm;
+      margin: 0;
     }
     *, *::before, *::after {
       box-sizing: border-box;
@@ -27,23 +28,39 @@ function getPrintStyles(): string {
       font-size: 10pt;
       line-height: 1.5;
     }
-    .calculation-report-sheet {
-      width: 100% !important;
-      max-width: 100% !important;
+    .calculation-report-document {
+      display: block !important;
+      gap: 0 !important;
       padding: 0 !important;
       margin: 0 !important;
+    }
+    .report-page {
+      width: 210mm !important;
+      height: 297mm !important;
+      min-height: 297mm !important;
+      max-height: 297mm !important;
+      padding: 14mm 16mm 12mm 16mm !important;
+      margin: 0 !important;
       box-shadow: none !important;
+      page-break-after: always !important;
+      break-after: page !important;
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: space-between !important;
+    }
+    .report-page:last-child {
+      page-break-after: auto !important;
+      break-after: auto !important;
     }
     .chapter-block {
-      margin-bottom: 20px;
+      margin-bottom: 12px;
       page-break-inside: avoid;
       break-inside: avoid;
     }
-    .chapter-1 {
-      page-break-before: avoid;
-    }
     .section-block {
-      margin-top: 12px;
+      margin-top: 8px;
       page-break-inside: avoid;
       break-inside: avoid;
     }
@@ -64,13 +81,18 @@ function getPrintStyles(): string {
     .font-mono {
       font-family: 'Consolas', 'Courier New', monospace;
     }
-    /* KaTeX 渲染优化 */
+    /* KaTeX 渲染优化与公式自适应跨行 */
     .katex {
-      font-size: 1.05em;
+      font-size: 1.0em;
       text-rendering: auto;
     }
     .katex-display {
-      margin: 0.4em 0;
+      margin: 0.25em 0;
+      max-width: 100%;
+      overflow-x: visible;
+    }
+    .formula-box {
+      flex-wrap: wrap;
     }
   `;
 }
@@ -80,7 +102,6 @@ function getPrintStyles(): string {
  */
 function collectAllStyles(): string {
   let styles = '';
-  // 遍历父页面所有 style 与 link 节点
   const styleElements = document.querySelectorAll('style, link[rel="stylesheet"]');
   styleElements.forEach((el) => {
     styles += el.outerHTML + '\n';
@@ -97,7 +118,6 @@ export async function printCalculationBook(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
-      // 1. 创建隔离的隐藏 iframe
       const iframe = document.createElement('iframe');
       iframe.style.position = 'fixed';
       iframe.style.right = '0';
@@ -113,7 +133,6 @@ export async function printCalculationBook(
         throw new Error('无法初始化打印宿主 IFrame 容器');
       }
 
-      // 2. 提取或生成 HTML 树
       let htmlContent = '';
       if (containerEl) {
         htmlContent = containerEl.outerHTML;
@@ -124,7 +143,6 @@ export async function printCalculationBook(
       const allParentStyles = collectAllStyles();
       const printStyles = getPrintStyles();
 
-      // 3. 构建完整的 iframe 内容
       doc.open();
       doc.write(`
         <!DOCTYPE html>
@@ -142,7 +160,6 @@ export async function printCalculationBook(
       `);
       doc.close();
 
-      // 4. 等待资源与字体加载完毕后唤起系统打印/另存为PDF
       iframe.onload = () => {
         setTimeout(() => {
           try {
@@ -165,29 +182,49 @@ export async function printCalculationBook(
 }
 
 /**
- * 快捷离线直下 PDF (jspdf 基础矢量管道)
+ * 快捷离线直下 PDF (按 A4 真实页面逐页精确渲染，杜绝乱码与生硬分页截断)
  */
 export async function downloadPdfDirect(
   bookData: CalculationBookData,
   containerEl: HTMLElement
 ): Promise<void> {
-  const doc = new jsPDF({
+  // 1. 初始化 ISO A4 纵向 PDF (210mm x 297mm)
+  const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: 'a4'
+    format: 'a4',
+    compress: true
   });
 
-  const fileName = `${bookData.meta.documentTitle}_DK${bookData.meta.startChainage.toFixed(0)}-${bookData.meta.endChainage.toFixed(0)}.pdf`;
+  // 2. 提取所有标准 A4 页面容器
+  const pageElements = Array.from(containerEl.querySelectorAll<HTMLElement>('.report-page'));
+  const targets = pageElements.length > 0 ? pageElements : [containerEl];
 
-  await doc.html(containerEl, {
-    callback: (pdf) => {
-      pdf.save(fileName);
-    },
-    x: 0,
-    y: 0,
-    width: 210,
-    windowWidth: 794 // 210mm at 96 DPI
-  });
+  for (let i = 0; i < targets.length; i++) {
+    const pageEl = targets[i];
+    
+    // 使用 2 倍采样率生成页面高清 Canvas
+    const canvas = await html2canvas(pageEl, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      windowWidth: 794 // 210mm at 96 DPI
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.96);
+
+    if (i > 0) {
+      pdf.addPage();
+    }
+
+    // 严丝合缝绘制到 210mm x 297mm 单页内
+    pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+  }
+
+  const fileName = `${bookData.meta.documentTitle}_DK${bookData.meta.startChainage.toFixed(0)}-${bookData.meta.endChainage.toFixed(0)}_A4.pdf`;
+  pdf.save(fileName);
 }
 
 /**
@@ -203,18 +240,5 @@ export async function exportSnapshotCalculationBook(
     await printCalculationBook(bookData, containerEl);
   } else if (mode === 'pdf' && containerEl) {
     await downloadPdfDirect(bookData, containerEl);
-  } else {
-    // 若未传入 DOM 容器，通过临时动态渲染挂载
-    const tempContainer = document.createElement('div');
-    tempContainer.style.position = 'fixed';
-    tempContainer.style.left = '-9999px';
-    tempContainer.style.top = '-9999px';
-    document.body.appendChild(tempContainer);
-    
-    // 降级使用基础打印
-    if (containerEl) {
-      await printCalculationBook(bookData, containerEl);
-    }
-    document.body.removeChild(tempContainer);
   }
 }
