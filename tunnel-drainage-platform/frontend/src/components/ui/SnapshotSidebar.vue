@@ -160,6 +160,25 @@
                 {{ snap.status === 'done' || snap.results ? '已算' : snap.status === 'error' ? '失败' : '待算' }}
               </el-tag>
 
+              <!-- 快捷导出施工图 -->
+              <el-dropdown trigger="click" @command="(cmd: any) => handleExportBlueprint(snap, cmd)">
+                <el-button 
+                  link 
+                  type="warning" 
+                  size="small" 
+                  icon="Document" 
+                  class="export-blueprint-btn" 
+                  title="导出标准 A3 施工设计图 (PDF/PNG)"
+                  @click.stop
+                />
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="pdf">📑 导出 A3 矢量施工图 (PDF)</el-dropdown-item>
+                    <el-dropdown-item command="png">🖼️ 导出高清设计图 (PNG)</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+
               <!-- 手风琴展开/收起切换按钮 -->
               <el-button 
                 link 
@@ -246,6 +265,24 @@
             <div class="snap-meta">
               <span class="time">{{ formatTime(snap.timestamp) }}</span>
               <div class="actions-btn">
+                <el-dropdown trigger="click" @command="(cmd: any) => handleExportBlueprint(snap, cmd)">
+                  <el-button 
+                    type="warning" 
+                    link 
+                    icon="Document" 
+                    :loading="exportingId === snap.id"
+                    title="导出工况标准施工设计图"
+                  >
+                    施工图
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="pdf">📑 导出 A3 矢量施工图 (PDF)</el-dropdown-item>
+                      <el-dropdown-item command="png">🖼️ 导出高清设计图 (PNG)</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+
                 <el-button 
                   type="primary" 
                   link 
@@ -298,6 +335,7 @@ import { useSnapshotStore, type Snapshot } from '@/store/snapshotStore';
 import { calculateDrainage } from '@/api/index'; // 引入计算接口
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useParameterStore } from '@/store/parameterStore';
+import { exportSnapshotBlueprint } from '@/utils/blueprintGenerator';
 
 const snapshotStore = useSnapshotStore();
 const parameterStore = useParameterStore();
@@ -617,6 +655,24 @@ const formatTime = (ts: number) => {
   return new Date(ts).toLocaleString('zh-CN', { hour12: false });
 };
 
+const exportingId = ref<string | null>(null);
+
+const handleExportBlueprint = async (snap: any, format: 'pdf' | 'png' = 'pdf') => {
+  try {
+    exportingId.value = snap.id;
+    ElMessage.info(`正在生成 ${format.toUpperCase()} 标准 A3 施工设计图，请稍候...`);
+    // 延迟 50ms 释放主事件循环
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await exportSnapshotBlueprint(snap, format);
+    ElMessage.success(`施工设计图已成功导出 (${format.toUpperCase()})`);
+  } catch (err: any) {
+    console.error('导出施工设计图失败:', err);
+    ElMessage.error(`导出施工图失败: ${err.message || err}`);
+  } finally {
+    exportingId.value = null;
+  }
+};
+
 const handleDownloadRaw = (snap: any) => {
   if (!snap.results || !snap.results.original_state) {
     ElMessage.warning('无有效计算数据可供下载');
@@ -890,7 +946,7 @@ const handleDeleteSnapshot = (id: string) => {
   line-height: 20px;
 }
 
-.expand-toggle-btn, .delete-btn {
+.expand-toggle-btn, .delete-btn, .export-blueprint-btn {
   padding: 2px 4px;
   margin-left: 0 !important;
 }

@@ -2700,7 +2700,7 @@ canvas {
 /* 左侧控制面板自适应流动栈容器 */
 .left-controls-stack {
   position: absolute;
-  top: 16px;
+  top: 80px;
   left: 16px;
   z-index: 15;
   display: flex;
