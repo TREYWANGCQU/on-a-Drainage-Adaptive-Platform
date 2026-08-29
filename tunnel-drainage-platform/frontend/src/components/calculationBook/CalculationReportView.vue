@@ -121,12 +121,11 @@ defineExpose({
   background: transparent;
 }
 
-/* A4 单页排版母版视图 (严格 210mm x 297mm 纸张规格) */
+/* A4 单页排版母版视图 (210mm 宽标准纸张，自适应内容高度且保证页脚常驻) */
 .report-page {
   width: 210mm;
-  height: 297mm;
   min-height: 297mm;
-  max-height: 297mm;
+  height: auto;
   padding: 12mm 15mm 10mm 15mm;
   margin: 0 auto;
   background: #ffffff;
@@ -137,9 +136,9 @@ defineExpose({
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
   border-radius: 2px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .page-content {

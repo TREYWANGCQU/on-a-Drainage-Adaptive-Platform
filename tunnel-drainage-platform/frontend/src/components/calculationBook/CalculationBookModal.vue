@@ -37,10 +37,10 @@
           type="primary" 
           size="small" 
           icon="Download" 
-          :loading="isDownloading"
-          @click="handleDownloadDirect"
+          :loading="isExporting"
+          @click="handleExportVectorPDF"
         >
-          📥 快速下载 A4 计算书 (PDF)
+          📥 导出 A4 矢量 PDF (文字/公式全矢量)
         </el-button>
         <el-button size="small" @click="handleClose">关闭</el-button>
       </div>
@@ -90,8 +90,7 @@ const viewportRef = ref<HTMLElement | null>(null);
 
 const activeChapter = ref<string>('chapter-1');
 const zoomScale = ref<number>(1.0);
-const isPrinting = ref<boolean>(false);
-const isDownloading = ref<boolean>(false);
+const isExporting = ref<boolean>(false);
 
 const bookData = computed<CalculationBookData | null>(() => {
   if (!props.snapshot) return null;
@@ -115,39 +114,21 @@ const scrollToChapter = (chId: any) => {
   });
 };
 
-const handlePrint = async () => {
+const handleExportVectorPDF = async () => {
   if (!bookData.value || !reportViewRef.value?.reportSheetRef) {
     ElMessage.warning('计算书渲染尚未就绪');
     return;
   }
   try {
-    isPrinting.value = true;
-    ElMessage.info('正在唤起 A4 矢量打印/保存管道...');
+    isExporting.value = true;
+    ElMessage.info('正在唤起 A4 矢量 PDF 导出通道（文字可复制/公式矢量），请选择另存为 PDF...');
     await printCalculationBook(bookData.value, reportViewRef.value.reportSheetRef);
-    ElMessage.success('打印指令已发送');
+    ElMessage.success('A4 矢量 PDF 导出通道已就绪');
   } catch (err: any) {
-    console.error('打印/PDF导出失败:', err);
-    ElMessage.error(`打印失败: ${err.message || err}`);
+    console.error('导出矢量 PDF 失败:', err);
+    ElMessage.error(`导出失败: ${err.message || err}`);
   } finally {
-    isPrinting.value = false;
-  }
-};
-
-const handleDownloadDirect = async () => {
-  if (!bookData.value || !reportViewRef.value?.reportSheetRef) {
-    ElMessage.warning('计算书渲染尚未就绪');
-    return;
-  }
-  try {
-    isDownloading.value = true;
-    ElMessage.info('正在生成离线 PDF 文件...');
-    await downloadPdfDirect(bookData.value, reportViewRef.value.reportSheetRef);
-    ElMessage.success('PDF 下载已完成');
-  } catch (err: any) {
-    console.error('PDF 下载失败:', err);
-    ElMessage.error(`下载失败: ${err.message || err}`);
-  } finally {
-    isDownloading.value = false;
+    isExporting.value = false;
   }
 };
 

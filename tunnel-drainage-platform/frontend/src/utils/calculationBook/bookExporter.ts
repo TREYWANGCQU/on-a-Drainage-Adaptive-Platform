@@ -6,61 +6,77 @@ import type { CalculationBookData } from './bookDataModel';
 import { generateCalculationBook } from './bookGenerator';
 
 /**
- * 获取完整的打印与 A4 渲染样式表 (严格支持 CSS Paged Media 与精确分页)
+ * 获取完整的打印与 A4 渲染样式表 (严格支持 CSS Paged Media 与多页精准分页)
  */
 function getPrintStyles(): string {
   return `
     @page {
       size: A4 portrait;
-      margin: 0;
+      margin: 12mm 14mm 12mm 14mm;
     }
     *, *::before, *::after {
       box-sizing: border-box;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-    body {
-      margin: 0;
-      padding: 0;
-      background: #ffffff;
-      color: #1f2937;
+    html, body {
+      width: 100% !important;
+      height: auto !important;
+      min-height: 100% !important;
+      max-height: none !important;
+      overflow: visible !important;
+      position: static !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+      color: #1f2937 !important;
       font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
-      font-size: 10pt;
-      line-height: 1.5;
+      font-size: 9.5pt;
+      line-height: 1.45;
     }
     .calculation-report-document {
       display: block !important;
-      gap: 0 !important;
-      padding: 0 !important;
+      width: 100% !important;
+      height: auto !important;
+      max-height: none !important;
+      overflow: visible !important;
+      position: static !important;
       margin: 0 !important;
+      padding: 0 !important;
+      gap: 0 !important;
     }
     .report-page {
-      width: 210mm !important;
-      height: 297mm !important;
-      min-height: 297mm !important;
-      max-height: 297mm !important;
-      padding: 14mm 16mm 12mm 16mm !important;
-      margin: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: space-between !important;
+      width: 100% !important;
+      height: auto !important;
+      min-height: 248mm !important;
+      max-height: none !important;
+      overflow: visible !important;
+      position: relative !important;
+      padding: 0 !important;
+      margin: 0 0 8mm 0 !important;
       box-shadow: none !important;
+      page-break-before: auto !important;
+      break-before: auto !important;
       page-break-after: always !important;
       break-after: page !important;
       page-break-inside: avoid !important;
       break-inside: avoid !important;
-      display: flex !important;
-      flex-direction: column !important;
-      justify-content: space-between !important;
     }
     .report-page:last-child {
       page-break-after: auto !important;
       break-after: auto !important;
+      margin-bottom: 0 !important;
     }
     .chapter-block {
-      margin-bottom: 12px;
+      margin-bottom: 10px;
       page-break-inside: avoid;
       break-inside: avoid;
     }
     .section-block {
-      margin-top: 8px;
+      margin-top: 6px;
       page-break-inside: avoid;
       break-inside: avoid;
     }
@@ -110,7 +126,7 @@ function collectAllStyles(): string {
 }
 
 /**
- * 高保真矢量 A4 打印与 PDF 保存管线 (window.print iframe)
+ * 高保真矢量 A4 打印与 PDF 保存管线 (100% 纯矢量文字/公式，全量多页输出)
  */
 export async function printCalculationBook(
   bookData: CalculationBookData,
@@ -130,6 +146,7 @@ export async function printCalculationBook(
 
       const doc = iframe.contentWindow?.document;
       if (!doc) {
+        if (document.body.contains(iframe)) document.body.removeChild(iframe);
         throw new Error('无法初始化打印宿主 IFrame 容器');
       }
 
@@ -137,6 +154,7 @@ export async function printCalculationBook(
       if (containerEl) {
         htmlContent = containerEl.outerHTML;
       } else {
+        if (document.body.contains(iframe)) document.body.removeChild(iframe);
         throw new Error('缺少母版 DOM 节点进行矢量克隆');
       }
 
@@ -160,21 +178,32 @@ export async function printCalculationBook(
       `);
       doc.close();
 
-      iframe.onload = () => {
+      const doPrint = () => {
         setTimeout(() => {
           try {
             iframe.contentWindow?.focus();
             iframe.contentWindow?.print();
             setTimeout(() => {
-              document.body.removeChild(iframe);
+              if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
+              }
               resolve();
             }, 1000);
           } catch (err) {
-            document.body.removeChild(iframe);
+            if (document.body.contains(iframe)) {
+              document.body.removeChild(iframe);
+            }
             reject(err);
           }
-        }, 300);
+        }, 250);
       };
+
+      // 等待字体及样式全部就绪
+      if (iframe.contentWindow?.document?.fonts) {
+        iframe.contentWindow.document.fonts.ready.then(doPrint).catch(doPrint);
+      } else {
+        setTimeout(doPrint, 350);
+      }
     } catch (err) {
       reject(err);
     }
@@ -182,13 +211,12 @@ export async function printCalculationBook(
 }
 
 /**
- * 快捷离线直下 PDF (按 A4 真实页面逐页精确渲染，杜绝乱码与生硬分页截断)
+ * 快捷离线直下 PDF (按 A4 真实页面逐页精确渲染)
  */
 export async function downloadPdfDirect(
   bookData: CalculationBookData,
   containerEl: HTMLElement
 ): Promise<void> {
-  // 1. 初始化 ISO A4 纵向 PDF (210mm x 297mm)
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -196,21 +224,19 @@ export async function downloadPdfDirect(
     compress: true
   });
 
-  // 2. 提取所有标准 A4 页面容器
   const pageElements = Array.from(containerEl.querySelectorAll<HTMLElement>('.report-page'));
   const targets = pageElements.length > 0 ? pageElements : [containerEl];
 
   for (let i = 0; i < targets.length; i++) {
     const pageEl = targets[i];
     
-    // 使用 2 倍采样率生成页面高清 Canvas
     const canvas = await html2canvas(pageEl, {
       scale: 2,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
       logging: false,
-      windowWidth: 794 // 210mm at 96 DPI
+      windowWidth: 794
     });
 
     const imgData = canvas.toDataURL('image/jpeg', 0.96);
@@ -222,9 +248,8 @@ export async function downloadPdfDirect(
     const pdfWidth = 210;
     const pdfHeight = 297;
     const imgAspect = canvas.height / canvas.width;
-    const targetAspect = pdfHeight / pdfWidth; // 1.4142857
+    const targetAspect = pdfHeight / pdfWidth;
 
-    // 严谨等比拟合，杜绝任何纵向或横向拉伸变形
     if (Math.abs(imgAspect - targetAspect) < 0.02) {
       pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
     } else {
