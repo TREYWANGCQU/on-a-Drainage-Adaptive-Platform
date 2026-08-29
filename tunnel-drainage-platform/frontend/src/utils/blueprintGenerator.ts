@@ -240,28 +240,24 @@ function traceHorseshoeSingleRing(
   const wx2px = (wx: number) => cx + wx * scale;
   const wy2py = (wy: number) => cy - wy * scale; // 屏幕 Y 向下
 
-  // 相切角
-  const aRight = Math.atan2(dy, dx);   // 拱脚圆弧切角
-  const aLeft = Math.atan2(dy, -dx);
+  // 相切角 (屏幕坐标系下: dy > 0 为向下，aRight 为第一象限正角)
+  const aRight = Math.atan2(dy, dx);
 
-  // 1. 拱顶大圆弧 (从左往右，在 Canvas 屏幕坐标系上为逆时针从 PI 到 0)
-  ctx.arc(wx2px(0), wy2py(0), R1 * scale, Math.PI, 0, true);
+  // 1. 拱顶大圆弧 (从左 PI 顺时针至右 0，在 Canvas 屏幕坐标系上经过 12 点钟上方 1.5*PI)
+  ctx.arc(wx2px(0), wy2py(0), R1 * scale, Math.PI, 0, false);
 
   // 2. 右侧直墙段 (若 H_side > 0，向下延伸)
   if (H_side > 0) {
     ctx.lineTo(wx2px(R1), wy2py(-H_side));
   }
 
-  // 3. 右拱脚圆弧 (圆心 (dx, -H_side), 半径 R2, 从 0 顺时针转至 aRight)
+  // 3. 右拱脚圆弧 (圆心 (dx, -H_side), 半径 R2, 顺时针从 0 转至 aRight)
   ctx.arc(wx2px(dx), wy2py(-H_side), R2 * scale, 0, aRight, false);
 
-  // 4. 仰拱底大圆弧 (圆心 (0, invertCenterY), 半径 R3, 底部下凸，顺时针经过最低点)
-  const aInvertRight = Math.atan2((invertCenterY - (-H_side + dy * 0)), dx); // 近似相切
-  const aInvertLeft = Math.PI - aInvertRight;
-  // 直接以拱脚终点向仰拱底过渡
-  ctx.arc(wx2px(0), wy2py(invertCenterY), R3 * scale, Math.PI / 2 - Math.atan2(dx, dy), Math.PI / 2 + Math.atan2(dx, dy), false);
+  // 4. 仰拱底大圆弧 (圆心 (0, invertCenterY), 半径 R3, 底部下凸，顺时针自 aRight 转至 PI - aRight)
+  ctx.arc(wx2px(0), wy2py(invertCenterY), R3 * scale, aRight, Math.PI - aRight, false);
 
-  // 5. 左拱脚圆弧 (圆心 (-dx, -H_side), 半径 R2, 顺时针转至 PI)
+  // 5. 左拱脚圆弧 (圆心 (-dx, -H_side), 半径 R2, 顺时针自 PI - aRight 转至 PI)
   ctx.arc(wx2px(-dx), wy2py(-H_side), R2 * scale, Math.PI - aRight, Math.PI, false);
 
   // 6. 左侧直墙段 (向上闭合至拱顶起点)
@@ -295,30 +291,28 @@ function traceHorseshoeRingPipe(
 
   // 拱脚纵向管收口极角
   const sinVal = Math.max(-1.0, Math.min(0.0, (p2d.yLongFoot + H_side) / R2));
-  const asinVal = Math.asin(sinVal); // [-PI/2, 0]
+  const phi = Math.asin(Math.abs(sinVal)); // 正角区间 [0, PI/2]
 
   ctx.beginPath();
 
-  // 1. 从左拱脚纵向管位置起步，沿左拱脚圆弧向上
-  const aLeftStart = Math.PI - asinVal;
-  // 屏幕坐标系下：数学负 Y 为屏幕下方，绘制左侧圆弧逆时针向 PI 运行
-  ctx.arc(wx2px(-dx), wy2py(-H_side), R2 * scale, aLeftStart, Math.PI, true);
+  // 1. 左拱脚圆弧 (从左拱脚纵向管位置 PI - phi 顺时针上升至 PI)
+  ctx.arc(wx2px(-dx), wy2py(-H_side), R2 * scale, Math.PI - phi, Math.PI, false);
 
   // 2. 左直墙段向上 (若 H_side > 0)
   if (H_side > 0) {
     ctx.lineTo(wx2px(-R1), wy2py(0));
   }
 
-  // 3. 拱顶大圆弧 (从 PI 逆时针到 0，屏幕向上凸)
-  ctx.arc(wx2px(0), wy2py(0), R1 * scale, Math.PI, 0, true);
+  // 3. 拱顶大圆弧 (从 PI 顺时针至 0，屏幕向上凸)
+  ctx.arc(wx2px(0), wy2py(0), R1 * scale, Math.PI, 0, false);
 
   // 4. 右直墙段向下 (若 H_side > 0)
   if (H_side > 0) {
     ctx.lineTo(wx2px(R1), wy2py(-H_side));
   }
 
-  // 5. 右拱脚圆弧向下 (从 0 顺时针运行至 asinVal，收口于右拱脚纵向管)
-  ctx.arc(wx2px(dx), wy2py(-H_side), R2 * scale, 0, -asinVal, false);
+  // 5. 右拱脚圆弧向下 (从 0 顺时针运行至 phi，精确收口于右拱脚纵向管)
+  ctx.arc(wx2px(dx), wy2py(-H_side), R2 * scale, 0, phi, false);
 
   ctx.stroke();
 }
@@ -679,8 +673,12 @@ export class ConstructionBlueprintGenerator {
     const p2d = computeHorseshoeProfile2D(r, r1, r2, aspectRatio, hasCentralDitch);
 
     // 2. 动态自适应视口比例尺计算 (严格拟合图框与避让底部栏位)
+    // 针对大间距双洞实施工程图画法：当 D_spacing 较大 (如 > 18m) 时，采用图面压缩 + 打断标注间距
+    const isLargeSpacing = isDouble && dSpacing > 18.0;
+    const visualDSpacing = isDouble ? (isLargeSpacing ? 18.0 : dSpacing) : 0;
+
     // 物理世界包络尺寸 (米)
-    const totalWorldWidth = isDouble ? (dSpacing + 2 * (1.05 * r2) + 6.0) : (2 * (1.05 * r2) + 6.0);
+    const totalWorldWidth = isDouble ? (visualDSpacing + 2 * (1.05 * r2) + 6.0) : (2 * (1.05 * r2) + 6.0);
     const totalWorldHeight = (1.05 * r2 + 1.5) + (Math.abs(p2d.invertCenterY) + 1.80 * r2 + 1.5);
 
     // 图框内有效绘图安全区域：宽度 3500px，高度 1850px (顶部保留 150px，底部在 2150px 前结束，绝不压盖标题栏与设计说明)
@@ -688,8 +686,8 @@ export class ConstructionBlueprintGenerator {
     const availHeight = 1850;
     const computedScale = Math.min(availWidth / totalWorldWidth, availHeight / totalWorldHeight);
 
-    // 规范化比例尺，单洞上限约 115 px/m (约 1:50 适配)，双洞约 65 px/m (约 1:100 适配)
-    const scale = isDouble ? Math.min(68, computedScale) : Math.min(115, computedScale);
+    // 规范化比例尺，单洞上限约 115 px/m (约 1:50 适配)，双洞约 78 px/m (约 1:100 适配)
+    const scale = isDouble ? Math.min(78, computedScale) : Math.min(115, computedScale);
 
     // 绘图中心坐标
     const centerX = 250 + (this.canvasWidth - 250 - 100) / 2; // 2175px
@@ -698,7 +696,7 @@ export class ConstructionBlueprintGenerator {
     const centerY = 160 + topExtentPx + (availHeight - totalWorldHeight * scale) * 0.25;
 
     // 主洞/副洞中心 X 偏移
-    const offsets = isDouble ? [- (dSpacing / 2) * scale, (dSpacing / 2) * scale] : [0];
+    const offsets = isDouble ? [- (visualDSpacing / 2) * scale, (visualDSpacing / 2) * scale] : [0];
 
     // 3. 绘制每个洞体的初支、二衬与排水管网
     offsets.forEach((ox, tubeIdx) => {
@@ -990,11 +988,45 @@ export class ConstructionBlueprintGenerator {
       ctx.lineTo(leftAxisX, dimY + 45);
       ctx.moveTo(rightAxisX, dimY - 45);
       ctx.lineTo(rightAxisX, dimY + 45);
-
-      // 尺寸线
-      ctx.moveTo(leftAxisX, dimY);
-      ctx.lineTo(rightAxisX, dimY);
       ctx.stroke();
+
+      // 尺寸线 (若大间距或双洞打断模式，在中间绘制工程标准 Z 字折断标)
+      const midX = (leftAxisX + rightAxisX) / 2;
+      const breakW = 26;
+      const breakH = 14;
+
+      ctx.beginPath();
+      if (isLargeSpacing) {
+        ctx.moveTo(leftAxisX, dimY);
+        ctx.lineTo(midX - breakW, dimY);
+        // 工程标准折断符号 (Z字形/N字形打断标)
+        ctx.lineTo(midX - breakW / 3, dimY - breakH);
+        ctx.lineTo(midX + breakW / 3, dimY + breakH);
+        ctx.lineTo(midX + breakW, dimY);
+        ctx.lineTo(rightAxisX, dimY);
+      } else {
+        ctx.moveTo(leftAxisX, dimY);
+        ctx.lineTo(rightAxisX, dimY);
+      }
+      ctx.stroke();
+
+      // 若为大间距打断排布，在两洞地面中央也绘制一条标准折断线
+      if (isLargeSpacing) {
+        ctx.save();
+        ctx.strokeStyle = '#64748B';
+        ctx.lineWidth = 2.5;
+        const groundBreakY = centerY + (Math.abs(p2d.invertCenterY) + 1.80 * r2 * 0.5) * scale;
+        const gBreakLen = 70;
+        ctx.beginPath();
+        ctx.moveTo(midX - gBreakLen, groundBreakY);
+        ctx.lineTo(midX - breakW, groundBreakY);
+        ctx.lineTo(midX - breakW / 3, groundBreakY - breakH);
+        ctx.lineTo(midX + breakW / 3, groundBreakY + breakH);
+        ctx.lineTo(midX + breakW, groundBreakY);
+        ctx.lineTo(midX + gBreakLen, groundBreakY);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // 左右箭头
       const arrowSize = 16;
@@ -1014,7 +1046,10 @@ export class ConstructionBlueprintGenerator {
       ctx.font = 'bold 28px "Microsoft YaHei", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(`隧道轴线中心间距 D = ${dSpacing.toFixed(2)} m`, (leftAxisX + rightAxisX) / 2, dimY - 10);
+      const spacingLabel = isLargeSpacing
+        ? `隧道轴线中心间距 D = ${dSpacing.toFixed(2)} m (打断间距)`
+        : `隧道轴线中心间距 D = ${dSpacing.toFixed(2)} m`;
+      ctx.fillText(spacingLabel, midX, dimY - 14);
 
       ctx.restore();
     }
