@@ -92,11 +92,11 @@
           <!-- 一键全量折叠/展开开关 -->
           <el-button 
             size="small" 
-            :icon="isAllCollapsed ? 'Expand' : 'Fold'" 
+            :icon="isAllExpanded ? 'Fold' : 'Expand'" 
             @click="toggleAllCollapse"
             class="collapse-all-btn"
           >
-            {{ isAllCollapsed ? '全展开' : '全折叠' }}
+            {{ isAllExpanded ? '全折叠' : '全展开' }}
           </el-button>
 
           <!-- 批量 3D 勾选控制菜单 -->
@@ -127,13 +127,14 @@
           :class="{ 'is-risk': isRiskSnapshot(snap), 'is-active': selectedSnapshotId === snap.id }"
           shadow="hover"
         >
-          <!-- 4.1 紧凑顶栏（常驻，高度仅约 40px，点击空白处回溯工况） -->
-          <div class="compact-header" @click="restoreSnapshot(snap.id)">
+          <!-- 4.1 紧凑顶栏（常驻，高度仅约 38px，点击整行支持切换折叠与回溯工况） -->
+          <div class="compact-header" @click="handleCardHeaderClick(snap.id)">
             <div class="compact-left">
               <el-checkbox 
                 v-model="snap.selectedFor3D" 
-                @click.stop 
+                @click.stop="handleCheckboxChange" 
                 class="snap-checkbox"
+                title="勾选参与 3D 空间拼装"
               />
               <span class="snap-chainage-badge">
                 K{{ getChainage(snap, 'start') }} ~ K{{ getChainage(snap, 'end') }}
@@ -164,9 +165,9 @@
                 link 
                 size="small" 
                 :icon="isCardExpanded(snap.id) ? 'ArrowUp' : 'ArrowDown'" 
-                @click="toggleCardCollapse(snap.id)" 
+                @click.stop="toggleCardExpand(snap.id)" 
                 class="expand-toggle-btn"
-                title="展开/收起详细指标"
+                :title="isCardExpanded(snap.id) ? '收起详细指标' : '展开详细指标'"
               />
 
               <!-- 快捷删除 -->
@@ -175,8 +176,9 @@
                 type="danger" 
                 size="small" 
                 icon="Delete" 
-                @click="handleDeleteSnapshot(snap.id)"
+                @click.stop="handleDeleteSnapshot(snap.id)"
                 class="delete-btn" 
+                title="删除此工况"
               />
             </div>
           </div>
@@ -291,7 +293,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, reactive } from 'vue';
 import { useSnapshotStore, type Snapshot } from '@/store/snapshotStore';
 import { calculateDrainage } from '@/api/index'; // 引入计算接口
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -404,31 +406,52 @@ const pagedSnapshots = computed(() => {
 });
 
 // ==========================================
-// 3. 手风琴折叠状态机
+// 3. 单卡片折叠与全量折叠状态机 (强响应式 Ref 模式)
 // ==========================================
-const isAllCollapsed = ref(true); // 默认全量折叠紧凑态
-const collapsedMap = ref<Record<string, boolean>>({});
+const expandedMap = ref<Record<string, boolean>>({});
 
-const isCardExpanded = (id: string) => {
-  if (collapsedMap.value[id] !== undefined) {
-    return collapsedMap.value[id];
-  }
-  return !isAllCollapsed.value;
+// 是否处于全展开状态
+const isAllExpanded = computed(() => {
+  if (filteredSnapshots.value.length === 0) return false;
+  return filteredSnapshots.value.every((s: any) => Boolean(expandedMap.value[s.id]));
+});
+
+// 判断单卡片是否展开
+const isCardExpanded = (id: string): boolean => {
+  return Boolean(expandedMap.value[id]);
 };
 
-const toggleCardCollapse = (id: string) => {
-  const current = isCardExpanded(id);
-  collapsedMap.value[id] = !current;
+// 单卡片切换展开/折叠
+const toggleCardExpand = (id: string) => {
+  expandedMap.value = {
+    ...expandedMap.value,
+    [id]: !expandedMap.value[id]
+  };
 };
 
+// 点击卡片头部：同时触发回溯与切换展开
+const handleCardHeaderClick = (id: string) => {
+  restoreSnapshot(id);
+  toggleCardExpand(id);
+};
+
+// 全量展开/折叠切换
 const toggleAllCollapse = () => {
-  isAllCollapsed.value = !isAllCollapsed.value;
-  collapsedMap.value = {}; // 清空个别覆盖
+  const targetState = !isAllExpanded.value;
+  const nextMap: Record<string, boolean> = { ...expandedMap.value };
+  filteredSnapshots.value.forEach((s: any) => {
+    nextMap[s.id] = targetState;
+  });
+  expandedMap.value = nextMap;
 };
 
 // ==========================================
 // 4. 批量 3D 勾选控制
 // ==========================================
+const handleCheckboxChange = () => {
+  snapshotStore.saveToLocal();
+};
+
 const handle3DDropdownCommand = (cmd: string) => {
   if (cmd === 'select_filtered') {
     filteredSnapshots.value.forEach((s: any) => s.selectedFor3D = true);
@@ -801,6 +824,7 @@ const handleDeleteSnapshot = (id: string) => {
   justify-content: space-between;
   min-height: 32px;
   cursor: pointer;
+  user-select: none;
 }
 
 .compact-left {
@@ -865,6 +889,18 @@ const handleDeleteSnapshot = (id: string) => {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px dashed var(--sys-border);
+  animation: fadeInDrawer 0.2s ease-in-out;
+}
+
+@keyframes fadeInDrawer {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .results-summary {
