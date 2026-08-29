@@ -1,18 +1,16 @@
 // tunnel-drainage-platform/frontend/src/utils/calculationBook/bookExporter.ts
 
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import type { CalculationBookData } from './bookDataModel';
 import { generateCalculationBook } from './bookGenerator';
 
 /**
- * 获取完整的打印与 A4 渲染样式表 (严格支持 CSS Paged Media 与多页精准分页)
+ * 获取完整的打印与 A4 渲染样式表 (严格支持 CSS Paged Media 与全量矢量多页输出)
  */
 function getPrintStyles(): string {
   return `
     @page {
       size: A4 portrait;
-      margin: 12mm 14mm 12mm 14mm;
+      margin: 14mm 15mm 14mm 15mm;
     }
     *, *::before, *::after {
       box-sizing: border-box;
@@ -32,53 +30,30 @@ function getPrintStyles(): string {
       color: #1f2937 !important;
       font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
       font-size: 9.5pt;
-      line-height: 1.45;
+      line-height: 1.5;
     }
-    .calculation-report-document {
-      display: block !important;
+    .calculation-report-sheet {
       width: 100% !important;
-      height: auto !important;
-      max-height: none !important;
-      overflow: visible !important;
-      position: static !important;
-      margin: 0 !important;
+      max-width: 100% !important;
+      min-height: auto !important;
       padding: 0 !important;
+      margin: 0 !important;
+      box-shadow: none !important;
+      display: block !important;
+    }
+    .chapters-flow {
+      display: block !important;
       gap: 0 !important;
     }
-    .report-page {
-      display: flex !important;
-      flex-direction: column !important;
-      justify-content: space-between !important;
-      width: 100% !important;
-      height: auto !important;
-      min-height: 248mm !important;
-      max-height: none !important;
-      overflow: visible !important;
-      position: relative !important;
-      padding: 0 !important;
-      margin: 0 0 8mm 0 !important;
-      box-shadow: none !important;
-      page-break-before: auto !important;
-      break-before: auto !important;
-      page-break-after: always !important;
-      break-after: page !important;
-      page-break-inside: avoid !important;
-      break-inside: avoid !important;
-    }
-    .report-page:last-child {
-      page-break-after: auto !important;
-      break-after: auto !important;
-      margin-bottom: 0 !important;
-    }
     .chapter-block {
-      margin-bottom: 10px;
-      page-break-inside: avoid;
-      break-inside: avoid;
+      margin-bottom: 14px;
+      page-break-inside: auto;
+      break-inside: auto;
     }
     .section-block {
-      margin-top: 6px;
-      page-break-inside: avoid;
-      break-inside: avoid;
+      margin-top: 10px;
+      page-break-inside: auto;
+      break-inside: auto;
     }
     .three-line-table {
       width: 100%;
@@ -94,6 +69,10 @@ function getPrintStyles(): string {
       page-break-inside: avoid;
       break-inside: avoid;
     }
+    .report-cover-header {
+      page-break-after: avoid;
+      break-after: avoid;
+    }
     .font-mono {
       font-family: 'Consolas', 'Courier New', monospace;
     }
@@ -103,7 +82,7 @@ function getPrintStyles(): string {
       text-rendering: auto;
     }
     .katex-display {
-      margin: 0.25em 0;
+      margin: 0.3em 0;
       max-width: 100%;
       overflow-x: visible;
     }
@@ -126,7 +105,7 @@ function collectAllStyles(): string {
 }
 
 /**
- * 高保真矢量 A4 打印与 PDF 保存管线 (100% 纯矢量文字/公式，全量多页输出)
+ * 高保真 A4 矢量 PDF 导出管线 (100% 纯矢量文字/公式，完全消除图片模糊与乱码)
  */
 export async function printCalculationBook(
   bookData: CalculationBookData,
@@ -211,65 +190,6 @@ export async function printCalculationBook(
 }
 
 /**
- * 快捷离线直下 PDF (按 A4 真实页面逐页精确渲染)
- */
-export async function downloadPdfDirect(
-  bookData: CalculationBookData,
-  containerEl: HTMLElement
-): Promise<void> {
-  const pdf = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-    compress: true
-  });
-
-  const pageElements = Array.from(containerEl.querySelectorAll<HTMLElement>('.report-page'));
-  const targets = pageElements.length > 0 ? pageElements : [containerEl];
-
-  for (let i = 0; i < targets.length; i++) {
-    const pageEl = targets[i];
-    
-    const canvas = await html2canvas(pageEl, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-      windowWidth: 794
-    });
-
-    const imgData = canvas.toDataURL('image/jpeg', 0.96);
-
-    if (i > 0) {
-      pdf.addPage();
-    }
-
-    const pdfWidth = 210;
-    const pdfHeight = 297;
-    const imgAspect = canvas.height / canvas.width;
-    const targetAspect = pdfHeight / pdfWidth;
-
-    if (Math.abs(imgAspect - targetAspect) < 0.02) {
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-    } else {
-      const renderedHeight = pdfWidth * imgAspect;
-      if (renderedHeight <= pdfHeight) {
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, renderedHeight, undefined, 'FAST');
-      } else {
-        const scale = pdfHeight / renderedHeight;
-        const scaledWidth = pdfWidth * scale;
-        const offsetX = (pdfWidth - scaledWidth) / 2;
-        pdf.addImage(imgData, 'JPEG', offsetX, 0, scaledWidth, pdfHeight, undefined, 'FAST');
-      }
-    }
-  }
-
-  const fileName = `${bookData.meta.documentTitle}_DK${bookData.meta.startChainage.toFixed(0)}-${bookData.meta.endChainage.toFixed(0)}_A4.pdf`;
-  pdf.save(fileName);
-}
-
-/**
  * 顶层导出路由分发
  */
 export async function exportSnapshotCalculationBook(
@@ -278,9 +198,7 @@ export async function exportSnapshotCalculationBook(
   containerEl?: HTMLElement
 ): Promise<void> {
   const bookData = generateCalculationBook(snap);
-  if (mode === 'print' && containerEl) {
+  if (containerEl) {
     await printCalculationBook(bookData, containerEl);
-  } else if (mode === 'pdf' && containerEl) {
-    await downloadPdfDirect(bookData, containerEl);
   }
 }

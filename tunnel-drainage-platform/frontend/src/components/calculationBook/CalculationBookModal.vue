@@ -68,7 +68,7 @@ import { ElMessage } from 'element-plus';
 import type { Snapshot } from '../../store/snapshotStore';
 import type { CalculationBookData } from '../../utils/calculationBook/bookDataModel';
 import { generateCalculationBook } from '../../utils/calculationBook/bookGenerator';
-import { printCalculationBook, downloadPdfDirect } from '../../utils/calculationBook/bookExporter';
+import { printCalculationBook } from '../../utils/calculationBook/bookExporter';
 import CalculationReportView from './CalculationReportView.vue';
 
 const props = defineProps<{
