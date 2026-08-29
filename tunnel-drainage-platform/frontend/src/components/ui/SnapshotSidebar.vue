@@ -179,6 +179,25 @@
                 </template>
               </el-dropdown>
 
+              <!-- 快捷计算书预览与导出 -->
+              <el-dropdown trigger="click" @command="(cmd: any) => handleExportCalcBookCommand(snap, cmd)">
+                <el-button 
+                  link 
+                  type="primary" 
+                  size="small" 
+                  icon="Notebook" 
+                  class="export-book-btn" 
+                  title="A4 标准防排水设计计算书 (预览/导出)"
+                  @click.stop
+                />
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="preview">📑 预览 A4 计算书</el-dropdown-item>
+                    <el-dropdown-item command="pdf">🖨️ 导出 / 打印 A4 PDF</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+
               <!-- 手风琴展开/收起切换按钮 -->
               <el-button 
                 link 
@@ -283,6 +302,23 @@
                   </template>
                 </el-dropdown>
 
+                <el-dropdown trigger="click" @command="(cmd: any) => handleExportCalcBookCommand(snap, cmd)">
+                  <el-button 
+                    type="primary" 
+                    link 
+                    icon="Notebook" 
+                    title="查看与导出 A4 标准计算书"
+                  >
+                    计算书
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="preview">📑 预览 A4 计算书</el-dropdown-item>
+                      <el-dropdown-item command="pdf">🖨️ 导出 / 打印 A4 PDF</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+
                 <el-button 
                   type="primary" 
                   link 
@@ -326,6 +362,12 @@
         :image-size="60" 
       />
     </div>
+
+    <!-- 5. 计算书 A4 预览与导出模态框 -->
+    <CalculationBookModal
+      v-model="showCalcBookModal"
+      :snapshot="currentCalcBookSnap"
+    />
   </div>
 </template>
 
@@ -336,6 +378,7 @@ import { calculateDrainage } from '@/api/index'; // 引入计算接口
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useParameterStore } from '@/store/parameterStore';
 import { exportSnapshotBlueprint } from '@/utils/blueprintGenerator';
+import CalculationBookModal from '../calculationBook/CalculationBookModal.vue';
 
 const snapshotStore = useSnapshotStore();
 const parameterStore = useParameterStore();
@@ -656,6 +699,28 @@ const formatTime = (ts: number) => {
 };
 
 const exportingId = ref<string | null>(null);
+
+// 计算书预览模态框控制
+const showCalcBookModal = ref(false);
+const currentCalcBookSnap = ref<any>(null);
+
+const handleOpenCalcBook = (snap: any) => {
+  if (!snap.results && snap.status !== 'done') {
+    ElMessage.warning('该工况尚未完成计算，请先执行计算后再查看计算书');
+    return;
+  }
+  currentCalcBookSnap.value = snap;
+  showCalcBookModal.value = true;
+};
+
+const handleExportCalcBookCommand = (snap: any, cmd: 'preview' | 'pdf') => {
+  if (!snap.results && snap.status !== 'done') {
+    ElMessage.warning('该工况尚未完成计算，请先执行计算后再查看计算书');
+    return;
+  }
+  currentCalcBookSnap.value = snap;
+  showCalcBookModal.value = true;
+};
 
 const handleExportBlueprint = async (snap: any, format: 'pdf' | 'png' = 'pdf') => {
   try {

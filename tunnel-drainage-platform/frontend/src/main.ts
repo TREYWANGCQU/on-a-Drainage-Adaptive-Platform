@@ -8,6 +8,9 @@ import App from './App.vue';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 
+// 引入 KaTeX 数学公式渲染引擎样式
+import 'katex/dist/katex.min.css';
+
 // 引入系统全局预设样式
 import './assets/styles/main.css';
 
