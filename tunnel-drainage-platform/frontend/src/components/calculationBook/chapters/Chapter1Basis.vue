@@ -60,20 +60,19 @@ defineProps<{
 
 <style scoped>
 .chapter-block {
-  margin-bottom: 24px;
-  page-break-inside: avoid;
+  margin-bottom: 8px;
 }
 .chapter-header {
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 .chapter-title {
-  font-size: 16pt;
+  font-size: 13pt;
   font-weight: 700;
   color: #0f172a;
-  margin: 0 0 6px 0;
+  margin: 0 0 4px 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 .ch-num {
   color: #2563eb;
@@ -84,40 +83,40 @@ defineProps<{
   border-radius: 1px;
 }
 .section-block {
-  margin-top: 14px;
+  margin-top: 6px;
 }
 .section-title {
-  font-size: 12pt;
+  font-size: 10.5pt;
   font-weight: 600;
   color: #1e40af;
-  margin: 0 0 8px 0;
+  margin: 0 0 4px 0;
 }
 .section-desc {
-  font-size: 10pt;
-  line-height: 1.6;
+  font-size: 8.5pt;
+  line-height: 1.4;
   color: #374151;
-  margin: 0 0 10px 0;
+  margin: 0 0 4px 0;
   text-align: justify;
 }
 .table-container {
-  margin: 10px 0;
+  margin: 4px 0;
 }
 .three-line-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 9.5pt;
+  font-size: 8.5pt;
 }
 .three-line-table th {
   border-top: 1.5pt solid #1f2937;
   border-bottom: 0.75pt solid #4b5563;
-  padding: 6px 10px;
+  padding: 3px 6px;
   text-align: left;
   background-color: #f8fafc;
   color: #0f172a;
   font-weight: 600;
 }
 .three-line-table td {
-  padding: 6px 10px;
+  padding: 3px 6px;
   border-bottom: 0.5pt solid #e2e8f0;
   color: #1f2937;
 }
@@ -137,29 +136,29 @@ defineProps<{
   font-weight: 600;
 }
 .theory-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
 }
 .theory-card {
-  border-left: 3.5px solid #3b82f6;
+  border-left: 2.5px solid #3b82f6;
   background-color: #f8fafc;
-  padding: 8px 12px;
-  border-radius: 0 4px 4px 0;
+  padding: 4px 8px;
+  border-radius: 0 3px 3px 0;
 }
 .theory-title {
-  font-size: 10pt;
+  font-size: 8.5pt;
   font-weight: 600;
   color: #1e3a8a;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .theory-idx {
-  margin-right: 6px;
+  margin-right: 4px;
   color: #2563eb;
 }
 .theory-body {
-  font-size: 9pt;
-  line-height: 1.5;
+  font-size: 8pt;
+  line-height: 1.35;
   color: #475569;
 }
 </style>

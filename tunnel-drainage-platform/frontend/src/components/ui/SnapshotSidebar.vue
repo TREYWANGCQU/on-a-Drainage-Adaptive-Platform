@@ -180,23 +180,15 @@
               </el-dropdown>
 
               <!-- 快捷计算书预览与导出 -->
-              <el-dropdown trigger="click" @command="(cmd: any) => handleExportCalcBookCommand(snap, cmd)">
-                <el-button 
-                  link 
-                  type="primary" 
-                  size="small" 
-                  icon="Notebook" 
-                  class="export-book-btn" 
-                  title="A4 标准防排水设计计算书 (预览/导出)"
-                  @click.stop
-                />
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="preview">📑 预览 A4 计算书</el-dropdown-item>
-                    <el-dropdown-item command="pdf">🖨️ 导出 / 打印 A4 PDF</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+              <el-button 
+                link 
+                type="primary" 
+                size="small" 
+                icon="Notebook" 
+                class="export-book-btn" 
+                title="A4 标准防排水设计计算书 (预览并下载 PDF)"
+                @click.stop="handleOpenCalcBook(snap)"
+              />
 
               <!-- 手风琴展开/收起切换按钮 -->
               <el-button 
@@ -302,22 +294,15 @@
                   </template>
                 </el-dropdown>
 
-                <el-dropdown trigger="click" @command="(cmd: any) => handleExportCalcBookCommand(snap, cmd)">
-                  <el-button 
-                    type="primary" 
-                    link 
-                    icon="Notebook" 
-                    title="查看与导出 A4 标准计算书"
-                  >
-                    计算书
-                  </el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item command="preview">📑 预览 A4 计算书</el-dropdown-item>
-                      <el-dropdown-item command="pdf">🖨️ 导出 / 打印 A4 PDF</el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
+                <el-button 
+                  type="primary" 
+                  link 
+                  icon="Notebook" 
+                  title="查看与快速下载 A4 标准计算书 PDF"
+                  @click.stop="handleOpenCalcBook(snap)"
+                >
+                  计算书
+                </el-button>
 
                 <el-button 
                   type="primary" 
@@ -705,15 +690,6 @@ const showCalcBookModal = ref(false);
 const currentCalcBookSnap = ref<any>(null);
 
 const handleOpenCalcBook = (snap: any) => {
-  if (!snap.results && snap.status !== 'done') {
-    ElMessage.warning('该工况尚未完成计算，请先执行计算后再查看计算书');
-    return;
-  }
-  currentCalcBookSnap.value = snap;
-  showCalcBookModal.value = true;
-};
-
-const handleExportCalcBookCommand = (snap: any, cmd: 'preview' | 'pdf') => {
   if (!snap.results && snap.status !== 'done') {
     ElMessage.warning('该工况尚未完成计算，请先执行计算后再查看计算书');
     return;

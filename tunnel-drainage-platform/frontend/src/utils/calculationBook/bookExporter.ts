@@ -219,8 +219,25 @@ export async function downloadPdfDirect(
       pdf.addPage();
     }
 
-    // 严丝合缝绘制到 210mm x 297mm 单页内
-    pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+    const pdfWidth = 210;
+    const pdfHeight = 297;
+    const imgAspect = canvas.height / canvas.width;
+    const targetAspect = pdfHeight / pdfWidth; // 1.4142857
+
+    // 严谨等比拟合，杜绝任何纵向或横向拉伸变形
+    if (Math.abs(imgAspect - targetAspect) < 0.02) {
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+    } else {
+      const renderedHeight = pdfWidth * imgAspect;
+      if (renderedHeight <= pdfHeight) {
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, renderedHeight, undefined, 'FAST');
+      } else {
+        const scale = pdfHeight / renderedHeight;
+        const scaledWidth = pdfWidth * scale;
+        const offsetX = (pdfWidth - scaledWidth) / 2;
+        pdf.addImage(imgData, 'JPEG', offsetX, 0, scaledWidth, pdfHeight, undefined, 'FAST');
+      }
+    }
   }
 
   const fileName = `${bookData.meta.documentTitle}_DK${bookData.meta.startChainage.toFixed(0)}-${bookData.meta.endChainage.toFixed(0)}_A4.pdf`;

@@ -36,20 +36,11 @@
         <el-button 
           type="primary" 
           size="small" 
-          icon="Printer" 
-          :loading="isPrinting"
-          @click="handlePrint"
-        >
-          🖨️ 打印 / 另存为 A4 矢量 PDF
-        </el-button>
-        <el-button 
-          type="success" 
-          size="small" 
           icon="Download" 
           :loading="isDownloading"
           @click="handleDownloadDirect"
         >
-          📥 快速下载 PDF
+          📥 快速下载 A4 计算书 (PDF)
         </el-button>
         <el-button size="small" @click="handleClose">关闭</el-button>
       </div>

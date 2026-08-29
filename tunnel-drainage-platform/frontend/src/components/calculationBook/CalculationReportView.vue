@@ -121,21 +121,25 @@ defineExpose({
   background: transparent;
 }
 
-/* A4 单页排版母版视图 (210mm x 297mm) */
+/* A4 单页排版母版视图 (严格 210mm x 297mm 纸张规格) */
 .report-page {
   width: 210mm;
+  height: 297mm;
   min-height: 297mm;
-  padding: 16mm 16mm 14mm 16mm;
+  max-height: 297mm;
+  padding: 12mm 15mm 10mm 15mm;
   margin: 0 auto;
   background: #ffffff;
   color: #1f2937;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
   box-sizing: border-box;
   position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  border-radius: 2px;
+  overflow: hidden;
 }
 
 .page-content {

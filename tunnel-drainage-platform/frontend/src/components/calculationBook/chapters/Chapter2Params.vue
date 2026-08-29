@@ -105,19 +105,19 @@ const renderSym = (sym: string) => {
 
 <style scoped>
 .chapter-block {
-  margin-bottom: 24px;
+  margin-bottom: 4px;
 }
 .chapter-header {
-  margin-bottom: 16px;
+  margin-bottom: 6px;
 }
 .chapter-title {
-  font-size: 16pt;
+  font-size: 13pt;
   font-weight: 700;
   color: #0f172a;
-  margin: 0 0 6px 0;
+  margin: 0 0 4px 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 .ch-num {
   color: #2563eb;
@@ -128,34 +128,33 @@ const renderSym = (sym: string) => {
   border-radius: 1px;
 }
 .section-block {
-  margin-top: 14px;
-  page-break-inside: avoid;
+  margin-top: 6px;
 }
 .section-title {
-  font-size: 12pt;
+  font-size: 10pt;
   font-weight: 600;
   color: #1e40af;
-  margin: 0 0 8px 0;
+  margin: 0 0 3px 0;
 }
 .table-container {
-  margin: 8px 0;
+  margin: 2px 0 6px 0;
 }
 .three-line-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 9pt;
+  font-size: 8pt;
 }
 .three-line-table th {
   border-top: 1.5pt solid #1f2937;
   border-bottom: 0.75pt solid #4b5563;
-  padding: 5px 8px;
+  padding: 2.5px 5px;
   text-align: left;
   background-color: #f8fafc;
   color: #0f172a;
   font-weight: 600;
 }
 .three-line-table td {
-  padding: 5px 8px;
+  padding: 2px 5px;
   border-bottom: 0.5pt solid #e2e8f0;
   color: #1f2937;
 }
@@ -167,7 +166,7 @@ const renderSym = (sym: string) => {
 }
 .text-muted {
   color: #64748b;
-  font-size: 8.5pt;
+  font-size: 7.5pt;
 }
 .font-mono {
   font-family: 'Consolas', 'Courier New', monospace;
@@ -176,6 +175,6 @@ const renderSym = (sym: string) => {
   font-weight: 600;
 }
 .latex-cell {
-  font-size: 9.5pt;
+  font-size: 8.5pt;
 }
 </style>
