@@ -178,21 +178,22 @@ function computeHorseshoeProfile2D(
   const centralRightX = 0.35;
   const centralBottomY = invertCenterY - R3_base + 0.05;
 
-  // 拱脚纵向排水管坐标 (二衬外壁与初支内壁交界面 r1)
+  // 拱脚纵向排水管坐标 (二衬外壁与初支内壁交界面 r1，适度上移至拱脚设计标高)
   const t_r1 = Math.max(0, r1 - r);
   const R2_r1 = R2_base + t_r1;
   const cosFoot = dx / (R3_base - R2_base);
-  const sinFoot = dy / (R3_base - R2_base);
+  const nominalXFoot = (R3_base + t_r1) * cosFoot;
 
-  let yLongFoot: number;
-  if (hasCentralDitch) {
-    yLongFoot = -H_side - R2_r1 * sinFoot;
-  } else {
-    // 双侧沟模式：汇流口位于侧沟底上方 0.2m，按 3% 坡度反推
-    const yOutletSide = sideDitchBottomY + 0.20;
-    const dxSide = Math.max(0, (R3_base + t_r1) * cosFoot - sideDitchX);
-    yLongFoot = yOutletSide + 0.03 * dxSide;
-  }
+  // 标高上移适配：横向排水管以 3% 坡度自拱脚汇流入水沟，纵向管位于拱脚背水面合理高程
+  const yOutlet = hasCentralDitch ? (centralBottomY + 0.35) : (sideDitchBottomY + 0.20);
+  const xOutlet = hasCentralDitch ? centralRightX : sideDitchX;
+  const dxFlow = Math.max(0, nominalXFoot - xOutlet);
+
+  // 依 3% 汇流坡度自水沟出水口反推拱脚纵向管标高，上移至路面及水沟上方拱脚合理设计高程
+  let yLongFoot = yOutlet + 0.03 * dxFlow;
+  // 约束在侧墙圆弧有效垂直范围内
+  yLongFoot = Math.min(-H_side, Math.max(-H_side - R2_r1 * 0.92, yLongFoot));
+
   const xLongFoot = dx + Math.sqrt(Math.max(0, R2_r1 * R2_r1 - Math.pow(yLongFoot + H_side, 2)));
 
   return {
