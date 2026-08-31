@@ -40,7 +40,7 @@
           :loading="isExporting"
           @click="handleExportVectorPDF"
         >
-          📥 导出 A4 矢量 PDF (文字/公式全矢量)
+          📥 导出 A4 矢量 PDF (Typst 引擎)
         </el-button>
         <el-button size="small" @click="handleClose">关闭</el-button>
       </div>
@@ -64,11 +64,11 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElNotification } from 'element-plus';
 import type { Snapshot } from '../../store/snapshotStore';
 import type { CalculationBookData } from '../../utils/calculationBook/bookDataModel';
 import { generateCalculationBook } from '../../utils/calculationBook/bookGenerator';
-import { printCalculationBook } from '../../utils/calculationBook/bookExporter';
+import { exportCalculationBookPdf } from '../../utils/calculationBook/bookExporter';
 import CalculationReportView from './CalculationReportView.vue';
 
 const props = defineProps<{
@@ -115,15 +115,20 @@ const scrollToChapter = (chId: any) => {
 };
 
 const handleExportVectorPDF = async () => {
-  if (!bookData.value || !reportViewRef.value?.reportSheetRef) {
-    ElMessage.warning('计算书渲染尚未就绪');
+  if (!bookData.value) {
+    ElMessage.warning('计算书数据尚未就绪');
     return;
   }
   try {
     isExporting.value = true;
-    ElMessage.info('正在唤起 A4 矢量 PDF 导出通道（文字可复制/公式矢量），请选择另存为 PDF...');
-    await printCalculationBook(bookData.value, reportViewRef.value.reportSheetRef);
-    ElMessage.success('A4 矢量 PDF 导出通道已就绪');
+    ElMessage.info('正在调用 Typst 编译引擎生成高保真 A4 矢量 PDF...');
+    const filename = await exportCalculationBookPdf(bookData.value);
+    ElNotification({
+      title: '导出成功',
+      message: `已通过 Typst 引擎成功编译并下载: ${filename}`,
+      type: 'success',
+      duration: 3500
+    });
   } catch (err: any) {
     console.error('导出矢量 PDF 失败:', err);
     ElMessage.error(`导出失败: ${err.message || err}`);

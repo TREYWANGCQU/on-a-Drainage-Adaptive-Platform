@@ -3,5 +3,6 @@
 /tools/
 *.db
 
-/tunnel-drainage-platform/backend/*.pyc
+*.pyc
 __pycache__/
+/tunnel-drainage-platform/backend/venv

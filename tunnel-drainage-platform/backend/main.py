@@ -7,6 +7,7 @@ from app.core.config import settings
 # 引入 API 路由模块
 from app.api.v1.endpoints.calculate import router as calculate_drainage
 from app.api.v1.endpoints.database import router as database_router
+from app.api.v1.endpoints.calculation_book import router as calculation_book_router
 
 # [新增] 引入数据库初始化生命周期事件
 from app.db.init_db import lifespan
@@ -42,6 +43,13 @@ app.include_router(
     database_router, 
     prefix=f"{settings.API_V1_STR}/database", 
     tags=["参数数据库台账"]
+)
+
+# [新增] 注册 Typst 计算书导出路由
+app.include_router(
+    calculation_book_router,
+    prefix=f"{settings.API_V1_STR}/calculation-books",
+    tags=["计算书导出引擎 (Typst)"]
 )
 
 

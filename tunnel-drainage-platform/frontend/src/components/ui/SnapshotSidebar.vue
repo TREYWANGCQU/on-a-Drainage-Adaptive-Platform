@@ -169,12 +169,15 @@
                   🖼️ 批量下载选中施工图 (PNG)
                 </el-dropdown-item>
                 <el-dropdown-item command="export_calc_books" divided>
-                  📚 批量导出选中计算书 (A4 报告)
+                  📚 批量导出选中计算书 (Typst ZIP)
                 </el-dropdown-item>
-                <el-dropdown-item command="export_json_raw">
+                <el-dropdown-item command="export_all_filtered_calc_books">
+                  ⚡ 一键导出当前筛选全部计算书 (Typst ZIP)
+                </el-dropdown-item>
+                <el-dropdown-item command="export_json_raw" divided>
                   💾 批量导出选中计算结果 (JSON)
                 </el-dropdown-item>
-                <el-dropdown-item command="export_all_filtered_blueprints" divided>
+                <el-dropdown-item command="export_all_filtered_blueprints">
                   ⚡ 一键导出当前筛选全部施工图 (PDF)
                 </el-dropdown-item>
               </el-dropdown-menu>
@@ -207,10 +210,11 @@
             type="primary" 
             size="small" 
             class="batch-quick-btn"
-            @click="batchExportCalcBooks"
-            title="一键批量导出选中工况的 A4 标准计算书"
+            :loading="isBatchExporting"
+            @click="batchExportCalcBooks()"
+            title="一键批量并发编译导出选中工况的 A4 标准计算书 (Typst ZIP)"
           >
-            <el-icon><DocumentCopy /></el-icon> 计算书(A4)
+            <el-icon v-if="!isBatchExporting"><DocumentCopy /></el-icon> 计算书(ZIP)
           </el-button>
         </div>
       </div>
@@ -289,14 +293,22 @@
                 </el-dropdown>
 
                 <!-- 快捷计算书预览与导出 -->
-                <button 
-                  type="button"
-                  class="icon-action-btn book-btn" 
-                  title="A4 标准防排水设计计算书 (预览并下载 PDF)"
-                  @click.stop="handleOpenCalcBook(snap)"
-                >
-                  <el-icon><Notebook /></el-icon>
-                </button>
+                <el-dropdown trigger="click" @command="(cmd: any) => handleCalcBookAction(snap, cmd)">
+                  <button 
+                    type="button"
+                    class="icon-action-btn book-btn" 
+                    title="A4 标准防排水设计计算书 (预览 / Typst 导出)"
+                    @click.stop
+                  >
+                    <el-icon><Notebook /></el-icon>
+                  </button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="preview">👁️ 预览 A4 标准计算书 (6大章节)</el-dropdown-item>
+                      <el-dropdown-item command="pdf">📥 导出 A4 矢量计算书 (Typst PDF)</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
 
                 <!-- 手风琴展开/收起切换按钮 -->
                 <button 
@@ -422,15 +434,23 @@
                 </el-dropdown>
 
                 <!-- 2. 计算书 -->
-                <button 
-                  type="button"
-                  class="capsule-btn capsule-book" 
-                  title="查看与导出 A4 标准工程计算书"
-                  @click.stop="handleOpenCalcBook(snap)"
-                >
-                  <el-icon><DocumentCopy /></el-icon>
-                  <span>计算书</span>
-                </button>
+                <el-dropdown trigger="click" @command="(cmd: any) => handleCalcBookAction(snap, cmd)">
+                  <button 
+                    type="button"
+                    class="capsule-btn capsule-book" 
+                    title="查看与导出 A4 标准工程计算书"
+                  >
+                    <el-icon><DocumentCopy /></el-icon>
+                    <span>计算书</span>
+                    <el-icon class="arrow-tiny"><ArrowDown /></el-icon>
+                  </button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="preview">👁️ 预览 A4 标准计算书 (6大章节)</el-dropdown-item>
+                      <el-dropdown-item command="pdf">📥 导出 A4 矢量 PDF (Typst 引擎)</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
 
                 <!-- 3. 结果JSON -->
                 <button 
@@ -517,6 +537,10 @@ import {
 } from '@element-plus/icons-vue';
 import { useParameterStore } from '@/store/parameterStore';
 import { exportSnapshotBlueprint } from '@/utils/blueprintGenerator';
+import { 
+  exportBatchCalculationBooksZip, 
+  exportCalculationBookPdf 
+} from '@/utils/calculationBook/bookExporter';
 import CalculationBookModal from '../calculationBook/CalculationBookModal.vue';
 
 const snapshotStore = useSnapshotStore();
@@ -852,11 +876,11 @@ const batchDownloadBlueprints = async (format: 'pdf' | 'png' = 'pdf', targetSnap
   }
 };
 
-// 批量导出计算书
-const batchExportCalcBooks = () => {
-  const selected = snapshots.value.filter((s: any) => s.selectedFor3D);
+// 批量导出计算书 (基于 Typst 编译引擎生成 ZIP 或单份 PDF)
+const batchExportCalcBooks = async (targetSnaps?: any[]) => {
+  const selected = targetSnaps || snapshots.value.filter((s: any) => s.selectedFor3D);
   if (selected.length === 0) {
-    ElMessage.warning('请先勾选需要查看/导出计算书的工况卡片');
+    ElMessage.warning('请先勾选需要导出计算书的工况卡片');
     return;
   }
 
@@ -866,20 +890,54 @@ const batchExportCalcBooks = () => {
     return;
   }
 
+  // 单份工况：直接调用 Typst 引擎极速下载单个 PDF
   if (validSnaps.length === 1) {
-    handleOpenCalcBook(validSnaps[0]);
+    try {
+      isBatchExporting.value = true;
+      batchExportStatusText.value = `正在调用 Typst 引擎编译计算书: ${getSnapRemark(validSnaps[0])}...`;
+      batchExportProgress.value = 50;
+      const pdfName = await exportCalculationBookPdf(validSnaps[0]);
+      batchExportProgress.value = 100;
+      ElNotification({
+        title: '计算书导出成功',
+        message: `已通过 Typst 引擎成功编译并下载: ${pdfName}`,
+        type: 'success',
+        duration: 3500
+      });
+    } catch (err: any) {
+      console.error('导出计算书 PDF 失败:', err);
+      ElMessage.error(`导出计算书失败: ${err.message || err}`);
+    } finally {
+      isBatchExporting.value = false;
+      batchExportProgress.value = 0;
+      batchExportStatusText.value = '';
+    }
     return;
   }
 
-  // 多选工况：提示并优先打开第一个工况，支持用户一键切换
-  currentCalcBookSnap.value = validSnaps[0];
-  showCalcBookModal.value = true;
-  ElNotification({
-    title: '计算书报告预览',
-    message: `已载入选中的第 1/${validSnaps.length} 个工况计算书。可通过顶部导航导出 A4 矢量 PDF。`,
-    type: 'info',
-    duration: 4000
-  });
+  // 多工况批量导出：并发编译并直接打包下载 ZIP
+  try {
+    isBatchExporting.value = true;
+    batchExportStatusText.value = `正在并发调度 Typst 引擎编译 ${validSnaps.length} 份计算书并打包 ZIP...`;
+    batchExportProgress.value = 40;
+
+    const zipFilename = await exportBatchCalculationBooksZip(validSnaps);
+    batchExportProgress.value = 100;
+    
+    ElNotification({
+      title: '批量计算书导出成功',
+      message: `已成功生成包含 ${validSnaps.length} 份 A4 独立计算书的 ZIP 压缩包: ${zipFilename}`,
+      type: 'success',
+      duration: 4500
+    });
+  } catch (err: any) {
+    console.error('批量导出计算书 ZIP 失败:', err);
+    ElMessage.error(`批量导出计算书失败: ${err.message || err}`);
+  } finally {
+    isBatchExporting.value = false;
+    batchExportProgress.value = 0;
+    batchExportStatusText.value = '';
+  }
 };
 
 // 批量导出全部选中 JSON
@@ -921,6 +979,12 @@ const handleBatchExportCommand = (cmd: string) => {
     batchDownloadBlueprints('png');
   } else if (cmd === 'export_calc_books') {
     batchExportCalcBooks();
+  } else if (cmd === 'export_all_filtered_calc_books') {
+    if (filteredSnapshots.value.length === 0) {
+      ElMessage.warning('当前筛选结果为空');
+      return;
+    }
+    batchExportCalcBooks(filteredSnapshots.value);
   } else if (cmd === 'export_json_raw') {
     batchDownloadRawJson();
   } else if (cmd === 'export_all_filtered_blueprints') {
@@ -1017,6 +1081,37 @@ const handleOpenCalcBook = (snap: any) => {
   }
   currentCalcBookSnap.value = snap;
   showCalcBookModal.value = true;
+};
+
+const handleCalcBookAction = async (snap: any, cmd: 'preview' | 'pdf' = 'preview') => {
+  if (!snap.results && snap.status !== 'done') {
+    ElMessage.warning('该工况尚未完成计算，请先执行计算后再查看计算书');
+    return;
+  }
+  if (cmd === 'preview') {
+    handleOpenCalcBook(snap);
+  } else if (cmd === 'pdf') {
+    try {
+      isBatchExporting.value = true;
+      batchExportStatusText.value = `正在调用 Typst 引擎编译 ${getSnapRemark(snap)} A4 计算书...`;
+      batchExportProgress.value = 50;
+      const pdfName = await exportCalculationBookPdf(snap);
+      batchExportProgress.value = 100;
+      ElNotification({
+        title: '计算书导出成功',
+        message: `已成功生成高保真矢量计算书: ${pdfName}`,
+        type: 'success',
+        duration: 3500
+      });
+    } catch (err: any) {
+      console.error('导出计算书 PDF 失败:', err);
+      ElMessage.error(`导出计算书失败: ${err.message || err}`);
+    } finally {
+      isBatchExporting.value = false;
+      batchExportProgress.value = 0;
+      batchExportStatusText.value = '';
+    }
+  }
 };
 
 const handleExportBlueprint = async (snap: any, format: 'pdf' | 'png' = 'pdf') => {
