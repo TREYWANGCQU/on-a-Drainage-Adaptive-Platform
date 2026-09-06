@@ -1,0 +1,50 @@
+# tunnel-drainage-platform/deploy/server/docker-compose.yml
+# 隧道工程多维协同智能排水自适应平台 - 服务器协同模式标准编排
+
+version: "3.8"
+
+services:
+  nginx:
+    build:
+      context: ../../
+      dockerfile: deploy/server/Dockerfile.frontend
+    image: tunnel-drainage-frontend:v1.0.0
+    container_name: tunnel_nginx
+    restart: always
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - tunnel_net
+
+  backend:
+    build:
+      context: ../../
+      dockerfile: deploy/server/Dockerfile.backend
+    image: tunnel-drainage-backend:v1.0.0
+    container_name: tunnel_backend
+    restart: always
+    environment:
+      - APP_ENV=production
+      - DB_PATH=/app/data/tunnel_params.db
+      - LOG_DIR=/app/logs
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - tunnel_data:/app/data
+      - tunnel_logs:/app/logs
+    networks:
+      - tunnel_net
+
+volumes:
+  tunnel_data:
+    driver: local
+  tunnel_logs:
+    driver: local
+
+networks:
+  tunnel_net:
+    driver: bridge

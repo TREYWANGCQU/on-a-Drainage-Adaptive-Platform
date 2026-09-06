@@ -4,7 +4,9 @@ import axios from 'axios';
 import type { CalculationBookData } from '../utils/calculationBook/bookDataModel';
 import type { Snapshot } from '../store/snapshotStore';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+import { resolveApiBaseUrl } from './adapter';
+
+const getBaseUrl = () => resolveApiBaseUrl();
 
 /**
  * 辅助函数：从 Content-Disposition 响应头提取安全的文件名
@@ -60,7 +62,7 @@ export async function downloadCalculationBookPdf(
   }
 
   const response = await axios.post(
-    `${BASE_URL}/calculation-books/export-pdf`,
+    `${getBaseUrl()}/calculation-books/export-pdf`,
     payload,
     {
       responseType: 'blob',
@@ -102,7 +104,7 @@ export async function batchDownloadCalculationBooksZip(
   };
 
   const response = await axios.post(
-    `${BASE_URL}/calculation-books/batch-export`,
+    `${getBaseUrl()}/calculation-books/batch-export`,
     payload,
     {
       responseType: 'blob',

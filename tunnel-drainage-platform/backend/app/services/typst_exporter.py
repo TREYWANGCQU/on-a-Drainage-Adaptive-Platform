@@ -16,10 +16,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import sys
 import typst
 
-# 模板目录根路径
-TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "typst"
+# 模板目录根路径（兼顾本地源码运行与 PyInstaller 冻结二进制态寻址）
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    base_resource_dir = Path(sys._MEIPASS)
+    candidate = base_resource_dir / "app" / "templates" / "typst"
+    if candidate.exists():
+        TEMPLATE_DIR = candidate
+    else:
+        TEMPLATE_DIR = base_resource_dir / "templates" / "typst"
+else:
+    TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "typst"
+
 MASTER_TEMPLATE_PATH = TEMPLATE_DIR / "calculation_book.typ"
 
 

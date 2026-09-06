@@ -4,17 +4,28 @@ import axios from 'axios';
 import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { ElMessage } from 'element-plus';
 
+import { resolveApiBaseUrl } from './adapter';
+
 /**
  * 实例化 Axios 并配置基础参数
- * baseURL 指向后端 FastAPI 服务的根路径
+ * baseURL 由 resolveApiBaseUrl 动态计算 (桌面端回环 / Web端反向代理)
  */
 const apiClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1',
+  baseURL: resolveApiBaseUrl(),
   timeout: 30000,
   headers: {
     'accept': 'application/json',
     'Content-Type': 'application/json',
   },
+});
+
+// 在每次请求前动态复核最新 baseURL，防止桌面端异步握手注入完成后仍使用旧基准地址
+apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  const dynamicBase = resolveApiBaseUrl();
+  if (dynamicBase && (!config.baseURL || config.baseURL.includes('localhost:8000') || config.baseURL === '/api/v1')) {
+    config.baseURL = dynamicBase;
+  }
+  return config;
 });
 
 /**
