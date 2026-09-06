@@ -7,6 +7,14 @@ import re
 import sys
 from pathlib import Path
 
+# 强制重构 Windows 控制台标准输出为 UTF-8，防止 cp1252 编码异常
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 def main():
     tag = os.environ.get("GITHUB_REF_NAME", "").strip()

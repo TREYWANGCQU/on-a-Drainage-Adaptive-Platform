@@ -345,12 +345,19 @@ GitHub 自动发布与大版本 CI/CD 流水线落地工程
 ### 7.1 大版本检测与摘要提取脚本蓝图 (`scripts/ci/check-major-release.py`)
 ```python
 # scripts/ci/check-major-release.py
-# 用于 GitHub Actions Gatekeeper 门禁：大版本判定、SSOT 校验与 CHANGELOG 提取
 import os
 import re
 import json
 import sys
 from pathlib import Path
+
+# 强制重构 Windows 控制台标准输出为 UTF-8，防止 cp1252 编码异常
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 def main():
     tag = os.environ.get("GITHUB_REF_NAME", "")
@@ -444,6 +451,10 @@ on:
 
 permissions:
   contents: write
+
+env:
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: "1"
 
 jobs:
   gatekeeper:
