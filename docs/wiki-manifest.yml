@@ -6,7 +6,7 @@ version: "1.1.0"
 settings:
   site_title: "隧道工程多维协同智能排水平台知识库"
   sidebar_collapsible: true
-  asset_cdn_prefix: "https://raw.githubusercontent.com/TREYWANGCQU/-----------------/main"
+  asset_cdn_prefix: "https://raw.githubusercontent.com/TREYWANGCQU/on-a-Drainage-Adaptive-Platform/main"
 
 categories:
   - id: "portal"
