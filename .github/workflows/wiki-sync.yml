@@ -1,0 +1,74 @@
+# .github/workflows/wiki-sync.yml
+name: "GitHub Wiki Sync Pipeline"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'scripts/wiki/**'
+      - '*.md'
+      - '.github/workflows/wiki-sync.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-wiki:
+    name: "Build & Deploy Knowledge Base to Wiki"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout Main Repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "Set up Python Environment"
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: "Install Dependencies"
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+
+      - name: "Compile Knowledge Base via Builder Engine"
+        run: |
+          python scripts/wiki/build-wiki.py --manifest docs/wiki-manifest.yml --output dist/wiki
+
+      - name: "Check Wiki Remote Availability"
+        id: check_wiki
+        env:
+          WIKI_REPO: "https://x-access-token:${{ secrets.WIKI_SYNC_TOKEN || secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git"
+        run: |
+          if git ls-remote "$WIKI_REPO" HEAD; then
+            echo "wiki_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "wiki_available=false" >> $GITHUB_OUTPUT
+            echo "::warning title=Wiki Not Initialized::The GitHub Wiki repository for ${{ github.repository }} has not been initialized yet on the web UI. Please click 'Create the first page' on the GitHub Wiki tab to activate it."
+          fi
+
+      - name: "Deploy to Wiki Repository"
+        if: steps.check_wiki.outputs.wiki_available == 'true'
+        env:
+          WIKI_REPO: "https://x-access-token:${{ secrets.WIKI_SYNC_TOKEN || secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git"
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          mkdir -p /tmp/wiki_repo
+          git clone "$WIKI_REPO" /tmp/wiki_repo
+          cp -r dist/wiki/* /tmp/wiki_repo/
+
+          cd /tmp/wiki_repo
+          git add -A
+          if git diff-index --quiet HEAD --; then
+            echo "No changes in Wiki documentation. Skipping commit."
+          else
+            git commit -m "docs(wiki): automated sync from main repository (${{ github.sha }})"
+            git push origin HEAD
+            echo "Successfully updated GitHub Wiki!"
+          fi
