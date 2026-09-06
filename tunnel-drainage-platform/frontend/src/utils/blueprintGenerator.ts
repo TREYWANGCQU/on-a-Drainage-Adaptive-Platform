@@ -24,6 +24,7 @@ export interface BlueprintParams {
   aspectRatio: number;   // 高宽比
   dSpacing: number;      // 双洞中心间距 (m)
   hasCentralDitch: boolean;
+  scale?: '1:50' | '1:75' | '1:100' | '1:150' | '1:200' | 'auto';
 
   // 排水推荐参数
   ringDiam: number;      // 环向管径 (m)
@@ -34,6 +35,24 @@ export interface BlueprintParams {
   safetyFactor?: number; // 安全系数
   qDrain?: number;       // 涌水量 (m3/d)
 }
+
+/**
+ * 标准工程比例尺配置接口 (遵循 GB/T 50104-2010 标准模数体系)
+ */
+export interface StandardScaleConfig {
+  ratio: number;
+  label: '1:50' | '1:75' | '1:100' | '1:150' | '1:200';
+  scalePx: number; // 4200px / 420mm = 10 px/mm。scalePx = (1000 / ratio) * 10 = 10000 / ratio
+  meterUnits: number[]; // 比例尺条刻度标准模数 (米)
+}
+
+export const SUPPORTED_SCALES: StandardScaleConfig[] = [
+  { ratio: 50, label: '1:50', scalePx: 200, meterUnits: [0, 1, 2, 5] },
+  { ratio: 75, label: '1:75', scalePx: 133.3333, meterUnits: [0, 1, 2, 5] },
+  { ratio: 100, label: '1:100', scalePx: 100, meterUnits: [0, 2, 5, 10] },
+  { ratio: 150, label: '1:150', scalePx: 66.6667, meterUnits: [0, 5, 10, 20] },
+  { ratio: 200, label: '1:200', scalePx: 50, meterUnits: [0, 10, 20, 50] }
+];
 
 /**
  * 格式化桩号为工程标准 DK0+000 字符串
@@ -71,6 +90,7 @@ export function extractBlueprintParams(snap: Snapshot | any): BlueprintParams {
   const dSpacing = Number(inputParam.D_spacing ?? p.D_spacing ?? 30.0);
   const tunnelType = (inputParam.tunnel_type ?? p.tunnel_type ?? (snap.type === 'double' ? 'double' : 'single')) === 'double' ? 'double' : 'single';
   const hasCentralDitch = (p.has_central_ditch !== undefined) ? Boolean(p.has_central_ditch) : true;
+  const preferredScale = (inputParam.scale ?? p.scale ?? snap.scale) as BlueprintParams['scale'];
 
   // 排水推荐参数提取
   const ringDiam = Number(activeState.ring_diam_recommend ?? orig.ring_diam_recommend ?? p.ring_diam ?? 0.05);
@@ -103,6 +123,7 @@ export function extractBlueprintParams(snap: Snapshot | any): BlueprintParams {
     aspectRatio,
     dSpacing,
     hasCentralDitch,
+    scale: preferredScale,
     ringDiam,
     ringSpacing,
     latDiam,
@@ -375,9 +396,58 @@ export class ConstructionBlueprintGenerator {
   private params: BlueprintParams;
   private canvasWidth = 4200;  // 对应 A3 420mm @ 10px/mm (254 DPI)
   private canvasHeight = 2970; // 对应 A3 297mm @ 10px/mm
+  private p2d: HorseshoeProfile2D;
+  private currentScaleConfig: StandardScaleConfig;
 
-  constructor(snap: Snapshot | any) {
+  constructor(snap: Snapshot | any, overrideScale?: BlueprintParams['scale']) {
     this.params = extractBlueprintParams(snap);
+    if (overrideScale) {
+      this.params.scale = overrideScale;
+    }
+    this.p2d = computeHorseshoeProfile2D(
+      this.params.r,
+      this.params.r1,
+      this.params.r2,
+      this.params.aspectRatio,
+      this.params.hasCentralDitch
+    );
+    this.currentScaleConfig = this.determineScaleConfig();
+  }
+
+  /**
+   * 基于标准模数与物理包络自适应确定最佳工程比例尺 (内置 1:50, 1:75, 1:100, 1:150, 1:200)
+   */
+  private determineScaleConfig(): StandardScaleConfig {
+    if (this.params.scale && this.params.scale !== 'auto') {
+      const matched = SUPPORTED_SCALES.find((s) => s.label === this.params.scale);
+      if (matched) return matched;
+    }
+
+    const isDouble = this.params.tunnelType === 'double';
+    const { r2, dSpacing } = this.params;
+    const isLargeSpacing = isDouble && dSpacing > 18.0;
+    const visualDSpacing = isDouble ? (isLargeSpacing ? 18.0 : dSpacing) : 0;
+
+    const invertBottomDepth = 1.80 * r2 - this.p2d.invertCenterY;
+    // 物理世界包络尺寸 (米)
+    const totalWorldWidth = isDouble
+      ? (visualDSpacing + 2 * (1.05 * r2) + 5.0)
+      : (2 * (1.05 * r2) + 6.0);
+    const totalWorldHeight = (1.05 * r2 + 0.8) + (invertBottomDepth + 0.8);
+
+    // 图框内有效绘图安全区域：宽度 3800px (内框净宽 3850px)，高度 2080px (内框 100 到 标题栏 2310 扣除上下安全间距)
+    const availWidth = 3800;
+    const availHeight = 2080;
+    const maxScalePx = Math.min(availWidth / totalWorldWidth, availHeight / totalWorldHeight);
+
+    // 按比例从大到小选择符合安全视口的最大标称标准比例 (1:50 -> 1:75 -> 1:100 -> 1:150 -> 1:200)
+    for (const s of SUPPORTED_SCALES) {
+      if (s.scalePx <= maxScalePx) {
+        return s;
+      }
+    }
+
+    return SUPPORTED_SCALES[SUPPORTED_SCALES.length - 1]; // 保底 1:200
   }
 
   /**
@@ -522,9 +592,7 @@ export class ConstructionBlueprintGenerator {
 
     ctx.fillStyle = '#0F172A';
     ctx.font = '20px "Microsoft YaHei", sans-serif';
-    const isDouble = this.params.tunnelType === 'double';
-    const scaleStr = isDouble ? '1:100' : '1:50';
-    ctx.fillText(`比例: ${scaleStr}`, tbX + 1300, tbY + rowH * 2.5);
+    ctx.fillText(`比例: ${this.currentScaleConfig.label}`, tbX + 1300, tbY + rowH * 2.5);
     ctx.fillText(`图号: SPS-${this.params.id.slice(0, 8).toUpperCase()}`, tbX + 1625, tbY + rowH * 2.5);
 
     // 行 4 & 5: 工程审核与会签栏
@@ -624,12 +692,17 @@ export class ConstructionBlueprintGenerator {
   }
 
   /**
-   * 绘制自适应比例尺条 (Scale Bar)
+   * 绘制自适应标准工程比例尺条 (Scale Bar)
    */
-  private drawScaleBar(ctx: CanvasRenderingContext2D, x: number, y: number, scalePxPerMeter: number, isDouble: boolean): void {
+  private drawScaleBar(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    scaleConfig: StandardScaleConfig
+  ): void {
     ctx.save();
 
-    const meterUnits = isDouble ? [0, 5, 10, 20] : [0, 1, 2, 5];
+    const { meterUnits, scalePx, label } = scaleConfig;
     const barHeight = 22;
 
     ctx.font = 'bold 20px "Microsoft YaHei", sans-serif';
@@ -643,7 +716,7 @@ export class ConstructionBlueprintGenerator {
       ctx.fillText(`${m}m`, curX, y - 6);
       if (idx < meterUnits.length - 1) {
         const nextM = meterUnits[idx + 1];
-        const segW = (nextM - m) * scalePxPerMeter;
+        const segW = (nextM - m) * scalePx;
         ctx.fillStyle = idx % 2 === 0 ? '#0F172A' : '#FFFFFF';
         ctx.strokeStyle = '#0F172A';
         ctx.lineWidth = 2.5;
@@ -656,7 +729,7 @@ export class ConstructionBlueprintGenerator {
     ctx.fillStyle = '#0F172A';
     ctx.textAlign = 'left';
     ctx.font = 'bold 20px "Microsoft YaHei", sans-serif';
-    ctx.fillText(`比例尺 (Scale ${isDouble ? '1:100' : '1:50'})`, x, y + barHeight + 26);
+    ctx.fillText(`比例尺 (Scale ${label})`, x, y + barHeight + 26);
 
     ctx.restore();
   }
@@ -668,33 +741,25 @@ export class ConstructionBlueprintGenerator {
     ctx.save();
 
     const isDouble = this.params.tunnelType === 'double';
-    const { r, r1, r2, aspectRatio, dSpacing, hasCentralDitch } = this.params;
+    const { r, r1, r2, dSpacing, hasCentralDitch } = this.params;
 
-    // 1. 2D 几何截面推导
-    const p2d = computeHorseshoeProfile2D(r, r1, r2, aspectRatio, hasCentralDitch);
+    // 1. 复用预先计算的 2D 几何截面与标准工程比例尺
+    const p2d = this.p2d;
+    const scale = this.currentScaleConfig.scalePx;
 
-    // 2. 动态自适应视口比例尺计算 (严格拟合图框与避让底部栏位)
     // 针对大间距双洞实施工程图画法：当 D_spacing 较大 (如 > 18m) 时，采用图面压缩 + 打断标注间距
     const isLargeSpacing = isDouble && dSpacing > 18.0;
     const visualDSpacing = isDouble ? (isLargeSpacing ? 18.0 : dSpacing) : 0;
 
-    // 物理世界包络尺寸 (米)
-    const totalWorldWidth = isDouble ? (visualDSpacing + 2 * (1.05 * r2) + 6.0) : (2 * (1.05 * r2) + 6.0);
-    const totalWorldHeight = (1.05 * r2 + 1.5) + (Math.abs(p2d.invertCenterY) + 1.80 * r2 + 1.5);
+    const invertBottomDepth = 1.80 * r2 - p2d.invertCenterY;
 
-    // 图框内有效绘图安全区域：宽度 3500px，高度 1850px (顶部保留 150px，底部在 2150px 前结束，绝不压盖标题栏与设计说明)
-    const availWidth = 3500;
-    const availHeight = 1850;
-    const computedScale = Math.min(availWidth / totalWorldWidth, availHeight / totalWorldHeight);
-
-    // 规范化比例尺，单洞上限约 115 px/m (约 1:50 适配)，双洞约 78 px/m (约 1:100 适配)
-    const scale = isDouble ? Math.min(78, computedScale) : Math.min(115, computedScale);
-
-    // 绘图中心坐标
+    // 绘图中心坐标 (X 居中于内图框)
     const centerX = 250 + (this.canvasWidth - 250 - 100) / 2; // 2175px
-    // 垂直中心根据拱顶与仰拱高度比进行黄金分割定位
-    const topExtentPx = (1.05 * r2 + 1.2) * scale;
-    const centerY = 160 + topExtentPx + (availHeight - totalWorldHeight * scale) * 0.25;
+
+    // 垂直中心定位：在有效绘图视口区域 (Y = 140 ~ 2240, 高度 2100px) 内居中对齐
+    const availZoneYMid = 140 + 2100 / 2; // 1190px
+    const envelopeCenterWorldOffset = (1.05 * r2 - invertBottomDepth) / 2;
+    const centerY = availZoneYMid + envelopeCenterWorldOffset * scale;
 
     // 主洞/副洞中心 X 偏移
     const offsets = isDouble ? [- (visualDSpacing / 2) * scale, (visualDSpacing / 2) * scale] : [0];
@@ -877,27 +942,27 @@ export class ConstructionBlueprintGenerator {
       ctx.restore();
 
       // ----------------------------------------------------
-      // F. 隧道轴线中线与洞名标识 (严格限制上下伸出长度，杜绝穿框)
+      // F. 隧道轴线中线与洞名标识 (规范细点划线，严格限制上下伸出长度 0.6m，杜绝超长穿框)
       // ----------------------------------------------------
       ctx.save();
-      // 中线细点划线 (上下仅伸出 1.2m)
+      // 中线细点划线 (GB/T 50104-2010 规范超出轮廓线 3~5mm，折合世界坐标 0.6m)
       ctx.strokeStyle = '#475569';
       ctx.lineWidth = 2.5;
       ctx.setLineDash([16, 6, 4, 6]);
-      const clTopY = centerY - (1.05 * r2 + 1.2) * scale;
-      const clBottomY = centerY + (Math.abs(p2d.invertCenterY) + 1.80 * r2 + 0.8) * scale;
+      const clTopY = centerY - (1.05 * r2 + 0.6) * scale;
+      const clBottomY = centerY + (invertBottomDepth + 0.6) * scale;
 
       ctx.beginPath();
       ctx.moveTo(tubeCenterX, clTopY);
       ctx.lineTo(tubeCenterX, clBottomY);
       ctx.stroke();
 
-      // 轴线符号 CL 与洞名 (升级字号)
+      // 轴线符号 ℄ 与洞名 (升级字号与紧凑排布)
       ctx.setLineDash([]);
       ctx.fillStyle = '#0F172A';
       ctx.font = 'bold 28px "Microsoft YaHei", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('ℭ', tubeCenterX, clTopY - 14);
+      ctx.fillText('℄', tubeCenterX, clTopY - 14);
       ctx.font = 'bold 30px "Microsoft YaHei", sans-serif';
       ctx.fillText(tubeLabel, tubeCenterX, clBottomY + 36);
 
@@ -1011,12 +1076,12 @@ export class ConstructionBlueprintGenerator {
       }
       ctx.stroke();
 
-      // 若为大间距打断排布，在两洞地面中央也绘制一条标准折断线
+      // 若为大间距打断排布，在两洞地面中央也绘制一条标准折断线 (定位在路面标高处)
       if (isLargeSpacing) {
         ctx.save();
         ctx.strokeStyle = '#64748B';
         ctx.lineWidth = 2.5;
-        const groundBreakY = centerY + (Math.abs(p2d.invertCenterY) + 1.80 * r2 * 0.5) * scale;
+        const groundBreakY = centerY - p2d.roadY * scale;
         const gBreakLen = 70;
         ctx.beginPath();
         ctx.moveTo(midX - gBreakLen, groundBreakY);
@@ -1056,7 +1121,7 @@ export class ConstructionBlueprintGenerator {
     }
 
     // 5. 绘制比例尺条 (位于左图框内，设计说明上方)
-    this.drawScaleBar(ctx, 280, this.canvasHeight - 100 - 640, scale, isDouble);
+    this.drawScaleBar(ctx, 280, this.canvasHeight - 100 - 640, this.currentScaleConfig);
 
     ctx.restore();
   }
@@ -1109,8 +1174,12 @@ export class ConstructionBlueprintGenerator {
 /**
  * 快捷导出快照施工图函数
  */
-export async function exportSnapshotBlueprint(snap: Snapshot | any, format: 'pdf' | 'png' = 'pdf'): Promise<void> {
-  const generator = new ConstructionBlueprintGenerator(snap);
+export async function exportSnapshotBlueprint(
+  snap: Snapshot | any,
+  format: 'pdf' | 'png' = 'pdf',
+  preferredScale?: BlueprintParams['scale']
+): Promise<void> {
+  const generator = new ConstructionBlueprintGenerator(snap, preferredScale);
   if (format === 'pdf') {
     await generator.exportPDF();
   } else {

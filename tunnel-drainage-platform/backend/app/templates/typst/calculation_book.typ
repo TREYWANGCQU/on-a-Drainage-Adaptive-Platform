@@ -100,6 +100,25 @@
   v(2pt)
 }
 
+// 符号安全数学渲染函数（支持 LaTeX 方言清洗、空值占位与原生 Typst 数学模式）
+#let render-sym(s) = {
+  let str-val = str(s).trim()
+  if str-val == "" or str-val == "-" or str-val == "none" [ - ]
+  else if type(s) == content [ #s ]
+  else if str-val.starts-with("$") [ #eval(str-val) ]
+  else if str-val == "CN" [ $"CN"$ ]
+  else {
+    let clean = str-val
+      .replace(regex("\\\\text\{([^}]+)\}"), m => "\"" + m.captures.at(0) + "\"")
+      .replace("\text{map}", "\"map\"")
+      .replace("\text{inf}", "\"inf\"")
+      .replace("\\", "")
+      .replace("'", " prime ")
+      .replace(regex("_([a-zA-Z]{2,})"), m => "_\"" + m.captures.at(0) + "\"")
+    eval("$" + clean + "$")
+  }
+}
+
 #let three-line-table(header-cells, data-rows, col-widths) = {
   table(
     columns: col-widths,
@@ -108,7 +127,10 @@
     table.hline(stroke: 1.2pt + rgb("#0f172a")),
     ..header-cells.map(h => align(center + horizon)[#text(weight: "bold", size: 9pt, fill: rgb("#0f172a"))[#h]]),
     table.hline(stroke: 0.6pt + rgb("#334155")),
-    ..data-rows.flatten().map(cell => align(center + horizon)[#text(size: 8.5pt)[#cell]]),
+    ..data-rows.flatten().map(cell => {
+      let body = if type(cell) == content { cell } else { str(cell) }
+      align(center + horizon)[#text(size: 8.5pt)[#body]]
+    }),
     table.hline(stroke: 1.2pt + rgb("#0f172a"))
   )
 }
@@ -228,7 +250,7 @@
     ("参数名称", "符号", "数值", "单位", "说明/来源"),
     geom.map(it => (
       it.at("name", default: "-"),
-      it.at("symbol", default: "-"),
+      render-sym(it.at("symbol", default: "-")),
       str(it.at("value", default: "-")),
       it.at("unit", default: "-"),
       it.at("remark", default: "-")
@@ -245,7 +267,7 @@
     ("参数名称", "符号", "数值", "单位", "说明/来源"),
     hydro.map(it => (
       it.at("name", default: "-"),
-      it.at("symbol", default: "-"),
+      render-sym(it.at("symbol", default: "-")),
       str(it.at("value", default: "-")),
       it.at("unit", default: "-"),
       it.at("remark", default: "-")
@@ -262,7 +284,7 @@
     ("参数名称", "符号", "数值", "单位", "说明/来源"),
     stru.map(it => (
       it.at("name", default: "-"),
-      it.at("symbol", default: "-"),
+      render-sym(it.at("symbol", default: "-")),
       str(it.at("value", default: "-")),
       it.at("unit", default: "-"),
       it.at("remark", default: "-")
@@ -301,7 +323,7 @@
     ("物理指标名称", "物理符号", "计算数值", "计量单位"),
     sum-table.map(it => (
       it.at("metric", default: "-"),
-      it.at("symbol", default: "-"),
+      render-sym(it.at("symbol", default: "-")),
       str(it.at("value", default: "-")),
       it.at("unit", default: "-")
     )),
