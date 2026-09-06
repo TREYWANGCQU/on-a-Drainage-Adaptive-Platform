@@ -1,36 +1,42 @@
 # tunnel-drainage-platform/deploy/server/Dockerfile.backend
-# 后端 FastAPI 计算引擎与 Typst 科技排版容器镜像
+# 1. 第一阶段：从官方 Typst 多架构镜像提取对应平台的纯静态二进制
+FROM ghcr.io/typst/typst:latest AS typst-provider
 
+# 2. 第二阶段：主业务与数值计算环境
 FROM python:3.11-slim
 
-# 设置工作目录与生产环境变量
 WORKDIR /app
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     APP_ENV=production \
     DB_PATH=/app/data/tunnel_params.db \
-    LOG_DIR=/app/logs
+    LOG_DIR=/app/logs \
+    TYPST_PATH=/usr/local/bin/typst
 
-# 安装系统基础库及中文开源字体（解决 Typst 编译中文乱码与字符方框）
+# 拷贝官方已编译匹配宿主指令集的 Typst 二进制
+COPY --from=typst-provider /bin/typst /usr/local/bin/typst
+
+# 安装中文字体库、curl 与基础运行时支撑
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     fonts-noto-cjk \
     fonts-wqy-zenhei \
+    && fc-cache -fv \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装 Python 核心数值计算与服务依赖
+# 安装 Python 科学计算栈依赖
 COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 拷贝后端核心业务源码及 Typst 模板
+# 拷贝后端源码及模板资产
 COPY backend/ /app/
 
-# 建立持久化数据目录与日志目录
+# 建立持久化数据目录与日志挂载点
 RUN mkdir -p /app/data /app/logs
 
-# 暴露 FastAPI 服务端口
 EXPOSE 8000
 
-# 启动 Uvicorn 多进程工作集群
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+

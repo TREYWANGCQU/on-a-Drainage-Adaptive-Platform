@@ -1,0 +1,15 @@
+# .dockerignore
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache
+**/node_modules
+**/dist
+**/.git
+**/.gitignore
+**/release
+**/desktop
+**/.DS_Store
+**/*.log
+**/data/*.db
