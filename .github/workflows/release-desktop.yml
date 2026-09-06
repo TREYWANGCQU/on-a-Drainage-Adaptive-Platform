@@ -116,6 +116,15 @@ jobs:
           npm ci
           npm run build
 
+      - name: 验证并配置 WiX Toolset 环境变量
+        shell: pwsh
+        run: |
+          $WixDir = "C:\Program Files (x86)\WiX Toolset v3.11\bin"
+          if (Test-Path $WixDir) {
+              echo "$WixDir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              Write-Host "已向 GITHUB_PATH 注入 WiX 工具链: $WixDir"
+          }
+
       - name: 执行 Tauri 2.0 原生构建 (MSI Bundle)
         shell: pwsh
         run: |
