@@ -3,3 +3,4 @@
 doc/wiki_staging/*.md text eol=lf
 *.sh text eol=lf
 *.py text eol=lf
+.github/**/*.yml text eol=lf
