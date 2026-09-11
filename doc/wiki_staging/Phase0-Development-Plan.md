@@ -1,0 +1,129 @@
+> [!NOTE]
+> **工程状态提示**：本文档由主仓库过程技术记录自动归档生成（原始文件名：`docs/stages/stage0-planning/阶段0-工程开发计划.md`）。若需查验最新架构基准与使用手册，请查阅系统主文档。
+
+<!-- 阶段0-工程开发计划.md -->
+
+# 【阶段0-工程方案】：工程开发计划路线图 (现状对齐与交付基线)
+
+本路线图系统记录“隧道工程多维协同智能排水自适应平台”从底层数学建模到工业级工程软件落地的全生命周期开发阶段。依据当前代码库真实落地状态，全面对齐各项核心模块的技术指标、交付物与实现细节。
+
+---
+
+### 阶段一：工程基座初始化与跨端环境隔离 (已完成 · Production Ready)
+确立标准化 Monorepo 体系，实现算法层、业务层、交互层与跨端宿主容器的物理隔离。
+
+1. **多工程体系拓扑结构**：
+   - 建立单体仓库 `tunnel-drainage-platform`，拆分为 `backend` (FastAPI 计算引擎)、`frontend` (Vue 3.5 交互与 Three.js 渲染)、`frontend/src-tauri` (Tauri 2.0 跨平台容器)。
+2. **后端服务环境搭建**：
+   - 配置 Python 虚拟环境与核心科学计算依赖（`fastapi`, `uvicorn`, `pydantic`, `numpy`, `pandas`, `pydantic-settings`）。
+   - 集成数据库 ORM 驱动 `sqlalchemy` 与异步驱动 `aiosqlite`；集成 Rust 现代排版编译器 `typst>=0.11.0`。
+3. **前端与桌面端工程初始化**：
+   - 初始化 Vue 3.5 + TypeScript 5.6 + Vite 6 脚手架。
+   - 引入三维渲染依赖 `three (^0.184.0)`、UI 库 `element-plus (^2.13.7)`、全局状态机 `pinia (^3.0.4)`、路由 `vue-router (^4.6.4)`、公式引擎 `katex (^0.18.4)` 与制图矢量引擎 `jspdf (^4.2.1)`。
+   - 配置 Tauri 2.0（`@tauri-apps/api: ^2.10.1`, `@tauri-apps/cli: ^2`）桌面端运行管线。
+
+---
+
+### 阶段二：后端全环耦合计算与优化引擎服务化 (已完成 · Production Ready)
+将水动力学与破损阶段法结构力学算法封装为标准化微服务，实现自适应双分支求解。
+
+1. **强类型数据接口契约化 (`backend/app/models/schemas.py`)**：
+   - 使用 Pydantic 显式定义单洞（38 维）与双洞（40 维）参数模型，内置几何尺寸、水头埋深、配筋参数等工程保底推荐值，提供字段级验证与 OpenAPI 模式文档。
+2. **水力-力学双向耦合引擎 (`backend/app/services/`)**：
+   - **水文与渗流解算 (`hydrocalc.py`)**：求解 SCS-CN 降雨暴雨产流量与地下水渗流量 $q, Q$；按水头比值 $r_0/H \ge 0.062$ 判定高/低水位，划分 4 类水文工况。
+   - **结构承载力极限解算 (`mechcalc.py`)**：结合拱顶坍塌荷载高度 $H_q$ 求解 24 单元全环轴力 $N_{elem}$、弯矩 $M_{elem}$，依据规范执行受压构件极限承载力复核，求得全环最小安全系数 $nowK$。
+   - **双分支数据协议调度 (`drainage_engine.py`)**：
+     - 安全工况 ($nowK > tol\_safety\_factor$)：组装 `original_state` 及 ECharts/Three.js 力学标量数组。
+     - 超限工况 ($nowK \le tol\_safety\_factor$)：触发自适应优化搜索。
+3. **自适应优化搜索算法 (`optimizedDesign.py`)**：
+   - 针对超限状态，以 $0.05\text{m}$ 步长自动搜索容许水头 `final_waterHead`，反算出临界加固半径 $r_{g\_crit}$ 与有效加固厚度 $t_{g\_crit}$，自适应给出排水管径及管间距加固组合，输出 `critical_state`。
+4. **服务路由暴露与接口验证 (`backend/app/api/v1/endpoints/calculate.py`)**：
+   - 暴露 `POST /api/v1/calculate/drainage` 接口，支持本地与第三方外部系统（BIM、GIS 等）调用。
+
+---
+
+### 阶段三：台账式表单交互与多工况快照流水线 (已完成 · Production Ready)
+解决高密度参数录入认知负荷问题，实现工程快照序列管理与持久化。
+
+1. **分区分级响应式表单 (`frontend/src/components/ui/ParameterForm.vue`)**：
+   - 利用 `el-collapse` 折叠面板将 38/40 维参数解构为：核心基础区（几何/水文）、复选配置区（中心水沟/纵向盲管）、高级默认参数区（围岩系数/抗力）。
+   - 提供典型工程案例快速赋值模板 (`CaseSelector.vue`)。
+2. **Pinia 状态机与脏数据监测防护 (`frontend/src/store/`)**：
+   - `parameterStore.ts`：全局响应表单变更，实时置位 `isDirty`，并在画布及面板触发警示遮罩，冻结过时云图。
+   - `snapshotStore.ts`：快照列表 CRUD 与状态指示器（🟢已计算、🟡待计算、🔴计算失败、⚠️加固超限），支持多快照并发异步批量解算。
+   - `themeStore.ts`：明亮白与科技蓝双主题切换与 CSS 变量双向联动。
+3. **参数数据库台账 (`ParameterDatabase.vue` & `backend/app/api/v1/endpoints/database.py`)**：
+   - 基于 SQLite (`aiosqlite` + `sqlalchemy`) 建立物理表 `tunnel_parameters`，提供市政、公路、铁路工程标签筛选与表单“另存为工程模板”功能。
+4. **长里程多标段 Excel 批量导入导出 (`frontend/src/utils/excelIO.ts`)**：
+   - 导出标准分段 Excel 模板；解析用户上传的各标段起止桩号与地质参数，自动构建连续快照流水线（Snapshot Sequence）。
+
+---
+
+### 阶段四：3D 多维协同数字化孪生与交互渲染 (已完成 · Production Ready)
+构建免外部 BIM 模型依赖的轻量化参数化三维场景，实现数据驱动的物理几何映射与高帧率渲染。
+
+1. **参数化几何构造生成器 (`frontend/src/components/three/TunnelGenerator.ts`)**：
+   - 依据 $r, r_1, r_2, aspect\_ratio$ 实时求解三心圆切点方程，构建拱顶、拱腰、仰拱闭合截面；采用 CSG 布尔运算在仰拱开挖中心水沟。
+2. **立体防排水管系与注浆加固阵列 (`DrainagePipeGenerator.ts` & `Reinforcement.ts`)**：
+   - 采用 `THREE.InstancedMesh` 实例化阵列渲染环向盲管、纵向暗管及引水管，动态响应优化管径与间距；生成常规/临界注浆加固圈及外插角超前小导管。
+3. **动水环境随动与粒子系统 (`Environment.ts`)**：
+   - 水位面标高依据计算水头动态抬升/降低；结合 GPU 粒子系统动态模拟随涌水量 $Q$ 变速流动的渗流粒子场。
+4. **24 单元应力云图与全环探针 (`PostProcessing.ts` & `shaders/`)**：
+   - 编写自定义顶点/片元着色器（`lining.vert`/`lining.frag`），将 24 单元安全系数向量平滑插值到衬砌网格表面；基于 `Raycaster` 自动定位最不利控制点并锚定 3D 浮动探针。
+5. **画中画放大镜与多方案分屏对比 (`MagnifierPIP.vue` & `CompareView.vue`)**：
+   - 引入局部画中画放大镜，实时观察管节细部；支持双视角分屏对比模式，双相机同步联动对比原始超限方案与临界优化方案。
+6. **多快照长里程沿线拼装 (`Viewer3D.vue`)**：
+   - 依据各快照起止里程（`start_chainage` ~ `end_chainage`），沿隧道设计中心线连续空间装配三维实体模型。
+
+---
+
+### 阶段五：工程计算书与数字化施工蓝图直出引擎 (已完成 · 核心增补交付)
+补全工程从“算”到“用”的闭环，实现符合行业标准的规范计算书与 A3 数字化蓝图导出。
+
+1. **自动化工程计算书编制子系统 (`frontend/src/components/calculationBook/`)**：
+   - **交互式规范报告预览**：以 `CalculationBookModal.vue` 为入口，涵盖 6 大标准规范章节：
+     - `Chapter1Basis.vue`（设计依据与标准规范引用）
+     - `Chapter2Params.vue`（计算输入参数明细核对表）
+     - `Chapter3Seepage.vue`（水文产流与渗流涌水量计算书）
+     - `Chapter4Mech.vue`（破损阶段法 24 单元全环受力验算表）
+     - `Chapter5Optimize.vue`（智能加固反演与推荐设计方案）
+     - `Chapter6Conclusion.vue`（工程达标评价、监测预警与施工建议）
+   - **Typst 毫秒级纯矢量排版导出 (`backend/app/services/typst_exporter.py`)**：
+     - 后端加载标准科技报告模板 `calculation_book.typ`，调用 Typst 编译器实时生成纯矢量 A4 计算书 PDF。
+     - 支持多线程并发批量编译多工况快照，并在内存流中直接打包为 `.zip` 交付。
+2. **数字化 A3 标准施工设计图直出引擎 (`frontend/src/utils/blueprintGenerator.ts`)**：
+   - **国家建筑制图标准严格对齐**：严格贯彻 GB/T 50001 与 GB/T 50104-2010 规范，在 4200×2970 标定像素坐标系下绘制 A3 横向工程图。
+   - **模数比例尺系统**：支持 `1:50`, `1:75`, `1:100`, `1:150`, `1:200` 5 组标准比例尺与黑白交替标准刻度条。
+   - **全要素施工大样自动化排版**：
+     - 自动排版标准工程右下角图签（工程名、图名、桩号区间、比例尺、设计阶段、日期）。
+     - 精准绘制衬砌三心圆构造详图、注浆加固边界、排水管系布置、工程标高线与尺寸标注线、设计参数指标清单表。
+   - **多格式交付**：支持一键导出超高清施工图 PNG 与矢量 A3 蓝图 PDF。
+
+---
+
+### 阶段六：系统跨端融合、性能调优与交付验收 (当前推进 · 收敛交付阶段)
+确保系统在生产环境及轻量桌面端稳定运行，完成全功能回归测试与打包交付。
+
+1. **跨端桌面容器融合 (`frontend/src-tauri` / `desktop`)**：
+   - 优化 Tauri 2.0 窗体配置，设置安全 IPC 通信策略，配置桌面端生命周期自动唤醒/守护后端 Python 进程。
+2. **长里程大体量场景性能调优**：
+   - 验证长里程（>10 个分区断面）在 InstancedMesh 连续拼装下的显存占用，保证 60 FPS 流畅交互无内存泄露与 WebGL 上下文丢失。
+3. **全流程回归与工业级交付验收**：
+   - 验证“参数录入/Excel导入 -> 4工况水力结构解算 -> 3D孪生映射/应力云图 -> 自适应超限加固 -> Typst计算书导出 -> A3蓝图打印”全链路闭环。
+   - 执行 `npm run tauri build`，在 Windows 目标平台打包输出轻量独立桌面安装包（`.exe` / `.msi`）。
+
+---
+
+### 核心里程碑交付物清单与代码索引
+
+| 模块类别 | 核心交付物源文件 | 功能描述 | 状态 |
+| :--- | :--- | :--- | :--- |
+| **后端核心** | [`drainage_engine.py`](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/backend/app/services/drainage_engine.py) | 4工况判别、全环水力结构耦合与双分支调度 | 已交付 |
+| **优化内核** | [`optimizedDesign.py`](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/backend/app/services/optimizedDesign.py) | 容许水头搜索、临界注浆厚度与管网自适应优化 | 已交付 |
+| **矢量编译** | [`typst_exporter.py`](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/backend/app/services/typst_exporter.py) | Typst 模板驱动纯矢量 A4 计算书编译与 ZIP 打包 | 已交付 |
+| **计算书界面** | [`CalculationBookModal.vue`](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/frontend/src/components/calculationBook/CalculationBookModal.vue) | 6大标准规范章节全屏交互式预览与导出控制台 | 已交付 |
+| **施工蓝图直出** | [`blueprintGenerator.ts`](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/frontend/src/utils/blueprintGenerator.ts) | GB/T 50104-2010 A3 横向施工图绘制与矢量 PDF 导出 | 已交付 |
+| **3D 数字化孪生** | [`Viewer3D.vue`](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/frontend/src/components/three/Viewer3D.vue) | 剖切、着色器应力云图、探针、长里程拼装、画中画放大镜 | 已交付 |
+| **多方案对比** | [`CompareView.vue`](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/frontend/src/views/CompareView.vue) | 双视角同频相机联动对比超限与加固方案 | 已交付 |
+| **参数台账** | [`ParameterDatabase.vue`](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/frontend/src/views/ParameterDatabase.vue) | SQLite 后端参数模板 CRUD 与示点工程分类检索 | 已交付 |
+| **桌面端构建** | [`tauri.conf.json`](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/frontend/src-tauri/tauri.conf.json) | Tauri 2.0 桌面端打包与跨平台分发配置 | 验证中 |

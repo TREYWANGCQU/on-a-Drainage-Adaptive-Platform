@@ -1,74 +1,63 @@
 # .github/workflows/wiki-sync.yml
+# 隧道工程多维协同智能排水自适应平台 - GitHub Wiki 持续同步发布流水线 (wiki-curator 标准规范)
 name: "GitHub Wiki Sync Pipeline"
 
 on:
   push:
     branches:
       - main
+      - master
     paths:
-      - 'docs/**'
-      - 'scripts/wiki/**'
-      - '*.md'
+      - 'doc/wiki_staging/**'
       - '.github/workflows/wiki-sync.yml'
   workflow_dispatch:
+
+concurrency:
+  group: wiki-sync
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
   sync-wiki:
-    name: "Build & Deploy Knowledge Base to Wiki"
+    name: "Deploy Staging to GitHub Wiki"
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout Main Repository"
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          path: main-repo
 
-      - name: "Set up Python Environment"
-        uses: actions/setup-python@v5
+      - name: "Checkout Wiki Repository"
+        uses: actions/checkout@v4
         with:
-          python-version: "3.11"
+          repository: ${{ github.repository }}.wiki
+          token: ${{ secrets.WIKI_SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          path: wiki-repo
 
-      - name: "Install Dependencies"
+      - name: "Sync Staged Documents to Wiki"
         run: |
-          python -m pip install --upgrade pip
-          pip install pyyaml
+          echo "=== 正在同步 doc/wiki_staging 至 Wiki 工作区 ==="
+          mkdir -p wiki-repo
+          # 清理除 .git 之外的历史残留页面，实现精确镜像同步
+          find wiki-repo -maxdepth 1 -not -name '.git' -not -name '.' -exec rm -rf {} +
+          cp -r main-repo/doc/wiki_staging/* wiki-repo/
+          ls -la wiki-repo/
 
-      - name: "Compile Knowledge Base via Builder Engine"
+      - name: "Commit and Deploy Changes to Wiki"
+        working-directory: wiki-repo
         run: |
-          python scripts/wiki/build-wiki.py --manifest docs/wiki-manifest.yml --output dist/wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: "Check Wiki Remote Availability"
-        id: check_wiki
-        env:
-          WIKI_REPO: "https://x-access-token:${{ secrets.WIKI_SYNC_TOKEN || secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git"
-        run: |
-          if git ls-remote "$WIKI_REPO" HEAD; then
-            echo "wiki_available=true" >> $GITHUB_OUTPUT
-          else
-            echo "wiki_available=false" >> $GITHUB_OUTPUT
-            echo "::warning title=Wiki Not Initialized::The GitHub Wiki repository for ${{ github.repository }} has not been initialized yet on the web UI. Please click 'Create the first page' on the GitHub Wiki tab to activate it."
+          if [ -z "$(git status --porcelain)" ]; then
+            echo ">>> Wiki 没有任何变动，无需提交。"
+            exit 0
           fi
 
-      - name: "Deploy to Wiki Repository"
-        if: steps.check_wiki.outputs.wiki_available == 'true'
-        env:
-          WIKI_REPO: "https://x-access-token:${{ secrets.WIKI_SYNC_TOKEN || secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git"
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          mkdir -p /tmp/wiki_repo
-          git clone "$WIKI_REPO" /tmp/wiki_repo
-          cp -r dist/wiki/* /tmp/wiki_repo/
-
-          cd /tmp/wiki_repo
-          git add -A
-          if git diff-index --quiet HEAD --; then
-            echo "No changes in Wiki documentation. Skipping commit."
-          else
-            git commit -m "docs(wiki): automated sync from main repository (${{ github.sha }})"
-            git push origin HEAD
-            echo "Successfully updated GitHub Wiki!"
-          fi
+          echo ">>> 检测到 Wiki 内容变更，准备提交并推送..."
+          git add .
+          git commit -m "docs(wiki): automated sync from main commit ${{ github.sha }}"
+          git push origin HEAD
+          echo "=== GitHub Wiki 知识库已成功发布并上线! ==="

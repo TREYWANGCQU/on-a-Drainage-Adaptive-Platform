@@ -86,17 +86,26 @@ def sanitize_wiki_page(
     # 2. 跨文档链接重写 [xxx](阶段x-xxx.md) -> [[xxx|TargetSlug]]
     def link_replacer(match):
         text = match.group(1)
-        target = match.group(2).strip()
-        # 如果是内部 markdown 引用
-        for src_name, target_slug in source_to_slug.items():
-            if target == src_name or target.endswith("/" + src_name) or target.endswith("\\" + src_name):
-                return f"[[{text}|{target_slug}]]"
-        # 锚点直接保留
-        if target.startswith("#"):
-            return f"[{text}]({target})"
+        raw_target = match.group(2).strip()
         # 外部链接保持原样
-        if target.startswith("http://") or target.startswith("https://"):
-            return f"[{text}]({target})"
+        if raw_target.startswith("http://") or raw_target.startswith("https://"):
+            return match.group(0)
+        # 纯锚点直接保留
+        if raw_target.startswith("#"):
+            return f"[{text}]({raw_target})"
+
+        target_clean = raw_target.split('#')[0].replace('\\', '/')
+        anchor = ("#" + raw_target.split('#')[1]) if '#' in raw_target else ""
+
+        # 如果是内部 markdown 引用，支持全路径、相对路径或文件名匹配
+        for src_name, target_slug in source_to_slug.items():
+            src_clean = src_name.replace('\\', '/')
+            if (target_clean == src_clean or 
+                target_clean.endswith('/' + src_clean) or 
+                src_clean.endswith('/' + target_clean) or 
+                Path(src_clean).name == Path(target_clean).name):
+                return f"[[{text}|{target_slug}{anchor}]]"
+
         return match.group(0)
 
     processed_content = re.sub(r'\[([^\]]+)\]\(([^)]+\.md(?:#[^)]*)?)\)', link_replacer, content)
@@ -306,7 +315,7 @@ def build_wiki(manifest_path: Path, output_dir: Path, repo_root: Path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="GitHub Wiki 转换与构建引擎")
     parser.add_argument("--manifest", default="docs/wiki-manifest.yml", help="编排清单路径")
-    parser.add_argument("--output", default="dist/wiki", help="Wiki 输出目标目录")
+    parser.add_argument("--output", default="doc/wiki_staging", help="Wiki 输出目标目录")
     parser.add_argument("--repo-root", default=".", help="代码仓库根目录")
     args = parser.parse_args()
 

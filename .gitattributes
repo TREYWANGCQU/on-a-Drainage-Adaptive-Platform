@@ -1,0 +1,5 @@
+# .gitattributes
+# 固化受控 Wiki 暂存区的换行符为 LF，杜绝跨平台 Git 提交产生 CRLF 脏变动
+doc/wiki_staging/*.md text eol=lf
+*.sh text eol=lf
+*.py text eol=lf

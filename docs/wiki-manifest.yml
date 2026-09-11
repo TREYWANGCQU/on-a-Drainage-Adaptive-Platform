@@ -1,8 +1,8 @@
 # docs/wiki-manifest.yml
 # 隧道工程多维协同智能排水自适应平台 - GitHub Wiki 知识库编排控制清单
-# 规范版本: v1.1.0
+# 规范版本: v2.0.0 (Curator-Integrated & Clean Root Architecture)
 
-version: "1.1.0"
+version: "2.0.0"
 settings:
   site_title: "隧道工程多维协同智能排水平台知识库"
   sidebar_collapsible: true
@@ -12,7 +12,7 @@ categories:
   - id: "portal"
     title: "🏠 门户与全局指南"
     pages:
-      - source: "系统双模式部署与使用说明书.md"
+      - source: "docs/manuals/系统双模式部署与使用说明书.md"
         wiki_title: "系统双模式部署与使用说明书"
         slug: "Manual-System-Deployment-Guide"
         tier: 1
@@ -21,12 +21,12 @@ categories:
   - id: "phase0"
     title: "📌 阶段 0：顶层设计与规划"
     pages:
-      - source: "阶段0-工程总体技术架构.md"
+      - source: "docs/stages/stage0-planning/阶段0-工程总体技术架构.md"
         wiki_title: "工程总体技术架构方案"
         slug: "Phase0-System-Architecture"
         tier: 1
         status: "curated"
-      - source: "阶段0-工程开发计划.md"
+      - source: "docs/stages/stage0-planning/阶段0-工程开发计划.md"
         wiki_title: "工程开发计划与里程碑"
         slug: "Phase0-Development-Plan"
         tier: 2
@@ -35,32 +35,32 @@ categories:
   - id: "phase1"
     title: "📌 阶段 1：算法核心与参数基准"
     pages:
-      - source: "阶段1-输入参数全系统更新与对齐方案.md"
+      - source: "docs/stages/stage1-algorithm/阶段1-输入参数全系统更新与对齐方案.md"
         wiki_title: "输入参数全系统更新与对齐方案"
         slug: "Phase1-Input-Parameters-Alignment"
         tier: 1
         status: "curated"
-      - source: "阶段1-计算引擎对比校验方案.md"
+      - source: "docs/stages/stage1-algorithm/阶段1-计算引擎对比校验方案.md"
         wiki_title: "计算引擎对比校验与精度验证"
         slug: "Phase1-Engine-Verification"
         tier: 1
         status: "verified"
-      - source: "阶段1-排水管网3D标注与推荐管径对齐方案.md"
+      - source: "docs/stages/stage1-algorithm/阶段1-排水管网3D标注与推荐管径对齐方案.md"
         wiki_title: "排水管网3D标注与推荐管径对齐"
         slug: "Phase1-Drainage-Annotation-Alignment"
         tier: 2
         status: "verified"
-      - source: "阶段1-python依赖的排查.md"
+      - source: "docs/stages/stage1-algorithm/阶段1-python依赖的排查.md"
         wiki_title: "Python环境与依赖排查规范"
         slug: "Phase1-Python-Environment-Setup"
         tier: 3
         status: "verified"
-      - source: "阶段1-python的虚拟开发环境.md"
+      - source: "docs/stages/stage1-algorithm/阶段1-python的虚拟开发环境.md"
         wiki_title: "Python虚拟开发环境搭建指南"
         slug: "Phase1-Python-Venv-Guide"
         tier: 3
         status: "verified"
-      - source: "阶段1-前端初始化说明.md"
+      - source: "docs/stages/stage1-algorithm/阶段1-前端初始化说明.md"
         wiki_title: "前端技术栈与初始化说明"
         slug: "Phase1-Frontend-Initialization"
         tier: 3
@@ -69,22 +69,22 @@ categories:
   - id: "phase2_3"
     title: "📌 阶段 2 & 3：后端服务与数据底座"
     pages:
-      - source: "阶段2-后端测试与 Debug 详细工程方案.md"
+      - source: "docs/stages/stage2-backend/阶段2-后端测试与 Debug 详细工程方案.md"
         wiki_title: "后端测试与 Debug 详细工程方案"
         slug: "Phase2-Backend-Testing-Debug"
         tier: 1
         status: "curated"
-      - source: "阶段3-数据库专项定义与调试.md"
+      - source: "docs/stages/stage3-database/阶段3-数据库专项定义与调试.md"
         wiki_title: "数据库专项定义与调试规范"
         slug: "Phase3-Database-Specification"
         tier: 2
         status: "verified"
-      - source: "阶段3-前端台账式表单与数据流转落地开发配置方案.md"
+      - source: "docs/stages/stage3-database/阶段3-前端台账式表单与数据流转落地开发配置方案.md"
         wiki_title: "前端台账式表单与数据流转架构"
         slug: "Phase3-Form-DataFlow-Architecture"
         tier: 1
         status: "curated"
-      - source: "阶段3-关于“脏数据”的标注.md"
+      - source: "docs/stages/stage3-database/阶段3-关于“脏数据”的标注.md"
         wiki_title: "数据清洗与脏数据标定治理"
         slug: "Phase3-Data-Sanitization-Rules"
         tier: 2
@@ -93,77 +93,82 @@ categories:
   - id: "phase4"
     title: "📌 阶段 4：3D 可视化与空间协同体系"
     pages:
-      - source: "阶段4-3D可视化交互工程方案.md"
+      - source: "docs/stages/stage4-3d-visual/core/阶段4-3D可视化交互工程方案.md"
         wiki_title: "3D 可视化交互工程总体方案"
         slug: "Phase4-3D-Visualization-Overview"
         tier: 1
         status: "curated"
-      - source: "阶段4-3D多维协同与对比看板优化更新方案.md"
+      - source: "docs/stages/stage4-3d-visual/core/阶段4-3D多维协同与对比看板优化更新方案.md"
         wiki_title: "3D 多维协同与对比看板优化方案"
         slug: "Phase4-Multi-Dimension-Dashboard"
         tier: 2
         status: "curated"
-      - source: "阶段4-3D模型解算与可视化对应关系核算报告.md"
+      - source: "docs/stages/stage4-3d-visual/core/阶段4-3D模型解算与可视化对应关系核算报告.md"
         wiki_title: "3D 模型解算与可视化对应关系核算"
         slug: "Phase4-3D-Model-Verification-Report"
         tier: 2
         status: "verified"
-      - source: "阶段4-3D模型解算与可视化对应关系修复方案.md"
+      - source: "docs/stages/stage4-3d-visual/core/阶段4-3D模型解算与可视化对应关系修复方案.md"
         wiki_title: "3D 模型解算与对应关系修复方案"
         slug: "Phase4-3D-Model-Fix-Plan"
         tier: 3
         status: "verified"
-      - source: "阶段4-Agent编码实现与验证步骤指南.md"
+      - source: "docs/stages/stage4-3d-visual/core/阶段4-3D模型渲染条纹与旋转消失问题分析方案.md"
+        wiki_title: "3D 模型渲染排查与问题分析"
+        slug: "Phase4-3D-Render-Troubleshooting"
+        tier: 3
+        status: "verified"
+      - source: "docs/stages/stage4-3d-visual/core/阶段4-Agent编码实现与验证步骤指南.md"
         wiki_title: "Agent 编码实现与验证步骤指南"
         slug: "Phase4-Agent-Implementation-Guide"
         tier: 2
         status: "verified"
-      - source: "阶段4-snapshot的特点提取.md"
+      - source: "docs/stages/stage4-3d-visual/core/阶段4-snapshot的特点提取.md"
         wiki_title: "快照 (Snapshot) 特征提取与标准规范"
         slug: "Phase4-Snapshot-Feature-Extraction"
         tier: 2
         status: "verified"
-      - source: "阶段4-专题-中间排水沟自适应几何建模与参数联动架构方案.md"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-中间排水沟自适应几何建模与参数联动架构方案.md"
         wiki_title: "专题：中间排水沟自适应几何建模架构"
         slug: "Phase4-Topic-Central-Ditch-Modeling"
         tier: 1
         status: "curated"
-      - source: "阶段4-专题-基于Typst编译引擎的计算书批量导出与ZIP打包架构方案.md"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-基于Typst编译引擎的计算书批量导出与ZIP打包架构方案.md"
         wiki_title: "专题：基于Typst的计算书批量导出与打包"
         slug: "Phase4-Topic-Typst-Calculation-Export"
         tier: 1
         status: "curated"
-      - source: "阶段4-专题-快照防排水优化设计计算书A4-PDF参数化生成与导出架构方案.md"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-快照防排水优化设计计算书A4-PDF参数化生成与导出架构方案.md"
         wiki_title: "专题：快照防排水计算书参数化生成方案"
         slug: "Phase4-Topic-Snapshot-PDF-Generation"
         tier: 2
         status: "verified"
-      - source: "阶段4-专题-快照卡片施工设计图自动生成与导出工程方案.md"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-快照卡片施工设计图自动生成与导出工程方案.md"
         wiki_title: "专题：快照卡片施工设计图自动生成"
         slug: "Phase4-Topic-Snapshot-CAD-Generation"
         tier: 1
         status: "curated"
-      - source: "阶段4-专题-3D多计算段选区折叠交互与最不利受力探针随动架构方案.md"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-3D多计算段选区折叠交互与最不利受力探针随动架构方案.md"
         wiki_title: "专题：最不利受力探针随动架构"
         slug: "Phase4-Topic-Critical-Stress-Probe"
         tier: 1
         status: "curated"
-      - source: "阶段4-专题-自适应顶栏与百级快照侧边栏检索折叠架构方案.md"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-自适应顶栏与百级快照侧边栏检索折叠架构方案.md"
         wiki_title: "专题：自适应顶栏与百级快照侧边栏检索"
         slug: "Phase4-Topic-Header-Sidebar-Retriever"
         tier: 2
         status: "verified"
-      - source: "阶段4-专题-排水管网3D模型专项问题诊断与完善方案.md"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-排水管网3D模型专项问题诊断与完善方案.md"
         wiki_title: "专题：排水管网3D模型专项问题诊断"
         slug: "Phase4-Topic-Drainage-Network-Diagnosis"
         tier: 2
         status: "verified"
-      - source: "阶段4-专题-路面与排水沟几何修复方案.md"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-路面与排水沟几何修复方案.md"
         wiki_title: "专题：路面与排水沟几何修复方案"
         slug: "Phase4-Topic-Pavement-Ditch-Repair"
         tier: 3
         status: "verified"
-      - source: "阶段4-专题-最不利探针与结构受力表达问题诊断与修复方案.md"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-最不利探针与结构受力表达问题诊断与修复方案.md"
         wiki_title: "专题：探针结构受力问题诊断与修复"
         slug: "Phase4-Topic-Stress-Probe-Diagnosis"
         tier: 3
@@ -176,37 +181,42 @@ categories:
         tier: 1
         status: "curated"
         original_references:
-          - "阶段4-第一次-3D材质灯光美化与微观局部放大方案.md"
-          - "阶段4-第一次-3D可视化交互问题诊断与修正方案.md"
-          - "阶段4-第二次-3D材质灯光美化与排水沟高亮方案.md"
-          - "阶段4-第二次-3D可视化交互问题诊断与修正方案.md"
-          - "阶段4-第三次-拓扑几何修复与PBR物理透光美化方案.md"
-          - "阶段4-第三次-3D模型问题诊断与修正方案.md"
-          - "阶段4-第四次-排水沟拓扑几何修复与剖分异常治理方案.md"
-          - "阶段4-第四次-3D模型与剖切交互问题诊断与修复方案.md"
-          - "阶段4-第五次-3D视图排水标注与相机动画交互优化方案.md"
-          - "阶段4-第六次-排水沟发光去化与HDRI光影响应更新方案.md"
-          - "阶段4-第七次-排水管网坐标匹配与管网闭合优化方案.md"
-          - "阶段4-第八次-水文环境地表美化与埋深图层融合方案.md"
-          - "阶段4-第九次-全图层半透明美化与黄金核心材质优化方案.md"
-          - "阶段4-第十次-路面与排水沟拓扑解耦与几何重构方案.md"
-          - "阶段4-第十一次-排水管标注响应收敛与两通三通放大镜方案.md"
-          - "阶段4-第十二次-排水管径倍数放大会显与一键还原控件方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第一次-3D材质灯光美化与微观局部放大方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第一次-3D可视化交互问题诊断与修正方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第二次-3D材质灯光美化与排水沟高亮方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第二次-3D可视化交互问题诊断与修正方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第三次-拓扑几何修复与PBR物理透光美化方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第三次-3D模型问题诊断与修正方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第四次-排水沟拓扑几何修复与剖分异常治理方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第四次-3D模型与剖切交互问题诊断与修复方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第五次-3D视图排水标注与相机动画交互优化方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第六次-排水沟发光去化与HDRI光影响应更新方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第七次-排水管网坐标匹配与管网闭合优化方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第八次-水文环境地表美化与埋深图层融合方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第九次-全图层半透明美化与黄金核心材质优化方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第十次-路面与排水沟拓扑解耦与几何重构方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第十一次-排水管标注响应收敛与两通三通放大镜方案.md"
+          - "docs/stages/stage4-3d-visual/iterations/阶段4-第十二次-排水管径倍数放大会显与一键还原控件方案.md"
 
   - id: "phase6"
     title: "📌 阶段 6：工程交付与自动化流水线"
     pages:
-      - source: "阶段6-服务器与桌面独立GUI双模式交付系统架构方案.md"
+      - source: "docs/stages/stage6-delivery/阶段6-服务器与桌面独立GUI双模式交付系统架构方案.md"
         wiki_title: "服务器与桌面独立GUI双模式交付架构"
         slug: "Phase6-Dual-Mode-Delivery-Architecture"
         tier: 1
         status: "curated"
-      - source: "阶段6-GitHub自动发布与大版本CI-CD流水线方案.md"
+      - source: "docs/stages/stage6-delivery/阶段6-GitHub自动发布与大版本CI-CD流水线方案.md"
         wiki_title: "GitHub 自动发布与大版本 CI-CD 流水线"
         slug: "Phase6-GitHub-Release-Pipeline"
         tier: 1
         status: "curated"
-      - source: "阶段6-GitHub-Wiki知识库体系化构建与自动化同步方案.md"
+      - source: "docs/stages/stage6-delivery/阶段6-Docker服务器版镜像构建与DockerHub发布方案.md"
+        wiki_title: "Docker 服务器版镜像构建与发布方案"
+        slug: "Phase6-Docker-Build-Delivery"
+        tier: 2
+        status: "verified"
+      - source: "docs/stages/stage6-delivery/阶段6-GitHub-Wiki知识库体系化构建与自动化同步方案.md"
         wiki_title: "GitHub Wiki 体系化构建与自动化同步方案"
         slug: "Phase6-GitHub-Wiki-Automation-Scheme"
         tier: 1
@@ -220,8 +230,8 @@ categories:
         slug: "CHANGELOG"
         tier: 2
         status: "verified"
-      - source: "prompt-calculate.md"
+      - source: "docs/prompts/prompt-calculate.md"
         wiki_title: "计算书参数 Prompt 工程资产"
         slug: "Prompt-Calculation-Asset"
-        tier: 3
+        tier: 2
         status: "verified"
