@@ -274,27 +274,63 @@
       <!-- 表单底部操作区 -->
       <div class="form-actions">
         <el-button type="success" plain icon="UploadCloud" @click="saveDialogVisible = true">
-          另存为至参数库 (数据沉淀)
+          另存为至参数库
         </el-button>
       </div>
     </el-form>
 
     <!-- 入库参数配置弹窗 -->
-    <el-dialog v-model="saveDialogVisible" title="固化工程参数" width="400px" destroy-on-close>
-      <el-form :model="saveForm" label-width="100px" size="default">
-        <el-form-item label="工程命名" required>
-          <el-input v-model="saveForm.projectName" placeholder="如: 晏家隧道-K20+100段" />
+    <el-dialog 
+      v-model="saveDialogVisible" 
+      title="固化当前分段至参数库" 
+      width="440px" 
+      destroy-on-close
+      @open="fetchProjectGroupsForSave"
+    >
+      <el-form :model="saveForm" label-width="110px" size="default">
+        <el-form-item label="归属工程组">
+          <el-select 
+            v-model="saveForm.groupId" 
+            placeholder="选择归属工程组或新建" 
+            style="width: 100%"
+            @change="handleGroupChange"
+          >
+            <el-option label="✨ 新建独立工程组" :value="0" />
+            <el-option 
+              v-for="grp in projectGroupList" 
+              :key="grp.id" 
+              :label="`${grp.group_name} (${grp.tunnel_type} · ${grp.segment_count}段)`" 
+              :value="grp.id" 
+            />
+          </el-select>
         </el-form-item>
+
+        <el-form-item label="新建组名" v-if="saveForm.groupId === 0" required>
+          <el-input v-model="saveForm.newGroupName" placeholder="如: 晏家隧道工程" />
+        </el-form-item>
+
+        <el-form-item label="分段工程命名" required>
+          <el-input v-model="saveForm.projectName" placeholder="如: 晏家隧道_K0+000~K0+047" />
+        </el-form-item>
+
         <el-form-item label="工程分类" required>
-          <el-select v-model="saveForm.tunnelClass" placeholder="选择隧道交通属性" style="width: 100%">
-            <el-option label="城市道路" value="城市道路" />
-            <el-option label="城市轨道" value="城市轨道" />
+          <el-select 
+            v-model="saveForm.tunnelClass" 
+            placeholder="选择隧道交通属性" 
+            style="width: 100%"
+            :disabled="saveForm.groupId !== 0"
+          >
             <el-option label="公路" value="公路" />
             <el-option label="铁路" value="铁路" />
+            <el-option label="城市道路" value="城市道路" />
+            <el-option label="城市轨道" value="城市轨道" />
             <el-option label="水工" value="水工" />
             <el-option label="综合管廊" value="综合管廊" />
             <el-option label="其他" value="其他" />
           </el-select>
+          <span v-if="saveForm.groupId !== 0" class="cascade-lock-tip">
+            🔒 继承自所选工程组分类，不可单独修改
+          </span>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -380,33 +416,99 @@ paramStore.$subscribe((mutation, state) => {
 // 数据库写入交互状态
 const saveDialogVisible = ref(false);
 const isSaving = ref(false);
+const projectGroupList = ref<any[]>([]);
+
 const saveForm = ref({
+  groupId: 0,
+  newGroupName: '',
   projectName: '',
   tunnelClass: '公路'
 });
 
+// 打开弹窗时拉取最新工程组列表
+const fetchProjectGroupsForSave = async () => {
+  try {
+    const res: any = await apiClient.get('/database/projects');
+    projectGroupList.value = res || [];
+    if (projectGroupList.value.length > 0) {
+      saveForm.value.groupId = projectGroupList.value[0].id;
+      saveForm.value.tunnelClass = projectGroupList.value[0].tunnel_type;
+    } else {
+      saveForm.value.groupId = 0;
+      saveForm.value.tunnelClass = '公路';
+    }
+  } catch (e) {
+    projectGroupList.value = [];
+  }
+};
+
+// 级联锁定响应：选择已有工程组自动锁定分类，选择新建组时解锁
+const handleGroupChange = (val: number) => {
+  if (val === 0) {
+    // 新建组，保持或自选
+  } else {
+    const matched = projectGroupList.value.find(g => g.id === val);
+    if (matched) {
+      saveForm.value.tunnelClass = matched.tunnel_type;
+    }
+  }
+};
+
 const submitToDatabase = async () => {
-  if (!saveForm.value.projectName) {
-    ElMessage.warning('工程命名不能为空');
+  if (!saveForm.value.projectName.trim()) {
+    ElMessage.warning('分段工程命名不能为空');
     return;
   }
+  if (saveForm.value.groupId === 0 && !saveForm.value.newGroupName.trim()) {
+    ElMessage.warning('请输入新建工程组名称');
+    return;
+  }
+
   isSaving.value = true;
   try {
+    let targetGroupId = saveForm.value.groupId;
+
+    // 若是新建工程组，通过 batch 创建或单段指定组
+    if (targetGroupId === 0) {
+      // 批量创建单个工程组
+      const batchRes: any = await apiClient.post('/database/parameters/batch', {
+        group_name: saveForm.value.newGroupName.trim(),
+        engineering_category: saveForm.value.tunnelClass,
+        description: '单段入库创建的工程组',
+        naming_pattern: 'standard_station',
+        conflict_mode: 'append',
+        segments: [{
+          remark: saveForm.value.projectName.trim(),
+          start_chainage: formData.value.start_chainage,
+          end_chainage: formData.value.end_chainage,
+          parameters_json: paramStore.currentPayload,
+          results_json: paramStore.currentResults || null
+        }]
+      });
+      ElMessage.success(`已创建工程组 [${saveForm.value.newGroupName}] 并固化分段参数`);
+      saveDialogVisible.value = false;
+      saveForm.value.projectName = '';
+      saveForm.value.newGroupName = '';
+      return;
+    }
+
     const payload = {
-      project_name: saveForm.value.projectName,
+      group_id: targetGroupId,
+      project_name: saveForm.value.projectName.trim(),
+      engineering_category: saveForm.value.tunnelClass,
       tunnel_type: saveForm.value.tunnelClass,
       parameters_json: paramStore.currentPayload,
       results_json: paramStore.currentResults || null
     };
 
-    // 使用 apiClient，剥离重复的前缀
     await apiClient.post('/database/parameters', payload);
     
-    ElMessage.success('工程参数已成功固化至数据库');
+    ElMessage.success(`分段参数已成功固化至工程数据库`);
     saveDialogVisible.value = false;
-    saveForm.value.projectName = ''; // 重置表单
-  } catch (error) {
-    ElMessage.error('入库失败: ' + (error as any).message);
+    saveForm.value.projectName = '';
+  } catch (error: any) {
+    const detail = error.response?.data?.detail || error.message || '未知错误';
+    ElMessage.error('入库失败: ' + detail);
   } finally {
     isSaving.value = false;
   }
@@ -423,5 +525,12 @@ const submitToDatabase = async () => {
   justify-content: center;
   border-top: 1px dashed var(--sys-border);
   padding-top: 15px;
+}
+.cascade-lock-tip {
+  font-size: 12px;
+  color: var(--el-color-info);
+  margin-top: 4px;
+  display: block;
+  line-height: 1.4;
 }
 </style>

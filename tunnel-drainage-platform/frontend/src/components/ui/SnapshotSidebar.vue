@@ -43,6 +43,17 @@
             <el-icon><Plus /></el-icon>
             <span class="btn-label">保存快照</span>
           </el-button>
+          <el-button 
+            type="info" 
+            size="small" 
+            plain 
+            class="header-btn" 
+            @click="openBatchArchiveModal(false)"
+            title="将当前快照全量批量持久化入库至工程数据库"
+          >
+            <el-icon><FolderAdd /></el-icon>
+            <span class="btn-label">批量入库</span>
+          </el-button>
         </div>
       </div>
 
@@ -269,6 +280,20 @@
           <el-button link type="info" size="small" class="batch-clear-btn" @click="clearSelectedCards">清空</el-button>
         </div>
         <div class="batch-bar-actions">
+          <el-button 
+            type="success" 
+            size="small" 
+            plain
+            class="batch-quick-btn" 
+            @click="openBatchArchiveModal(true)"
+            title="将当前已勾选工况批量持久化入库至参数工程库"
+          >
+            <el-icon><Upload /></el-icon>
+            <span class="batch-btn-text">
+              <span class="text-full">批量入库</span>
+              <span class="text-compact">入库</span>
+            </span>
+          </el-button>
           <el-button 
             type="warning" 
             size="small" 
@@ -626,12 +651,146 @@
       v-model="showCalcBookModal"
       :snapshot="currentCalcBookSnap"
     />
+
+    <!-- 8. 批量入库至工程数据库沉浸式模态弹窗 -->
+    <el-dialog
+      v-model="batchArchiveModalVisible"
+      title="📦 批量入库至参数工程库"
+      width="580px"
+      destroy-on-close
+      class="batch-archive-dialog"
+      @open="onBatchArchiveModalOpen"
+    >
+      <div class="archive-modal-content">
+        <!-- 未计算工况入库自适应友好提示 -->
+        <el-alert
+          v-if="pendingArchiveCount > 0"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="archive-pending-alert"
+        >
+          <template #title>
+            <span>包含未计算工况 ({{ pendingArchiveCount }} 项)</span>
+          </template>
+          <template #default>
+            <span>所选工况中包含 {{ pendingArchiveCount }} 项尚未完成计算，将以纯参数工况入库，回载后可随时启动批量计算补齐成果。</span>
+          </template>
+        </el-alert>
+
+        <el-form :model="archiveForm" label-width="110px" size="default" class="archive-form">
+          <el-form-item label="入库范围">
+            <el-radio-group v-model="archiveTargetIsSelectedOnly">
+              <el-radio :label="false">全量当前快照 ({{ totalCount }} 段)</el-radio>
+              <el-radio :label="true" :disabled="selectedCount === 0">仅已勾选快照 ({{ selectedCount }} 段)</el-radio>
+            </el-radio-group>
+          </el-form-item>
+
+          <el-form-item label="工程组名" required>
+            <el-select
+              v-model="archiveForm.groupName"
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择既有工程组或输入新工程组名"
+              style="width: 100%"
+              @change="handleArchiveGroupSelect"
+            >
+              <el-option
+                v-for="grp in existingProjectGroups"
+                :key="grp.id"
+                :label="`${grp.group_name} (${grp.tunnel_type} · ${grp.segment_count}段)`"
+                :value="grp.group_name"
+              />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="工程分类" required>
+            <el-select 
+              v-model="archiveForm.engineeringCategory" 
+              placeholder="选择工程交通行业分类" 
+              style="width: 100%"
+              :disabled="isExistingGroupSelected"
+            >
+              <el-option label="公路" value="公路" />
+              <el-option label="铁路" value="铁路" />
+              <el-option label="城市道路" value="城市道路" />
+              <el-option label="城市轨道" value="城市轨道" />
+              <el-option label="水工" value="水工" />
+              <el-option label="综合管廊" value="综合管廊" />
+              <el-option label="其他" value="其他" />
+            </el-select>
+            <span v-if="isExistingGroupSelected" class="cascade-lock-tip">
+              🔒 继承自所选工程组分类，不可单独修改
+            </span>
+          </el-form-item>
+
+          <el-form-item label="重名冲突策略" v-if="isExistingGroupSelected">
+            <el-radio-group v-model="archiveForm.conflictMode">
+              <el-radio label="overwrite">覆盖更新已有分段</el-radio>
+              <el-radio label="append">追加至该工程组</el-radio>
+              <el-radio label="create_new">新建独立副本</el-radio>
+            </el-radio-group>
+          </el-form-item>
+
+          <el-form-item label="分段命名规则">
+            <el-select v-model="archiveForm.namingPattern" style="width: 100%">
+              <el-option label="标准工程桩号 (推荐: 组名_K0+000~K0+100)" value="standard_station" />
+              <el-option label="米制区间紧凑型 (组名 [0m~100m])" value="metric_range" />
+              <el-option label="带序号复合型 (组名_#01_K0+000)" value="indexed_station" />
+            </el-select>
+          </el-form-item>
+
+          <el-form-item label="工程详细描述">
+            <el-input 
+              v-model="archiveForm.description" 
+              type="textarea" 
+              :rows="2" 
+              placeholder="选填：记录工程地质水文特点、围岩分级与关键设计工况说明..." 
+              maxlength="500" 
+              show-word-limit 
+            />
+          </el-form-item>
+
+          <el-form-item label="轻量化脱敏">
+            <el-switch v-model="archiveForm.stripCharts" active-text="剔除冗余图表点阵，仅保留物理水力学关键成果 (推荐)" />
+          </el-form-item>
+        </el-form>
+
+        <!-- 命名实时映射预览列表 -->
+        <div class="naming-preview-box">
+          <div class="preview-title">
+            <span>🏷️ 分段自动序列化命名实时预览 (前 5 段及尾段):</span>
+          </div>
+          <div class="preview-chips">
+            <el-tag 
+              v-for="(name, idx) in namingPreviewList" 
+              :key="idx" 
+              size="small" 
+              type="info" 
+              effect="plain" 
+              class="preview-tag"
+            >
+              {{ name }}
+            </el-tag>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="batchArchiveModalVisible = false">取消</el-button>
+        <el-button type="primary" :loading="isArchiving" @click="submitBatchArchive">
+          确认入库 (共 {{ targetArchiveSnapshots.length }} 段)
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { useSnapshotStore, type Snapshot } from '@/store/snapshotStore';
+import apiClient from '@/api/index';
 import { calculateDrainage } from '@/api/index';
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
 import { 
@@ -656,7 +815,9 @@ import {
   VideoPause,
   SwitchButton,
   RefreshRight,
-  MoreFilled
+  MoreFilled,
+  Upload,
+  FolderAdd
 } from '@element-plus/icons-vue';
 import { useParameterStore } from '@/store/parameterStore';
 import { exportSnapshotBlueprint } from '@/utils/blueprintGenerator';
@@ -1017,6 +1178,17 @@ const batchDownloadBlueprints = async (format: 'pdf' | 'png' = 'pdf', targetSnap
     return;
   }
 
+  // 下游报告导出安全状态门禁
+  const validSnaps = selected.filter((s: any) => s.results || s.status === 'done');
+  if (validSnaps.length === 0) {
+    ElMessageBox.alert(
+      '所选工况均尚未完成水力与结构计算，缺乏涌水量 Q 与衬砌安全系数 Fs 等核心指标，无法生成合规工程图纸。请在侧边栏点击“开始计算”或“批量计算”后再行导出。',
+      '导出受限提示',
+      { type: 'warning', confirmButtonText: '知道了' }
+    );
+    return;
+  }
+
   isBatchExporting.value = true;
   batchExportProgress.value = 0;
   let successCount = 0;
@@ -1069,9 +1241,14 @@ const batchExportCalcBooks = async (targetSnaps?: any[]) => {
     return;
   }
 
+  // 下游报告导出安全状态门禁
   const validSnaps = selected.filter((s: any) => s.results || s.status === 'done');
   if (validSnaps.length === 0) {
-    ElMessage.warning('所选工况均尚未完成计算，请先执行计算');
+    ElMessageBox.alert(
+      '所选工况均尚未完成水力与结构计算，缺乏涌水量 Q 与衬砌安全系数 Fs 等核心指标，无法生成合规计算书。请在侧边栏点击“开始计算”或“批量计算”后再行导出。',
+      '导出受限提示',
+      { type: 'warning', confirmButtonText: '知道了' }
+    );
     return;
   }
 
@@ -1274,8 +1451,13 @@ const handleOpenCalcBook = (snap: any) => {
 };
 
 const handleCalcBookAction = async (snap: any, cmd: 'preview' | 'pdf' = 'preview') => {
-  if (!snap.results && snap.status !== 'done') {
-    ElMessage.warning('该工况尚未完成计算，请先执行计算后再查看计算书');
+  // 下游报告导出安全状态门禁
+  if (snap.status === 'pending' || !snap.results) {
+    ElMessageBox.alert(
+      `工况 [${getSnapRemark(snap)}] 尚未执行水力与结构计算，缺乏涌水量 Q 与衬砌安全系数 Fs 等核心验算指标，无法生成合规工程计算书。请在侧边栏点击“开始计算”或“批量计算”后再行导出。`,
+      '导出受限提示',
+      { type: 'warning', confirmButtonText: '知道了' }
+    );
     return;
   }
   if (cmd === 'preview') {
@@ -1305,6 +1487,15 @@ const handleCalcBookAction = async (snap: any, cmd: 'preview' | 'pdf' = 'preview
 };
 
 const handleExportBlueprint = async (snap: any, format: 'pdf' | 'png' = 'pdf') => {
+  // 下游报告导出安全状态门禁
+  if (snap.status === 'pending' || !snap.results) {
+    ElMessageBox.alert(
+      `工况 [${getSnapRemark(snap)}] 尚未执行水力与结构计算，缺乏涌水量 Q 与衬砌安全系数 Fs 等核心验算指标，无法生成合规工程图纸。请在侧边栏点击“开始计算”或“批量计算”后再行导出。`,
+      '导出受限提示',
+      { type: 'warning', confirmButtonText: '知道了' }
+    );
+    return;
+  }
   try {
     exportingId.value = snap.id;
     ElMessage.info(`正在生成 ${format.toUpperCase()} 标准 A3 施工设计图，请稍候...`);
@@ -1316,6 +1507,143 @@ const handleExportBlueprint = async (snap: any, format: 'pdf' | 'png' = 'pdf') =
     ElMessage.error(`导出施工图失败: ${err.message || err}`);
   } finally {
     exportingId.value = null;
+  }
+};
+
+// ==========================================
+// 8. 批量入库至参数工程库弹窗状态机
+// ==========================================
+const batchArchiveModalVisible = ref(false);
+const isArchiving = ref(false);
+const archiveTargetIsSelectedOnly = ref(false);
+const existingProjectGroups = ref<any[]>([]);
+
+const archiveForm = ref<{
+  groupName: string;
+  engineeringCategory: "公路" | "铁路" | "城市道路" | "城市轨道" | "水工" | "综合管廊" | "其他";
+  description: string;
+  namingPattern: "standard_station" | "metric_range" | "indexed_station";
+  conflictMode: "append" | "overwrite" | "create_new";
+  stripCharts: boolean;
+}>({
+  groupName: '晏家隧道',
+  engineeringCategory: '公路',
+  description: '',
+  namingPattern: 'standard_station',
+  conflictMode: 'overwrite',
+  stripCharts: true
+});
+
+const isExistingGroupSelected = computed(() => {
+  return existingProjectGroups.value.some(g => g.group_name === archiveForm.value.groupName);
+});
+
+const targetArchiveSnapshots = computed(() => {
+  return archiveTargetIsSelectedOnly.value
+    ? snapshots.value.filter(s => s.selectedFor3D)
+    : snapshots.value;
+});
+
+const pendingArchiveCount = computed(() => {
+  return targetArchiveSnapshots.value.filter(s => s.status === 'pending' || !s.results).length;
+});
+
+const onBatchArchiveModalOpen = async () => {
+  try {
+    const res: any = await apiClient.get('/database/projects');
+    existingProjectGroups.value = res || [];
+  } catch (e) {
+    existingProjectGroups.value = [];
+  }
+};
+
+const openBatchArchiveModal = (isSelectedOnly = false) => {
+  if (isSelectedOnly && selectedCount.value === 0) {
+    ElMessage.warning('请先勾选需要入库的工况卡片');
+    return;
+  }
+  if (!isSelectedOnly && snapshots.value.length === 0) {
+    ElMessage.warning('当前快照库为空，无可入库工况');
+    return;
+  }
+  archiveTargetIsSelectedOnly.value = isSelectedOnly;
+  batchArchiveModalVisible.value = true;
+};
+
+const handleArchiveGroupSelect = (val: string) => {
+  const matched = existingProjectGroups.value.find(g => g.group_name === val);
+  if (matched) {
+    archiveForm.value.engineeringCategory = matched.tunnel_type;
+    archiveForm.value.description = matched.description || '';
+  }
+};
+
+const formatStationStr = (length_m: number): string => {
+  const km = Math.floor(length_m / 1000);
+  const m = Math.round(length_m % 1000);
+  return `K${km}+${String(m).padStart(3, '0')}`;
+};
+
+const namingPreviewList = computed(() => {
+  const list = targetArchiveSnapshots.value;
+  if (!list || list.length === 0) return ['暂无分段'];
+  const grp = archiveForm.value.groupName || '未命名工程';
+  const pattern = archiveForm.value.namingPattern;
+
+  const formatOne = (snap: any, idx: number) => {
+    const s = Number(getChainage(snap, 'start')) || 0;
+    const e = Number(getChainage(snap, 'end')) || (s + 10);
+    if (pattern === 'metric_range') {
+      return `${grp} [${s.toFixed(1)}m~${e.toFixed(1)}m]`;
+    } else if (pattern === 'indexed_station') {
+      return `${grp}_#${String(idx + 1).padStart(2, '0')}_${formatStationStr(s)}`;
+    } else {
+      return `${grp}_${formatStationStr(s)}~${formatStationStr(e)}`;
+    }
+  };
+
+  if (list.length <= 6) {
+    return list.map((s, i) => formatOne(s, i));
+  }
+  const head = list.slice(0, 5).map((s, i) => formatOne(s, i));
+  const tail = formatOne(list[list.length - 1], list.length - 1);
+  return [...head, `... (省略中间 ${list.length - 6} 段) ...`, tail];
+});
+
+const submitBatchArchive = async () => {
+  if (!archiveForm.value.groupName.trim()) {
+    ElMessage.warning('工程组名不能为空');
+    return;
+  }
+  const targets = targetArchiveSnapshots.value;
+  if (targets.length === 0) {
+    ElMessage.warning('入库分段集合为空');
+    return;
+  }
+
+  isArchiving.value = true;
+  try {
+    const res: any = await snapshotStore.batchArchiveToDatabase({
+      groupName: archiveForm.value.groupName.trim(),
+      engineeringCategory: archiveForm.value.engineeringCategory,
+      description: archiveForm.value.description,
+      namingPattern: archiveForm.value.namingPattern,
+      conflictMode: archiveForm.value.conflictMode,
+      stripCharts: archiveForm.value.stripCharts
+    }, targets);
+
+    ElNotification({
+      title: '批量入库成功',
+      message: `已成功将 ${res.segment_count} 个分段写入工程组 [${res.group_name}]（已算: ${res.calculated_count}，待算: ${res.segment_count - res.calculated_count}）`,
+      type: 'success',
+      duration: 4500
+    });
+    batchArchiveModalVisible.value = false;
+  } catch (err: any) {
+    const detail = err.response?.data?.detail || err.message || '未知错误';
+    ElMessage.error(`批量入库失败: ${detail}`);
+  } finally {
+    isArchiving.value = false;
   }
 };
 
@@ -2581,5 +2909,35 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
   .batch-quick-btn {
     padding: 6px 0 !important;
   }
+}
+
+/* 批量入库弹窗样式 */
+.archive-pending-alert {
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.archive-form {
+  margin-top: 10px;
+}
+.naming-preview-box {
+  background: var(--el-fill-color-light);
+  border: 1px dashed var(--el-border-color);
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 10px;
+}
+.naming-preview-box .preview-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  margin-bottom: 8px;
+}
+.preview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.preview-tag {
+  font-size: 12px;
 }
 </style>

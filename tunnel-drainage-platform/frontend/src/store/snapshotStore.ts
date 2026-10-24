@@ -1,6 +1,7 @@
 // frontend/src/store/snapshotStore.ts
 import { defineStore } from 'pinia';
 import { useParameterStore } from './parameterStore';
+import apiClient from '@/api/index';
 
 // --- 类型定义 ---
 // 单个快照数据结构
@@ -244,6 +245,106 @@ export const useSnapshotStore = defineStore('snapshot', {
           status: snap.status ?? (snap.results ? 'done' : 'pending'),
           hasCriticalState: checkHasCriticalState(snap)
         }));
+    },
+
+    /**
+     * 从数据库记录批量反序列化并自适应还原快照池
+     * 关键要求：
+     * 1. 自动识别纯计算参数（results_json 为空）与带成果工况，分别赋予 'pending' 与 'done'；
+     * 2. 还原后自动激活首个分段同步至表单，实现视口与配置即时响应；
+     * 3. 触发 3D 重新组装渲染。
+     */
+    restoreSnapshotsFromDatabase(dbRecords: any[], options: { mode: 'replace' | 'append' } = { mode: 'replace' }) {
+      if (!dbRecords || dbRecords.length === 0) return;
+
+      const restoredSnapshots: Snapshot[] = dbRecords.map(rec => {
+        const parsedParams = typeof rec.parameters_json === 'string' 
+          ? JSON.parse(rec.parameters_json) 
+          : rec.parameters_json;
+        const parsedResults = rec.results_json 
+          ? (typeof rec.results_json === 'string' ? JSON.parse(rec.results_json) : rec.results_json) 
+          : null;
+        
+        // 核心判定：是否包含有效的水力学或临界加固计算成果
+        const hasResults = Boolean(parsedResults && (parsedResults.original_state || parsedResults.critical_state));
+
+        return {
+          id: `snap_db_${rec.id}`,
+          timestamp: new Date(rec.created_at).getTime(),
+          remark: rec.project_name,
+          start_chainage: rec.start_chainage ?? parsedParams.start_chainage ?? 0.0,
+          end_chainage: rec.end_chainage ?? parsedParams.end_chainage ?? 0.0,
+          params: parsedParams,
+          results: parsedResults, // 🟢 保真注入计算成果字典（纯参数则为 null）
+          status: hasResults ? 'done' : 'pending', // 🟢 有成果赋 'done'，纯参数赋 'pending'
+          hasCriticalState: checkHasCriticalState({ results: parsedResults }),
+          selectedFor3D: true // 默认选中参与 3D 全线组装
+        };
+      });
+
+      if (options.mode === 'replace') {
+        this.snapshots = restoredSnapshots;
+      } else {
+        // 追加合并模式（按 ID/桩号排重）
+        const existingIds = new Set(this.snapshots.map(s => s.id));
+        restoredSnapshots.forEach(s => {
+          if (!existingIds.has(s.id)) this.snapshots.push(s);
+        });
+      }
+
+      // 联动激活：将载入集合中的首个分段设为当前活动工况，并同步回主表单
+      if (restoredSnapshots.length > 0) {
+        const firstSnap = restoredSnapshots[0];
+        this.setActiveSegment(firstSnap.id);
+        const paramStore = useParameterStore();
+        paramStore.overrideAll(firstSnap.params, firstSnap.params.tunnel_type, firstSnap.results);
+      }
+
+      this.saveToLocal();
+      this.trigger3DRefresh(); // 立即触发 3D 空间隧道瞬时组装重构
+    },
+
+    /**
+     * 将快照批量打包持久化入库至后端数据库
+     */
+    async batchArchiveToDatabase(groupInfo: {
+      groupName: string;
+      engineeringCategory: "公路" | "铁路" | "城市道路" | "城市轨道" | "水工" | "综合管廊" | "其他";
+      description?: string;
+      namingPattern?: "standard_station" | "metric_range" | "indexed_station";
+      conflictMode?: "append" | "overwrite" | "create_new";
+      stripCharts?: boolean;
+    }, targetSnapshots: Snapshot[]) {
+      if (!targetSnapshots || targetSnapshots.length === 0) {
+        throw new Error('没有待入库的快照分段');
+      }
+
+      const payload = {
+        group_name: groupInfo.groupName,
+        engineering_category: groupInfo.engineeringCategory,
+        description: groupInfo.description || '',
+        naming_pattern: groupInfo.namingPattern || 'standard_station',
+        conflict_mode: groupInfo.conflictMode || 'overwrite',
+        segments: targetSnapshots.map(s => {
+          let cleanResults = null;
+          if (s.results) {
+            cleanResults = JSON.parse(JSON.stringify(s.results));
+            if (groupInfo.stripCharts && cleanResults.echart_data) {
+              delete cleanResults.echart_data;
+            }
+          }
+          return {
+            remark: s.remark,
+            start_chainage: s.start_chainage,
+            end_chainage: s.end_chainage,
+            parameters_json: s.params,
+            results_json: cleanResults
+          };
+        })
+      };
+
+      const res: any = await apiClient.post('/database/parameters/batch', payload);
+      return res;
     }
   }
 });

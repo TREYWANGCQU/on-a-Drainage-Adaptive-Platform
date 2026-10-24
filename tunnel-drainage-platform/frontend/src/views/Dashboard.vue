@@ -64,10 +64,18 @@
           class="theme-switch"
         />
 
-        <!-- 6. 核心云计算主按钮 -->
-        <el-button type="success" icon="VideoPlay" @click="executeCalculation" class="calc-btn">
-          执行云计算
-        </el-button>
+        <!-- 6. 核心云计算主按钮：通过 is-dot 徽标非侵入式提示待计算状态 -->
+        <el-badge :is-dot="parameterStore.isDirty" class="calc-badge">
+          <el-button 
+            type="success" 
+            icon="VideoPlay" 
+            @click="executeCalculation" 
+            class="calc-btn"
+            :class="{ 'calc-pulse-btn': parameterStore.isDirty }"
+          >
+            {{ parameterStore.isDirty ? '更新并重新计算' : '执行云计算' }}
+          </el-button>
+        </el-badge>
 
         <input type="file" ref="fileInput" v-show="false" accept=".xlsx,.xls" @change="handleFileChange" />
       </div>
@@ -83,13 +91,6 @@
       <div class="resizer resizer-left" v-show="!isLeftCollapsed" @mousedown="startDragLeft"></div>
       <section class="center-panel" ref="centerPanelRef">
 
-        <!-- [新增] 脏数据拦截遮罩层，覆盖在 3D 画布顶部 -->
-        <div v-if="parameterStore.isDirty" class="dirty-data-mask">
-          <el-alert title="输入参数已变更，空间模型与计算结果已失效" description="请点击右上角【执行云计算】获取最新多维协同结果" type="warning"
-            show-icon 
-            :closable="false" 
-          />
-        </div>
         <el-button class="collapse-btn left" :icon="isLeftCollapsed ? 'ArrowRight' : 'ArrowLeft'"
           @click="isLeftCollapsed = !isLeftCollapsed">
         </el-button>
@@ -102,14 +103,8 @@
           @click="isRightCollapsed = !isRightCollapsed">
         </el-button>
 
-        
-        <!-- 移除原 placeholder-3d 标签块，挂载真实的三维画布组件 -->
-        <!-- <div class="placeholder-3d">
-          <p>WebGL 3D 渲染画布区</p>
-          <small>依赖 parameterStore.currentPayload 实时驱动</small> 
-          </div> -->
-          
-        <Viewer3D :class="{ 'is-blurred': parameterStore.isDirty }" />
+        <!-- 3D 渲染画布组件：保持独立常驻交互，不再受表单局部修改干扰 -->
+        <Viewer3D />
 
 
       </section>
@@ -640,22 +635,22 @@ onMounted(() => {
   z-index: 10;
 }
 
-.dirty-data-mask {
-  position: absolute;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 60%;
-  z-index: 99;
-  box-shadow: 0 4px 12px var(--sys-shadow);
-  border-radius: 4px;
+/* 云计算按钮脏数据待算轻量微标与微光效 */
+.calc-badge {
+  display: inline-flex;
+  align-items: center;
 }
 
-.is-blurred {
-  filter: blur(3px) grayscale(40%);
-  pointer-events: none;
-  opacity: 0.6;
-  transition: all 0.3s ease-in-out;
+.calc-badge :deep(.el-badge__content.is-dot) {
+  top: 6px;
+  right: 6px;
+  background-color: #f59e0b; /* 琥珀黄预警微标 */
+}
+
+.calc-pulse-btn {
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+  border-color: #f59e0b !important;
+  transition: all 0.3s ease;
 }
 
 

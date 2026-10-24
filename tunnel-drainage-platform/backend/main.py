@@ -56,6 +56,12 @@ app.include_router(
     tags=["计算书导出引擎 (Typst)"]
 )
 
+# 挂载工程封面静态资源目录
+from fastapi.staticfiles import StaticFiles
+COVERS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "data/uploads/covers"))
+os.makedirs(COVERS_DIR, exist_ok=True)
+app.mount("/static/covers", StaticFiles(directory=COVERS_DIR), name="static_covers")
+
 @app.get("/", tags=["系统管理"])
 @app.get("/health", tags=["系统管理"])
 def health_check():
