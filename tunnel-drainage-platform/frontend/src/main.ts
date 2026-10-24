@@ -4,9 +4,10 @@ import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import App from './App.vue';
 
-// 引入 Element Plus 及其基础样式
+// 引入 Element Plus 及其基础样式与中文语言包
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
+import zhCn from 'element-plus/es/locale/lang/zh-cn';
 
 // 引入 KaTeX 数学公式渲染引擎样式
 import 'katex/dist/katex.min.css';
@@ -21,8 +22,12 @@ const app = createApp(App);
 const pinia = createPinia();
 app.use(pinia);
 
-// 注册基础 2D UI 组件库，承载折叠面板、数据表格及状态反馈机制
-app.use(ElementPlus, { size: 'default', zIndex: 3000 });
+// 注册基础 2D UI 组件库，承载折叠面板、数据表格及状态反馈机制并启用中文语言包
+app.use(ElementPlus, {
+  locale: zhCn,
+  size: 'default',
+  zIndex: 3000,
+});
 
 // 挂载至根节点
 app.mount('#app');

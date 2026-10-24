@@ -156,10 +156,10 @@
           </template>
           <template v-else-if="hasFailedTasks">
             <el-button size="small" type="danger" @click="handleRetryFailed">
-              <el-icon><RefreshRight /></el-icon> 仅重试失败项 ({{ failedCount }})
+              <el-icon><RefreshRight /></el-icon> 重试失败项 ({{ failedCount }})
             </el-button>
             <el-button size="small" type="primary" plain @click="handleStartAllPending">
-              <el-icon><Opportunity /></el-icon> 继续计算全部未完项
+              <el-icon><Opportunity /></el-icon> 继续计算
             </el-button>
           </template>
         </div>
