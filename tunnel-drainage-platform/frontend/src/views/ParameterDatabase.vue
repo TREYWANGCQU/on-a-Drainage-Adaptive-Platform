@@ -665,15 +665,19 @@ const handleCoverFileSelected = async (e: Event) => {
 };
 
 const captureViewportCover = async (group: any) => {
-  // 查找当前工作台的 3D Three.js canvas 画布
-  const canvas = document.querySelector('canvas') as HTMLCanvasElement;
-  if (!canvas) {
-    ElMessage.warning('未找到 3D 视口画布，请确保 3D 视口处于可见状态');
+  // 精准查找当前工作台的 3D Three.js canvas 画布
+  const canvas = document.querySelector('.viewer-container canvas') as HTMLCanvasElement;
+  if (!canvas || canvas.width === 0 || canvas.height === 0) {
+    ElMessage.warning('未找到有效的 3D 视口画布，请确保 3D 视口处于可见状态');
     return;
   }
 
   try {
     const base64Data = canvas.toDataURL('image/png');
+    if (!base64Data || base64Data === 'data:,' || base64Data.length < 100) {
+      ElMessage.warning('提取 3D 视口画面数据失败，画面数据为空');
+      return;
+    }
     await apiClient.post(`/database/projects/${group.id}/cover-base64`, {
       image_base64: base64Data
     });

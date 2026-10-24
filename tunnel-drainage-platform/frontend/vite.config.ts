@@ -33,6 +33,10 @@ export default defineConfig(async () => ({
         target: "http://127.0.0.1:8000",
         changeOrigin: true,
       },
+      "/static": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
     },
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`

@@ -1434,7 +1434,8 @@ const initWebGL = () => {
     canvas: canvasRef.value,
     antialias: true,
     logarithmicDepthBuffer: true,
-    alpha: true
+    alpha: true,
+    preserveDrawingBuffer: true
   });
 
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));

@@ -14,6 +14,12 @@ class Settings(BaseSettings):
 
     # 日志输出目录
     LOG_DIR: str = os.getenv("LOG_DIR", "./logs")
+
+    # 工程封面图片存储目录
+    COVERS_DIR: str = os.getenv(
+        "COVERS_DIR", 
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/uploads/covers"))
+    )
     
     # CORS 跨域配置：允许前端开发环境（Vite/Vue）、Nginx 反代及 Tauri 容器 (tauri://localhost)
     BACKEND_CORS_ORIGINS: List[str] = [

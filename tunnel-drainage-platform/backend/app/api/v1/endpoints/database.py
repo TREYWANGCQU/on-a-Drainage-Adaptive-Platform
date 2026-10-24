@@ -11,14 +11,26 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 
+from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.domain import TunnelParameter, ProjectGroup
 
 router = APIRouter()
 
-# 静态资源保存路径配置
-COVERS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../data/uploads/covers"))
+# 静态资源保存路径配置 (使用全局统一定义)
+COVERS_DIR = settings.COVERS_DIR
 os.makedirs(COVERS_DIR, exist_ok=True)
+
+def _clean_old_cover_file(cover_url: str | None):
+    """清理历史工程封面物理文件，防止磁盘出现孤儿图片"""
+    if cover_url and cover_url.startswith("/static/covers/"):
+        filename = os.path.basename(cover_url)
+        local_path = os.path.join(COVERS_DIR, filename)
+        if os.path.exists(local_path) and os.path.isfile(local_path):
+            try:
+                os.remove(local_path)
+            except Exception:
+                pass
 
 # ---------------------------------------------------------
 # 依赖注入：获取异步数据库会话
@@ -221,15 +233,8 @@ async def delete_project_group(project_id: int, db: AsyncSession = Depends(get_d
     if not group:
         raise HTTPException(status_code=404, detail="Project group not found")
 
-    # 尝试物理清理封面图片文件
-    if group.cover_image_url and group.cover_image_url.startswith("/static/covers/"):
-        filename = os.path.basename(group.cover_image_url)
-        local_cover_path = os.path.join(COVERS_DIR, filename)
-        if os.path.exists(local_cover_path):
-            try:
-                os.remove(local_cover_path)
-            except Exception:
-                pass
+    # 物理清理封面图片文件
+    _clean_old_cover_file(group.cover_image_url)
 
     await db.delete(group)
     await db.commit()
@@ -267,6 +272,9 @@ async def upload_project_cover(
     with open(target_path, "wb") as f:
         f.write(content)
 
+    # 上传新封面成功后，物理清理旧封面文件，避免孤儿文件滞留
+    _clean_old_cover_file(group.cover_image_url)
+
     group.cover_image_url = f"/static/covers/{filename}"
     group.updated_at = datetime.now(timezone.utc)
     await db.commit()
@@ -302,6 +310,9 @@ async def save_project_cover_base64(
     target_path = os.path.join(COVERS_DIR, filename)
     with open(target_path, "wb") as f:
         f.write(img_bytes)
+
+    # 截屏覆盖成功后，物理清理旧封面文件
+    _clean_old_cover_file(group.cover_image_url)
 
     group.cover_image_url = f"/static/covers/{filename}"
     group.updated_at = datetime.now(timezone.utc)

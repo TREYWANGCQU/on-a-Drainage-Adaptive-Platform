@@ -32,4 +32,6 @@ dist-docker/
 *.exe
 *.msi
 *.tar.gz
-*.zip
+*.zip
+tunnel-drainage-platform/backend/data/
+tunnel-drainage-platform/backend/app/data/
