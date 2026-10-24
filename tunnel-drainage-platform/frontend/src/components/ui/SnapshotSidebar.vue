@@ -20,20 +20,22 @@
             <el-icon><Refresh /></el-icon> 刷新3D
           </el-button>
           <el-button 
-            type="success" 
+            :type="scheduler.isRunning.value ? (scheduler.isPaused.value ? 'warning' : 'danger') : 'success'" 
             size="small" 
             plain 
             class="header-btn"
-            :loading="isBatchCalculating"
-            @click="isBatchCalculating ? cancelBatchCalculation() : quickCalculatePending()"
+            :loading="scheduler.isRunning.value && !scheduler.isPaused.value"
+            @click="handleToggleBatchCalc"
+            :title="scheduler.isRunning.value ? (scheduler.isPaused.value ? '点击继续未完计算' : '点击临时暂停计算') : '启动批量并发计算'"
           >
-            <el-icon v-if="!isBatchCalculating"><Opportunity /></el-icon>
-            {{ isBatchCalculating ? '停止计算' : '批量计算' }}
+            <el-icon v-if="!scheduler.isRunning.value"><Opportunity /></el-icon>
+            <el-icon v-else-if="scheduler.isPaused.value"><VideoPlay /></el-icon>
+            {{ scheduler.isRunning.value ? (scheduler.isPaused.value ? '继续计算' : '暂停计算') : '批量计算' }}
           </el-button>
           <el-button 
             type="primary" 
             size="small" 
-            class="header-btn"
+            class="header-btn" 
             @click="handleSaveSnapshot"
           >
             <el-icon><Plus /></el-icon> 保存快照
@@ -86,14 +88,80 @@
         </div>
       </div>
 
-      <!-- 批量计算进度指示条 -->
-      <div class="batch-progress-box" v-if="isBatchCalculating">
-        <div class="progress-info">
-          <span><el-icon class="is-loading"><Loading /></el-icon> 正在并发调度计算中 ({{ calcCurrentIndex }}/{{ calcTotalTasks }})...</span>
-          <span class="progress-val">{{ calcProgress }}%</span>
+      <!-- 批处理智能监控看板 (Batch Monitor Banner) -->
+      <div 
+        class="batch-monitor-banner" 
+        v-if="scheduler.isRunning.value || scheduler.isPaused.value || hasFailedTasks"
+        :class="{ 
+          'is-running': scheduler.isRunning.value && !scheduler.isPaused.value, 
+          'is-paused': scheduler.isPaused.value,
+          'has-failed': hasFailedTasks && !scheduler.isRunning.value
+        }"
+      >
+        <div class="monitor-header">
+          <div class="monitor-status">
+            <span class="status-indicator">
+              <span class="pulse-ring" v-if="scheduler.isRunning.value && !scheduler.isPaused.value"></span>
+              <span class="status-dot"></span>
+            </span>
+            <span class="monitor-title">{{ scheduler.statusText.value }}</span>
+          </div>
+          <div class="monitor-speed" v-if="scheduler.isRunning.value">
+            <el-icon><Clock /></el-icon>
+            <span>速度: {{ scheduler.speedText.value }}</span>
+          </div>
         </div>
-        <el-progress :percentage="calcProgress" :status="calcProgress === 100 ? 'success' : ''" :stroke-width="5" :show-text="false" />
+
+        <div class="monitor-progress-row">
+          <el-progress 
+            :percentage="scheduler.progressPercent.value" 
+            :status="scheduler.progressPercent.value === 100 ? 'success' : scheduler.failedCount.value > 0 ? 'warning' : ''" 
+            :stroke-width="6" 
+            :show-text="false" 
+          />
+        </div>
+
+        <div class="monitor-details-row">
+          <div class="monitor-counts">
+            <span class="count-tag count-done">已完成 {{ scheduler.completedCount.value }}/{{ scheduler.totalTasks.value }}</span>
+            <span class="count-tag count-calc" v-if="scheduler.calculatingCount.value > 0">计算中 {{ scheduler.calculatingCount.value }}</span>
+            <span class="count-tag count-paused" v-if="scheduler.pausedCount.value > 0">暂停 {{ scheduler.pausedCount.value }}</span>
+            <span class="count-tag count-err" v-if="scheduler.failedCount.value > 0">失败 {{ scheduler.failedCount.value }}</span>
+          </div>
+          <div class="monitor-eta" v-if="scheduler.isRunning.value && !scheduler.isPaused.value">
+            <span>预计剩余: <b>{{ scheduler.etaText.value }}</b></span>
+          </div>
+        </div>
+
+        <!-- 调度控制台操作按钮 -->
+        <div class="monitor-actions-row">
+          <template v-if="scheduler.isRunning.value && !scheduler.isPaused.value">
+            <el-button size="small" type="warning" plain @click="handlePauseBatch">
+              <el-icon><VideoPause /></el-icon> 临时暂停
+            </el-button>
+            <el-button size="small" type="danger" plain @click="handleCancelBatch">
+              <el-icon><SwitchButton /></el-icon> 终止计算
+            </el-button>
+          </template>
+          <template v-else-if="scheduler.isPaused.value">
+            <el-button size="small" type="success" @click="handleResumeBatch">
+              <el-icon><VideoPlay /></el-icon> 继续计算
+            </el-button>
+            <el-button size="small" type="danger" plain @click="handleCancelBatch">
+              <el-icon><SwitchButton /></el-icon> 结束并保留
+            </el-button>
+          </template>
+          <template v-else-if="hasFailedTasks">
+            <el-button size="small" type="danger" @click="handleRetryFailed">
+              <el-icon><RefreshRight /></el-icon> 仅重试失败项 ({{ failedCount }})
+            </el-button>
+            <el-button size="small" type="primary" plain @click="handleStartAllPending">
+              <el-icon><Opportunity /></el-icon> 继续计算全部未完项
+            </el-button>
+          </template>
+        </div>
       </div>
+
 
       <!-- 批量导出进度指示条 -->
       <div class="batch-export-box" v-if="isBatchExporting">
@@ -269,8 +337,10 @@
 
               <!-- 状态标签 -->
               <span class="status-chip" :class="getStatusChipClass(snap)">
-                {{ snap.status === 'done' || snap.results ? '已算' : snap.status === 'error' ? '失败' : '待算' }}
+                <el-icon v-if="snap.status === 'calculating'" class="is-loading"><Loading /></el-icon>
+                {{ snap.status === 'calculating' ? '计算中' : snap.status === 'paused' ? '暂停' : snap.status === 'done' || snap.results ? '已算' : snap.status === 'error' ? '失败' : '待算' }}
               </span>
+
 
               <!-- 快速操作图标按钮组 -->
               <div class="compact-quick-actions">
@@ -533,7 +603,11 @@ import {
   DocumentCopy,
   InfoFilled,
   Clock,
-  Notebook
+  Notebook,
+  VideoPlay,
+  VideoPause,
+  SwitchButton,
+  RefreshRight
 } from '@element-plus/icons-vue';
 import { useParameterStore } from '@/store/parameterStore';
 import { exportSnapshotBlueprint } from '@/utils/blueprintGenerator';
@@ -542,10 +616,12 @@ import {
   exportCalculationBookPdf 
 } from '@/utils/calculationBook/bookExporter';
 import CalculationBookModal from '../calculationBook/CalculationBookModal.vue';
+import { globalBatchScheduler } from '@/utils/batchScheduler';
 
 const snapshotStore = useSnapshotStore();
 const parameterStore = useParameterStore();
 const snapshots = computed(() => snapshotStore.snapshots);
+const scheduler = globalBatchScheduler;
 
 // ==========================================
 // 1. 过滤与检索状态机
@@ -558,13 +634,16 @@ const selectedSnapshotId = ref<string | null>(null);
 // 统计指示器
 const totalCount = computed(() => snapshots.value.length);
 const doneCount = computed(() => snapshots.value.filter(s => s.status === 'done' || s.results).length);
-const pendingCount = computed(() => snapshots.value.filter(s => !s.results && s.status !== 'error').length);
+const pendingCount = computed(() => snapshots.value.filter(s => (!s.results && s.status !== 'done') || s.status === 'pending' || s.status === 'paused').length);
+const failedCount = computed(() => snapshots.value.filter(s => s.status === 'error').length);
+const hasFailedTasks = computed(() => failedCount.value > 0);
 const riskCount = computed(() => snapshots.value.filter(s => {
   const fs = getSnapshotFs(s);
   return fs != null && fs < 2.0;
 }).length);
 const selected3DCount = computed(() => snapshots.value.filter(s => s.selectedFor3D).length);
 const selectedCount = computed(() => snapshots.value.filter(s => s.selectedFor3D).length);
+
 
 // 快捷切换过滤
 const resetFilter = () => {
@@ -733,67 +812,59 @@ const handle3DDropdownCommand = (cmd: string) => {
 };
 
 // ==========================================
-// 5. 批量计算进度与并发控制
+// 5. 批处理调度与多态断点控制
 // ==========================================
-const isBatchCalculating = ref(false);
-const calcProgress = ref(0);
-const calcCurrentIndex = ref(0);
-const calcTotalTasks = ref(0);
-let cancelBatchRequested = false;
-
-const cancelBatchCalculation = () => {
-  cancelBatchRequested = true;
-  ElMessage.warning('正在终止批量计算任务...');
+const handleToggleBatchCalc = () => {
+  if (scheduler.isRunning.value && !scheduler.isPaused.value) {
+    scheduler.pause();
+    ElMessage.info('已临时暂停批量计算，网络请求已取消并保留已有成果');
+  } else if (scheduler.isPaused.value) {
+    scheduler.resume();
+    ElMessage.success('正在接续未完成工况计算...');
+  } else {
+    handleStartBatch();
+  }
 };
 
-const quickCalculatePending = async () => {
-  const pendingSnaps = snapshots.value.filter((s: any) => !s.results || s.status === 'pending');
+const handleStartBatch = () => {
+  const pendingSnaps = snapshots.value.filter(
+    (s: any) => s.status === 'pending' || s.status === 'paused' || (!s.results && s.status !== 'done')
+  );
   if (pendingSnaps.length === 0) {
-    ElMessage.success('序列库中暂无需要计算的工况');
+    ElMessage.success('序列库中所有工况均已计算完成，无需重复计算');
     return;
   }
+  ElMessage.info(`启动多核并发批量计算，待计算工况共 ${pendingSnaps.length} 项...`);
+  scheduler.start();
+};
 
-  isBatchCalculating.value = true;
-  cancelBatchRequested = false;
-  calcTotalTasks.value = pendingSnaps.length;
-  calcCurrentIndex.value = 0;
-  calcProgress.value = 0;
+const handlePauseBatch = () => {
+  scheduler.pause();
+  ElMessage.warning('批量计算已暂停，网络请求已取消并保留已有成果');
+};
 
-  ElMessage.info(`开始执行并发批量计算，共 ${pendingSnaps.length} 个工况区间...`);
+const handleResumeBatch = () => {
+  scheduler.resume();
+  ElMessage.success('正在继续批量计算...');
+};
 
-  // 并发池调度（限制并发度为 3）
-  const CONCURRENCY = 3;
-  let cursor = 0;
+const handleCancelBatch = () => {
+  scheduler.cancel();
+  ElMessage.info('已终止批量计算任务');
+};
 
-  const executeWorker = async () => {
-    while (cursor < pendingSnaps.length && !cancelBatchRequested) {
-      const snap = pendingSnaps[cursor++];
-      try {
-        const payload = snap.params || {};
-        const res = await calculateDrainage(payload);
-        snap.results = res;
-        snap.status = 'done';
-      } catch (err) {
-        console.error(`区间 ${snap.remark} 计算失败:`, err);
-        snap.status = 'error';
-      } finally {
-        calcCurrentIndex.value++;
-        calcProgress.value = Math.round((calcCurrentIndex.value / calcTotalTasks.value) * 100);
-      }
-    }
-  };
-
-  const workers = Array.from({ length: Math.min(CONCURRENCY, pendingSnaps.length) }, () => executeWorker());
-  await Promise.all(workers);
-
-  isBatchCalculating.value = false;
-  snapshotStore.saveToLocal();
-
-  if (cancelBatchRequested) {
-    ElMessage.info(`批量计算已终止，已完成 ${calcCurrentIndex.value}/${calcTotalTasks.value} 项`);
-  } else {
-    ElMessage.success(`全序列计算完毕，成功完成 ${calcCurrentIndex.value} 个工况`);
+const handleRetryFailed = () => {
+  const failList = snapshots.value.filter((s: any) => s.status === 'error');
+  if (failList.length === 0) {
+    ElMessage.info('当前没有失败工况');
+    return;
   }
+  ElMessage.info(`开始重试 ${failList.length} 项失败工况...`);
+  scheduler.retryFailed();
+};
+
+const handleStartAllPending = () => {
+  scheduler.start();
 };
 
 const isRecalculatingSingle = ref<string | null>(null);
@@ -802,20 +873,23 @@ const isRecalculatingSingle = ref<string | null>(null);
 const recalculateSingle = async (snap: any) => {
   try {
     isRecalculatingSingle.value = snap.id;
-    ElMessage.info(`开始重新计算区间 ${snap.remark}...`);
+    snap.status = 'calculating';
+    ElMessage.info(`开始重新计算区间 ${getSnapRemark(snap)}...`);
     const payload = snap.params || {};
-    const res = await calculateDrainage(payload);
+    const res = await calculateDrainage(payload, { timeout: 120000 });
     snap.results = res;
     snap.status = 'done';
+    snap.hasCriticalState = Boolean(res?.critical_state && Object.keys(res.critical_state).length > 0);
     snapshotStore.saveToLocal();
-    ElMessage.success(`区间 ${snap.remark} 重算完成`);
-  } catch (err) {
-    ElMessage.error(`重算失败: ${err}`);
+    ElMessage.success(`区间 ${getSnapRemark(snap)} 重算完成`);
+  } catch (err: any) {
+    ElMessage.error(`重算失败: ${err.message || err}`);
     snap.status = 'error';
   } finally {
     isRecalculatingSingle.value = null;
   }
 };
+
 
 // ==========================================
 // 6. 批量下载施工图与计算书功能
@@ -1026,6 +1100,8 @@ const getFsClass = (fs: number | null) => {
 };
 
 const getCardStripeClass = (snap: any) => {
+  if (snap.status === 'calculating') return 'stripe-calculating';
+  if (snap.status === 'paused') return 'stripe-paused';
   if (snap.status === 'error') return 'stripe-error';
   const fs = getSnapshotFs(snap);
   if (fs != null && fs < 2.0) return 'stripe-risk';
@@ -1034,10 +1110,13 @@ const getCardStripeClass = (snap: any) => {
 };
 
 const getStatusChipClass = (snap: any) => {
+  if (snap.status === 'calculating') return 'chip-tag-calculating';
+  if (snap.status === 'paused') return 'chip-tag-paused';
   if (snap.status === 'error') return 'chip-tag-error';
   if (snap.status === 'done' || snap.results) return 'chip-tag-done';
   return 'chip-tag-pending';
 };
+
 
 const handleRefresh3D = () => {
   parameterStore.isDirty = false;
@@ -1321,8 +1400,171 @@ const handleDeleteSnapshot = (id: string) => {
   font-family: 'JetBrains Mono', 'Consolas', monospace;
 }
 
-/* 进度提示条 */
-.batch-progress-box, .batch-export-box {
+/* ===================================================
+   批处理监控看板 (Batch Monitor Banner)
+   所有文字均严格遵循 font-size >= 12px 底线规范
+   =================================================== */
+.batch-monitor-banner {
+  padding: 10px 12px;
+  background: var(--sys-bg-active, #f0fdf4);
+  border: 1px solid var(--sys-border-active, #bbf7d0);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.batch-monitor-banner.is-running {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+}
+
+.batch-monitor-banner.is-paused {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.batch-monitor-banner.has-failed {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.monitor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.monitor-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--sys-text-primary, #1e293b);
+  font-size: 12px;
+}
+
+.status-indicator {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+.is-running .status-dot {
+  background: #0284c7;
+}
+
+.is-paused .status-dot {
+  background: #f59e0b;
+}
+
+.has-failed .status-dot {
+  background: #ef4444;
+}
+
+.pulse-ring {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #0284c7;
+  animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 0.8; }
+  100% { transform: scale(2.0); opacity: 0; }
+}
+
+.monitor-speed {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--sys-text-secondary, #64748b);
+  font-size: 12px;
+}
+
+.monitor-progress-row {
+  margin-top: 2px;
+}
+
+.monitor-details-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.monitor-counts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.count-tag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.count-done {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.count-calc {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.count-paused {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.count-err {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.monitor-eta {
+  font-size: 12px;
+  color: var(--sys-text-secondary, #64748b);
+}
+
+.monitor-eta b {
+  color: #0284c7;
+}
+
+.monitor-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* 批量导出进度条 */
+.batch-export-box {
   background: var(--el-fill-color-lighter, #f1f5f9);
   padding: 6px 10px;
   border-radius: 6px;
@@ -1336,7 +1578,7 @@ const handleDeleteSnapshot = (id: string) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--el-text-color-regular, #475569);
 }
 
@@ -1344,7 +1586,9 @@ const handleDeleteSnapshot = (id: string) => {
   font-weight: 700;
   color: #409eff;
   font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
 }
+
 
 /* 过滤工具栏 */
 .filter-toolbar {
@@ -1491,6 +1735,18 @@ const handleDeleteSnapshot = (id: string) => {
 .stripe-pending { background: #f59e0b; }
 .stripe-risk { background: linear-gradient(180deg, #ef4444, #f97316); }
 .stripe-error { background: #dc2626; }
+.stripe-calculating {
+  background: #0284c7;
+  box-shadow: 0 0 6px rgba(2, 132, 199, 0.6);
+  animation: stripePulse 1.2s infinite alternate;
+}
+.stripe-paused { background: #f59e0b; }
+
+@keyframes stripePulse {
+  from { opacity: 0.6; }
+  to { opacity: 1; }
+}
+
 
 /* 5.1 紧凑顶栏 */
 .card-compact-header {
@@ -1595,12 +1851,15 @@ const handleDeleteSnapshot = (id: string) => {
 
 /* 状态 Chip */
 .status-chip {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
   line-height: 1.4;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .chip-tag-done {
@@ -1617,6 +1876,19 @@ const handleDeleteSnapshot = (id: string) => {
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
 }
+
+.chip-tag-calculating {
+  background: rgba(2, 132, 199, 0.12);
+  color: #0284c7;
+  border: 1px solid rgba(2, 132, 199, 0.3);
+}
+
+.chip-tag-paused {
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
 
 /* 紧凑顶栏快速动作按钮 */
 .compact-quick-actions {

@@ -158,6 +158,11 @@ categories:
         slug: "Phase4-Topic-Header-Sidebar-Retriever"
         tier: 2
         status: "verified"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-百段工况批量并发计算与动态估时断点续算架构方案.md"
+        wiki_title: "专题：百段工况批量并发计算与动态估时断点续算"
+        slug: "Phase4-Topic-Batch-Calculation-Resume"
+        tier: 1
+        status: "curated"
       - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-排水管网3D模型专项问题诊断与完善方案.md"
         wiki_title: "专题：排水管网3D模型专项问题诊断"
         slug: "Phase4-Topic-Drainage-Network-Diagnosis"

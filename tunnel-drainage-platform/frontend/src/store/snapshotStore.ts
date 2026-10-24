@@ -12,7 +12,7 @@ export interface Snapshot {
   end_chainage: number;   // 核心索引：分区终点
   params: any;            // 保存当时的 parameterStore.currentPayload
   results?: any;          // 保存计算返回结果（如间距、孔径、安全系数）
-  status?: 'pending' | 'done' | 'error'; // 计算状态
+  status?: 'pending' | 'calculating' | 'paused' | 'done' | 'error'; // 扩展 5 态计算生命周期
   hasCriticalState?: boolean;           // 是否包含临界超限加固解
   selectedFor3D?: boolean;              // 3D 渲染勾选状态
 }
@@ -24,9 +24,10 @@ export interface ITunnelParams {
   end_chainage: number;
   params: any;
   results?: any;
-  status?: 'pending' | 'done' | 'error';
+  status?: 'pending' | 'calculating' | 'paused' | 'done' | 'error';
   hasCriticalState?: boolean;
 }
+
 
 // 多分区快照序列结构（支撑 3D 组合拼装）
 export interface SnapshotSequence {
@@ -101,11 +102,35 @@ export const useSnapshotStore = defineStore('snapshot', {
       if (localSequences) this.sequences = JSON.parse(localSequences);
     },
 
-    // 同步写入本地存储
+    // 同步写入本地存储（带 QuotaExceededError 溢出降级防御）
     saveToLocal() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.snapshots));
-      localStorage.setItem(SEQUENCE_KEY, JSON.stringify(this.sequences));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.snapshots));
+        localStorage.setItem(SEQUENCE_KEY, JSON.stringify(this.sequences));
+      } catch (err: any) {
+        if (err.name === 'QuotaExceededError' || err.code === 22 || err.number === -2147024882) {
+          console.warn('LocalStorage 存储配额超限，启用轻量化脱敏持久化模式...');
+          try {
+            // 降级策略：剥离非当前活动快照中庞大的 echart_data 绘图节点数组，保留全部工程关键状态标量
+            const lightweightSnapshots = this.snapshots.map(s => {
+              if (!s.results) return s;
+              const copy = JSON.parse(JSON.stringify(s));
+              if (copy.id !== this.activeSegmentId && copy.results.echart_data) {
+                delete copy.results.echart_data;
+              }
+              return copy;
+            });
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(lightweightSnapshots));
+            localStorage.setItem(SEQUENCE_KEY, JSON.stringify(this.sequences));
+          } catch (e) {
+            console.error('脱敏持久化依然超限:', e);
+          }
+        } else {
+          console.error('LocalStorage 写入异常:', err);
+        }
+      }
     },
+
 
     // 捕获当前参数状态，生成独立快照
     createSnapshot(remark: string, results?: any) {

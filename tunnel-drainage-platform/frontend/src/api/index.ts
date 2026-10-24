@@ -55,6 +55,10 @@ apiClient.interceptors.response.use(
     return response.data;
   },
   (error) => {
+    // 若请求是被 AbortController 主动取消，静默放行，不弹出全局错误弹窗
+    if (axios.isCancel(error)) {
+      return Promise.reject(error);
+    }
     const errorMsg = error.response?.data?.detail || error.message || '计算服务响应异常';
     ElMessage.error(`数据交互失败: ${errorMsg}`);
     return Promise.reject(error);
@@ -64,13 +68,21 @@ apiClient.interceptors.response.use(
 /**
  * 定义计算契约接口
  * @param payload 完整的工程水文与地质参数组合 (SingleTubeParams | DoubleTubeParams)
+ * @param options 可选配置项，支持自定义超时 (默认 120s) 与 AbortSignal 取消信号
  * @returns 包含间距、孔径等优化布置结果的 Promise
- * * 注：UI 层级在“开始计算”按钮绑定防抖 (lodash.debounce) 点击事件后，
+ * 
+ * 注：UI 层级在“开始计算”按钮绑定防抖 (lodash.debounce) 点击事件后，
  * 提取 useParameterStore().currentPayload 作为入参调用此函数。
  * 收到返回值后，通过 useSnapshotStore().createSnapshot() 存档并推送至 3D 渲染模块。
  */
-export const calculateDrainage = async (payload: Record<string, any>): Promise<any> => {
-  return apiClient.post('/calculate/drainage', payload);
+export const calculateDrainage = async (
+  payload: Record<string, any>,
+  options?: { timeout?: number; signal?: AbortSignal }
+): Promise<any> => {
+  return apiClient.post('/calculate/drainage', payload, {
+    timeout: options?.timeout ?? 120000,
+    signal: options?.signal,
+  });
 };
 
-export default apiClient;
+export default apiClient;
