@@ -161,6 +161,30 @@ export const useSnapshotStore = defineStore('snapshot', {
     // 删除单体快照
     deleteSnapshot(id: string) {
       this.snapshots = this.snapshots.filter(s => s.id !== id);
+      if (this.activeSegmentId === id) {
+        this.activeSegmentId = null;
+      }
+      this.saveToLocal();
+      this.trigger3DRefresh();
+    },
+
+    // 批量删除快照
+    batchDeleteSnapshots(ids: string[]) {
+      if (!ids || ids.length === 0) return;
+      const idSet = new Set(ids);
+      this.snapshots = this.snapshots.filter(s => !idSet.has(s.id));
+      if (this.activeSegmentId && idSet.has(this.activeSegmentId)) {
+        this.activeSegmentId = null;
+      }
+      this.saveToLocal();
+      this.trigger3DRefresh();
+    },
+
+    // 一键清空全量快照
+    clearAllSnapshots() {
+      this.snapshots = [];
+      this.sequences = [];
+      this.activeSegmentId = null;
       this.saveToLocal();
       this.trigger3DRefresh();
     },

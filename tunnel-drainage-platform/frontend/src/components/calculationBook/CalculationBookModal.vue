@@ -40,7 +40,7 @@
           :loading="isExporting"
           @click="handleExportVectorPDF"
         >
-          📥 导出 A4 矢量 PDF (Typst 引擎)
+          📥 导出 A4 矢量 PDF
         </el-button>
         <el-button size="small" @click="handleClose">关闭</el-button>
       </div>

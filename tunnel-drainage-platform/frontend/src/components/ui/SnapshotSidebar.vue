@@ -8,7 +8,7 @@
           <h4>工况快照与序列库</h4>
           <span class="count-pill">{{ totalCount }}</span>
         </div>
-        <div class="header-btns">
+        <div class="header-actions-row">
           <el-button 
             type="warning" 
             size="small" 
@@ -17,7 +17,8 @@
             @click="handleRefresh3D"
             title="重新将已勾选工况装配至 3D 空间隧道"
           >
-            <el-icon><Refresh /></el-icon> 刷新3D
+            <el-icon><Refresh /></el-icon>
+            <span class="btn-label">刷新3D</span>
           </el-button>
           <el-button 
             :type="scheduler.isRunning.value ? (scheduler.isPaused.value ? 'warning' : 'danger') : 'success'" 
@@ -30,15 +31,17 @@
           >
             <el-icon v-if="!scheduler.isRunning.value"><Opportunity /></el-icon>
             <el-icon v-else-if="scheduler.isPaused.value"><VideoPlay /></el-icon>
-            {{ scheduler.isRunning.value ? (scheduler.isPaused.value ? '继续计算' : '暂停计算') : '批量计算' }}
+            <span class="btn-label">{{ scheduler.isRunning.value ? (scheduler.isPaused.value ? '继续计算' : '暂停计算') : '批量计算' }}</span>
           </el-button>
           <el-button 
             type="primary" 
             size="small" 
             class="header-btn" 
             @click="handleSaveSnapshot"
+            title="保存当前输入参数为新工况快照"
           >
-            <el-icon><Plus /></el-icon> 保存快照
+            <el-icon><Plus /></el-icon>
+            <span class="btn-label">保存快照</span>
           </el-button>
         </div>
       </div>
@@ -219,6 +222,8 @@
                 <el-dropdown-item command="unselect_filtered">取消筛选结果勾选</el-dropdown-item>
                 <el-dropdown-item command="select_all" divided>全选全线所有工况 ({{ snapshots.length }})</el-dropdown-item>
                 <el-dropdown-item command="clear_all">清空所有 3D 勾选</el-dropdown-item>
+                <el-dropdown-item command="delete_filtered" divided class="danger-menu-item">🗑️ 批量删除当前筛选工况 ({{ filteredSnapshots.length }})</el-dropdown-item>
+                <el-dropdown-item command="clear_all_snapshots" class="danger-menu-item">⚠️ 清空全线所有快照</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -254,7 +259,7 @@
         </div>
       </div>
 
-      <!-- 4. 选中卡片快捷批量操作栏 (当有选中项时自动高亮提示) -->
+      <!-- 4. 选中卡片快捷批量操作栏 (当有选中项时自动高亮提示，多级响应式防挤压) -->
       <div class="selected-batch-bar" v-if="selectedCount > 0">
         <div class="batch-bar-left">
           <span class="batch-count-tag">
@@ -272,7 +277,11 @@
             @click="batchDownloadBlueprints('pdf')"
             title="一键批量下载选中工况的标准 A3 施工设计图 (PDF)"
           >
-            <el-icon><PictureFilled /></el-icon> 施工图(A3)
+            <el-icon><PictureFilled /></el-icon>
+            <span class="batch-btn-text">
+              <span class="text-full">施工图(A3)</span>
+              <span class="text-compact">施工图</span>
+            </span>
           </el-button>
           <el-button 
             type="primary" 
@@ -282,7 +291,24 @@
             @click="batchExportCalcBooks()"
             title="一键批量并发编译导出选中工况的 A4 标准计算书 (Typst ZIP)"
           >
-            <el-icon v-if="!isBatchExporting"><DocumentCopy /></el-icon> 计算书(ZIP)
+            <el-icon v-if="!isBatchExporting"><DocumentCopy /></el-icon>
+            <span class="batch-btn-text">
+              <span class="text-full">计算书(ZIP)</span>
+              <span class="text-compact">计算书</span>
+            </span>
+          </el-button>
+          <el-button 
+            type="danger" 
+            size="small" 
+            class="batch-quick-btn batch-delete-btn"
+            @click="handleBatchDeleteSelected"
+            title="一键批量删除当前已勾选的工况快照"
+          >
+            <el-icon><Delete /></el-icon>
+            <span class="batch-btn-text">
+              <span class="text-full">批量删除</span>
+              <span class="text-compact">删除</span>
+            </span>
           </el-button>
         </div>
       </div>
@@ -332,7 +358,7 @@
                 :title="`安全系数 Fs = ${getSnapshotFs(snap)?.toFixed(2)} (${isRiskSnapshot(snap) ? '临界预警' : '结构安全'})`"
               >
                 <span class="fs-dot"></span>
-                <span class="fs-num">Fs {{ getSnapshotFs(snap)?.toFixed(2) }}</span>
+                <span class="fs-num"><span class="fs-text-prefix">Fs </span>{{ getSnapshotFs(snap)?.toFixed(2) }}</span>
               </div>
 
               <!-- 状态标签 -->
@@ -341,11 +367,10 @@
                 {{ snap.status === 'calculating' ? '计算中' : snap.status === 'paused' ? '暂停' : snap.status === 'done' || snap.results ? '已算' : snap.status === 'error' ? '失败' : '待算' }}
               </span>
 
-
-              <!-- 快速操作图标按钮组 -->
+              <!-- 快速操作图标按钮组 (自适应宽屏直列 / 窄屏收纳) -->
               <div class="compact-quick-actions">
-                <!-- 快捷导出施工图 -->
-                <el-dropdown trigger="click" @command="(cmd: any) => handleExportBlueprint(snap, cmd)">
+                <!-- 宽屏快捷导出施工图 -->
+                <el-dropdown trigger="click" @command="(cmd: any) => handleExportBlueprint(snap, cmd)" class="action-btn-desktop">
                   <button 
                     type="button"
                     class="icon-action-btn blueprint-btn" 
@@ -362,8 +387,8 @@
                   </template>
                 </el-dropdown>
 
-                <!-- 快捷计算书预览与导出 -->
-                <el-dropdown trigger="click" @command="(cmd: any) => handleCalcBookAction(snap, cmd)">
+                <!-- 宽屏快捷计算书预览与导出 -->
+                <el-dropdown trigger="click" @command="(cmd: any) => handleCalcBookAction(snap, cmd)" class="action-btn-desktop">
                   <button 
                     type="button"
                     class="icon-action-btn book-btn" 
@@ -380,6 +405,26 @@
                   </template>
                 </el-dropdown>
 
+                <!-- 窄屏更多操作聚合下拉菜单 -->
+                <el-dropdown trigger="click" @command="(cmd: any) => handleCardMoreCommand(snap, cmd)" class="action-btn-mobile">
+                  <button 
+                    type="button"
+                    class="icon-action-btn more-btn" 
+                    title="更多操作"
+                    @click.stop
+                  >
+                    <el-icon><MoreFilled /></el-icon>
+                  </button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="blueprint_pdf">📑 导出 A3 施工图 (PDF)</el-dropdown-item>
+                      <el-dropdown-item command="calcbook_preview">📚 预览 A4 计算书</el-dropdown-item>
+                      <el-dropdown-item command="recalc" divided>⚡ 重新计算当前段</el-dropdown-item>
+                      <el-dropdown-item command="delete" class="text-danger" divided>🗑️ 删除此快照</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+
                 <!-- 手风琴展开/收起切换按钮 -->
                 <button 
                   type="button"
@@ -391,10 +436,10 @@
                   <el-icon><ArrowDown /></el-icon>
                 </button>
 
-                <!-- 快捷删除 -->
+                <!-- 快捷删除 (宽屏常驻) -->
                 <button 
                   type="button"
-                  class="icon-action-btn delete-btn" 
+                  class="icon-action-btn delete-btn action-btn-desktop" 
                   @click.stop="handleDeleteSnapshot(snap.id)"
                   title="删除此工况快照"
                 >
@@ -516,8 +561,8 @@
                   </button>
                   <template #dropdown>
                     <el-dropdown-menu>
-                      <el-dropdown-item command="preview">👁️ 预览 A4 标准计算书 (6大章节)</el-dropdown-item>
-                      <el-dropdown-item command="pdf">📥 导出 A4 矢量 PDF (Typst 引擎)</el-dropdown-item>
+                      <el-dropdown-item command="preview">👁️ 预览标准计算书 </el-dropdown-item>
+                      <el-dropdown-item command="pdf">📥 导出标准计算书</el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
@@ -550,18 +595,6 @@
           </div>
         </div>
 
-        <!-- 6. 百级数据分页器 -->
-        <div class="pagination-container" v-if="filteredSnapshots.length > pageSize">
-          <el-pagination
-            v-model:current-page="currentPage"
-            :page-size="pageSize"
-            :total="filteredSnapshots.length"
-            layout="prev, pager, next"
-            small
-            background
-            class="compact-pagination"
-          />
-        </div>
       </template>
 
       <!-- 空数据状态提示 -->
@@ -571,6 +604,21 @@
           :image-size="70" 
         />
       </div>
+    </div>
+
+    <!-- 6. 常驻吸底分页栏 (Sticky Footer, 动态每页条数选择器) -->
+    <div class="pagination-footer" v-if="filteredSnapshots.length > 0">
+      <el-pagination
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
+        :page-sizes="[5, 10, 15, 20, 50, 100]"
+        :total="filteredSnapshots.length"
+        layout="total, sizes, prev, pager, next"
+        small
+        background
+        class="compact-pagination"
+        @size-change="handlePageSizeChange"
+      />
     </div>
 
     <!-- 7. 计算书 A4 预览与导出模态框 -->
@@ -607,7 +655,8 @@ import {
   VideoPlay,
   VideoPause,
   SwitchButton,
-  RefreshRight
+  RefreshRight,
+  MoreFilled
 } from '@element-plus/icons-vue';
 import { useParameterStore } from '@/store/parameterStore';
 import { exportSnapshotBlueprint } from '@/utils/blueprintGenerator';
@@ -714,10 +763,30 @@ const filteredSnapshots = computed(() => {
 });
 
 // ==========================================
-// 2. 分页控制
+// 2. 分页控制 (支持个性化每页条数持久化与动态调节)
 // ==========================================
+const PAGE_SIZE_KEY = 'tunnel_snapshot_sidebar_page_size';
+const getStoredPageSize = (): number => {
+  try {
+    const v = localStorage.getItem(PAGE_SIZE_KEY);
+    if (v) {
+      const parsed = parseInt(v, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+  } catch (_) {}
+  return 10; // 默认 10 条，避免屏幕高度受限时过度纵向堆叠
+};
+
 const currentPage = ref(1);
-const pageSize = ref(15);
+const pageSize = ref(getStoredPageSize());
+
+const handlePageSizeChange = (size: number) => {
+  pageSize.value = size;
+  try {
+    localStorage.setItem(PAGE_SIZE_KEY, String(size));
+  } catch (_) {}
+  currentPage.value = 1;
+};
 
 // 过滤条件变动时自动重置至第一页
 watch([searchKeyword, filterStatus, filterRisk], () => {
@@ -798,17 +867,59 @@ const handle3DDropdownCommand = (cmd: string) => {
   if (cmd === 'select_filtered') {
     filteredSnapshots.value.forEach((s: any) => s.selectedFor3D = true);
     ElMessage.success(`已勾选当前筛选的 ${filteredSnapshots.value.length} 个工况`);
+    snapshotStore.saveToLocal();
   } else if (cmd === 'unselect_filtered') {
     filteredSnapshots.value.forEach((s: any) => s.selectedFor3D = false);
     ElMessage.info(`已取消当前筛选工况勾选`);
+    snapshotStore.saveToLocal();
   } else if (cmd === 'select_all') {
     snapshots.value.forEach((s: any) => s.selectedFor3D = true);
     ElMessage.success(`已全选所有 ${snapshots.value.length} 个工况`);
+    snapshotStore.saveToLocal();
   } else if (cmd === 'clear_all') {
     snapshots.value.forEach((s: any) => s.selectedFor3D = false);
     ElMessage.info('已清空全部工况勾选');
+    snapshotStore.saveToLocal();
+  } else if (cmd === 'delete_filtered') {
+    const ids = filteredSnapshots.value.map((s: any) => s.id);
+    if (ids.length === 0) {
+      ElMessage.warning('当前筛选结果为空，无可删除工况');
+      return;
+    }
+    ElMessageBox.confirm(
+      `确定要删除当前筛选出的 ${ids.length} 个工况快照吗？删除后数据不可恢复。`,
+      '批量删除当前筛选工况',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonClass: 'el-button--danger'
+      }
+    ).then(() => {
+      snapshotStore.batchDeleteSnapshots(ids);
+      ElMessage.success(`已批量删除筛选出的 ${ids.length} 个工况快照`);
+      currentPage.value = 1;
+    }).catch(() => { });
+  } else if (cmd === 'clear_all_snapshots') {
+    if (snapshots.value.length === 0) {
+      ElMessage.info('当前快照库已为空');
+      return;
+    }
+    ElMessageBox.confirm(
+      `【高危警告】确定要清空全线所有 ${snapshots.value.length} 个工况快照吗？删除后所有历史计算结果与 3D 拼装数据将被彻底清除！`,
+      '清空全线快照',
+      {
+        confirmButtonText: '彻底清空',
+        cancelButtonText: '取消',
+        type: 'error',
+        confirmButtonClass: 'el-button--danger'
+      }
+    ).then(() => {
+      snapshotStore.clearAllSnapshots();
+      ElMessage.success('全线快照已全部清空');
+      currentPage.value = 1;
+    }).catch(() => { });
   }
-  snapshotStore.saveToLocal();
 };
 
 // ==========================================
@@ -1247,6 +1358,44 @@ const handleDeleteSnapshot = (id: string) => {
     ElMessage.success('快照已删除');
   }).catch(() => { });
 };
+
+// 批量删除已选快照
+const handleBatchDeleteSelected = () => {
+  const selectedIds = snapshots.value.filter((s: any) => s.selectedFor3D).map((s: any) => s.id);
+  if (selectedIds.length === 0) {
+    ElMessage.warning('请先勾选需要删除的工况快照');
+    return;
+  }
+  ElMessageBox.confirm(
+    `确定要批量删除已选中的 ${selectedIds.length} 个工况快照吗？删除后对应桩号分段与计算数据将不可恢复。`,
+    '批量删除确认',
+    {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+      confirmButtonClass: 'el-button--danger'
+    }
+  ).then(() => {
+    snapshotStore.batchDeleteSnapshots(selectedIds);
+    ElMessage.success(`已批量删除 ${selectedIds.length} 个工况快照`);
+    if (currentPage.value > Math.ceil(filteredSnapshots.value.length / pageSize.value)) {
+      currentPage.value = Math.max(1, Math.ceil(filteredSnapshots.value.length / pageSize.value));
+    }
+  }).catch(() => { });
+};
+
+// 卡片紧凑态收敛菜单操作
+const handleCardMoreCommand = (snap: any, cmd: string) => {
+  if (cmd === 'blueprint_pdf') {
+    handleExportBlueprint(snap, 'pdf');
+  } else if (cmd === 'calcbook_preview') {
+    handleCalcBookAction(snap, 'preview');
+  } else if (cmd === 'recalc') {
+    recalculateSingle(snap);
+  } else if (cmd === 'delete') {
+    handleDeleteSnapshot(snap.id);
+  }
+};
 </script>
 
 <style scoped>
@@ -1259,20 +1408,24 @@ const handleDeleteSnapshot = (id: string) => {
   flex-direction: column;
   overflow: hidden;
   box-sizing: border-box;
+  container-type: inline-size;
+  container-name: snapshotSidebar;
 }
 
 .header {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   flex-shrink: 0;
 }
 
 .header-title-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
 }
 
 .title-with-badge {
@@ -1291,7 +1444,7 @@ const handleDeleteSnapshot = (id: string) => {
 }
 
 .count-pill {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 10px;
@@ -1300,18 +1453,24 @@ const handleDeleteSnapshot = (id: string) => {
   font-family: 'JetBrains Mono', 'Consolas', monospace;
 }
 
-.header-btns {
-  display: flex;
-  gap: 5px;
+.header-actions-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  width: 100%;
 }
 
 .header-btn {
-  padding: 4px 8px;
-  font-size: 11.5px;
-  border-radius: 5px;
+  width: 100%;
+  justify-content: center;
+  padding: 6px 4px;
+  font-size: 12px;
+  border-radius: 6px;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 
 /* 统计指示栏 */
@@ -1329,7 +1488,7 @@ const handleDeleteSnapshot = (id: string) => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 7px;
   border-radius: 4px;
   cursor: pointer;
@@ -1623,11 +1782,12 @@ const handleDeleteSnapshot = (id: string) => {
   background: rgba(64, 158, 255, 0.08);
 }
 
-/* 4. 选中卡片快捷批量操作条 */
+/* 4. 选中卡片快捷批量操作条 (自适应双态防挤压) */
 .selected-batch-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   padding: 6px 10px;
   border-radius: 6px;
   background: linear-gradient(135deg, rgba(64, 158, 255, 0.12), rgba(99, 102, 241, 0.1));
@@ -1643,49 +1803,89 @@ const handleDeleteSnapshot = (id: string) => {
 .batch-bar-left {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
+  width: 100%;
 }
 
 .batch-count-tag {
-  font-size: 11.5px;
+  font-size: 12px;
   color: #1e293b;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
 }
 
 .batch-count-tag .el-icon {
   color: #409eff;
 }
 
+.batch-count-tag b {
+  color: #2563eb;
+  font-family: 'JetBrains Mono', monospace;
+}
+
 .batch-clear-btn {
-  font-size: 11px;
+  font-size: 12px;
   padding: 0 4px;
 }
 
 .batch-bar-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 5px;
+  width: 100%;
+}
+
+.batch-bar-actions :deep(.el-button + .el-button) {
+  margin-left: 0 !important;
 }
 
 .batch-quick-btn {
-  padding: 3px 8px;
-  font-size: 11px;
+  width: 100%;
+  padding: 4px 4px;
+  font-size: 12px;
   border-radius: 4px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 3px;
   font-weight: 600;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.batch-btn-text .text-compact {
+  display: none;
+}
+
+.batch-btn-text .text-full {
+  display: inline;
+}
+
+.batch-delete-btn {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.4);
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.batch-delete-btn:hover {
+  color: #ffffff;
+  background: #dc2626;
+  border-color: #dc2626;
 }
 
 /* 5. 快照卡片列表 */
 .snapshot-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 2px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 
 .snapshot-card {
@@ -1696,6 +1896,9 @@ const handleDeleteSnapshot = (id: string) => {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   overflow: hidden;
+  flex-shrink: 0;
+  min-height: 42px;
+  box-sizing: border-box;
 }
 
 .snapshot-card:hover {
@@ -1751,13 +1954,14 @@ const handleDeleteSnapshot = (id: string) => {
 /* 5.1 紧凑顶栏 */
 .card-compact-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  min-height: 38px;
+  min-height: 40px;
   padding: 6px 10px 6px 12px;
   cursor: pointer;
   user-select: none;
-  gap: 8px;
+  gap: 6px 8px;
 }
 
 .compact-left {
@@ -1766,6 +1970,7 @@ const handleDeleteSnapshot = (id: string) => {
   gap: 6px;
   overflow: hidden;
   flex: 1;
+  min-width: 140px;
 }
 
 .snap-checkbox {
@@ -1776,7 +1981,7 @@ const handleDeleteSnapshot = (id: string) => {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   font-family: 'JetBrains Mono', 'Consolas', monospace;
   color: #1e3a8a;
@@ -1789,7 +1994,7 @@ const handleDeleteSnapshot = (id: string) => {
 }
 
 .chainage-icon {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .snap-remark-text {
@@ -1813,7 +2018,7 @@ const handleDeleteSnapshot = (id: string) => {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
   padding: 1.5px 6px;
@@ -1889,12 +2094,27 @@ const handleDeleteSnapshot = (id: string) => {
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
-
 /* 紧凑顶栏快速动作按钮 */
 .compact-quick-actions {
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+.action-btn-desktop {
+  display: inline-flex;
+}
+
+.action-btn-mobile {
+  display: none;
+}
+
+.danger-menu-item {
+  color: #dc2626 !important;
+}
+
+.text-danger {
+  color: #dc2626 !important;
 }
 
 .icon-action-btn {
@@ -2230,12 +2450,32 @@ const handleDeleteSnapshot = (id: string) => {
   box-shadow: 0 2px 6px rgba(5, 150, 105, 0.3);
 }
 
-/* 分页 */
-.pagination-container {
+/* 6. 常驻吸底分页栏 */
+.pagination-footer {
   display: flex;
   justify-content: center;
-  padding-top: 6px;
+  align-items: center;
+  padding: 8px 4px 4px 4px;
+  border-top: 1px solid var(--sys-border, #e2e8f0);
+  background: var(--sys-bg-panel, #ffffff);
   flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.pagination-footer :deep(.el-pagination) {
+  font-size: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.pagination-footer :deep(.el-pagination__total),
+.pagination-footer :deep(.el-pagination__sizes),
+.pagination-footer :deep(.el-select .el-input__inner),
+.pagination-footer :deep(.btn-prev),
+.pagination-footer :deep(.btn-next),
+.pagination-footer :deep(.el-pager li) {
+  font-size: 12px;
 }
 
 .empty-wrap {
@@ -2243,5 +2483,103 @@ const handleDeleteSnapshot = (id: string) => {
   align-items: center;
   justify-content: center;
   flex: 1;
+}
+
+/* ===================================================
+   响应式容器查询适配 (Container Queries)
+   根据侧边栏自身的实际拖拽宽度动态切换形态
+   =================================================== */
+@container snapshotSidebar (min-width: 450px) {
+  .header-title-bar {
+    flex-wrap: nowrap;
+  }
+  .header-actions-row {
+    width: auto;
+    display: flex;
+    gap: 6px;
+  }
+  .header-btn {
+    width: auto;
+  }
+  .selected-batch-bar {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .batch-bar-left {
+    width: auto;
+    justify-content: flex-start;
+  }
+  .batch-bar-actions {
+    width: auto;
+    display: flex;
+    gap: 5px;
+  }
+  .batch-quick-btn {
+    width: auto;
+    padding: 3px 8px;
+  }
+}
+
+@container snapshotSidebar (min-width: 420px) and (max-width: 449px) {
+  .header-title-bar {
+    flex-wrap: nowrap;
+  }
+  .header-actions-row {
+    width: auto;
+    display: flex;
+    gap: 6px;
+  }
+  .header-btn {
+    width: auto;
+  }
+}
+
+@container snapshotSidebar (max-width: 380px) {
+  .action-btn-desktop {
+    display: none !important;
+  }
+  .action-btn-mobile {
+    display: inline-flex !important;
+  }
+  .header-actions-row {
+    grid-template-columns: repeat(3, 1fr) !important;
+    width: 100% !important;
+  }
+  .header-title-bar {
+    flex-wrap: wrap !important;
+  }
+  .batch-btn-text .text-full {
+    display: none !important;
+  }
+  .batch-btn-text .text-compact {
+    display: inline !important;
+  }
+  .batch-quick-btn {
+    padding: 4px 2px !important;
+  }
+}
+
+@container snapshotSidebar (max-width: 330px) {
+  .header-btn .btn-label {
+    display: none !important;
+  }
+  .header-btn {
+    padding: 6px 0 !important;
+  }
+  .fs-pill .fs-text-prefix {
+    display: none !important;
+  }
+  .chainage-capsule {
+    font-size: 12px;
+    padding: 1px 4px;
+  }
+  .batch-btn-text {
+    display: none !important;
+  }
+  .batch-quick-btn {
+    padding: 6px 0 !important;
+  }
 }
 </style>
