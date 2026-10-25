@@ -36,8 +36,15 @@
 * [[专题：快照卡片施工设计图自动生成|Phase4-Topic-Snapshot-CAD-Generation]]
 * [[专题：最不利受力探针随动架构|Phase4-Topic-Critical-Stress-Probe]]
 * [[专题：自适应顶栏与百级快照侧边栏检索|Phase4-Topic-Header-Sidebar-Retriever]]
+* [[专题：百段工况批量并发计算与动态估时断点续算|Phase4-Topic-Batch-Calculation-Resume]]
 * [[专题：排水管网3D模型专项问题诊断|Phase4-Topic-Drainage-Network-Diagnosis]]
 * [[专题：路面与排水沟几何修复方案|Phase4-Topic-Pavement-Ditch-Repair]]
+* [[专题：3D分段选区MiniMap联动与总览TXT导出|Phase4-Topic-MiniMap-Linkage-Export]]
+* [[专题：快照侧边栏百段自适应折叠与批量管理|Phase4-Topic-Snapshot-Sidebar-Batch-Management]]
+* [[专题：快照卡片展开态指标三段式重构|Phase4-Topic-Snapshot-Card-Three-Stage-Refactor]]
+* [[专题：快照批量入库与参数工程分组卡片化|Phase4-Topic-Snapshot-Batch-Storage-Grouping]]
+* [[专题：平台轻量一次性认证机制与敏感操作防护|Phase4-Topic-Lightweight-One-Time-Auth]]
+* [[专题：施工设计图在线预览与ZIP批量下载|Phase4-Topic-Construction-Drawing-Preview-Download]]
 * [[专题：探针结构受力问题诊断与修复|Phase4-Topic-Stress-Probe-Diagnosis]]
 * [[12次微观迭代演进全景复盘 (人工精修合并版)|Phase4-Evolution-Summary]]
 
@@ -46,8 +53,8 @@
 * [[GitHub 自动发布与大版本 CI-CD 流水线|Phase6-GitHub-Release-Pipeline]]
 * [[Docker 服务器版镜像构建与发布方案|Phase6-Docker-Build-Delivery]]
 * [[GitHub Wiki 体系化构建与自动化同步方案|Phase6-GitHub-Wiki-Automation-Scheme]]
+* [[专题：交付体系安全认证与密码生命周期配置|Phase6-Topic-Delivery-Security-Auth]]
 
 ### 📝 全局附录与配置资产
 * [[平台工程更新日志 (CHANGELOG)|CHANGELOG]]
-* [[Release Notes v1.1.0 发布说明|Release-Notes-v1.1.0]]
 * [[计算书参数 Prompt 工程资产|Prompt-Calculation-Asset]]

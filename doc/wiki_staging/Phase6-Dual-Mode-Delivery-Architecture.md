@@ -57,6 +57,7 @@
 | **持久化存储边界** | 集中式数据库或挂载网络存储卷 (`/data/tunnel_params.db`) | 用户宿主系统应用数据目录 (`%APPDATA%/TunnelPlatform/`) | XDG Base Directory / Windows SHGetKnownFolderPath |
 | **Typst 编译引擎集成**| 容器内 Linux x86_64 原生 Typst 二进制 (`/usr/local/bin/typst`)| 分发包内嵌 Windows `typst.exe`，由后端或 Tauri 管道相对路径解析 | CLI 进程标准输入输出与退出码契约 |
 | **进程销毁生命周期** | 服务管理器 (Systemd / K8s Pod Lifecycle) 优雅启停 | Tauri `RunEvent::Exit` / `CloseRequested` 信号强制杀树 (Kill Tree) | Win32 `TerminateProcess` / Job Object |
+| **安全认证与改密生命周期**| **纯运维环境变量轮换 (Ops-Level)** (修改宿主机 `.env` 热重启生效，零在线改密 API)| **本地编译期出厂固化** (不可改密，不设免密旁路，全量拦截敏感操作防误触)| [[阶段6-专题-交付体系安全认证与密码生命周期配置架构方案|Phase6-Topic-Delivery-Security-Auth]] |
 
 ---
 
@@ -160,6 +161,23 @@
 - **参数数据库**：自动定向至 `%APPDATA%\TunnelDrainagePlatform\tunnel_params.db`；若数据库文件不存在，启动时自动从内置基准模板执行无损初始化建表。
 - **本地日志输出**：定向至 `%APPDATA%\TunnelDrainagePlatform\logs\backend.log`，单文件上限 10MB，轮转归档，免除日志膨胀。
 - **导出文件交互**：集成 Tauri 2.0 原生 `tauri-plugin-dialog` 与 `tauri-plugin-fs`，施工图与计算书由系统原生“另存为”文件对话框引导用户保存至桌面或任意指定盘符。
+
+### 3.4 双模式安全认证与密码生命周期拓扑 (Security & Auth Adaptation)
+
+依据 [[阶段6-专题-交付体系安全认证与密码生命周期配置架构方案|Phase6-Topic-Delivery-Security-Auth]]，系统在交付物理拓扑中对安全认证和操作密码实施双轨差异化治理：
+
+1. **GitHub CI/CD 自动化构建态**：
+   - 全自动化无人值守流水线统一注入默认测试与出厂口令 `chongqing123456`，免除 CI 交互停顿与 Secret 脆弱依赖；Release 公告自动合成包含口令的使用说明。
+2. **本机手动发布定制态**：
+   - 开发者或管理员在本地执行发布脚本时，支持参数化或交互式指定专属操作口令：
+     - **桌面端**：将指定口令直接烘焙固化进本地打包的 Sidecar 二进制；
+     - **Docker 版**：镜像保持中立，随附的 `.env.production` 模板自动注入定制强口令。
+3. **Docker 服务器运行运维态 (纯运维级改密，无在线改密)**：
+   - 遵循云原生 12-Factor App 静态配置标准，支持管理员在宿主机 `.env` 或 Compose 环境变量中轮换口令，执行 `docker compose restart backend` 热重启生效（时延 $\le 15\text{s}$）；
+   - 后端坚决不设在线改密 API，不引入动态 SQLite 改密表，彻底消除配置漂移与越权漏洞。
+4. **桌面独立客户端运行态 (出厂常量固化，不可改密，不设免密旁路)**：
+   - 面向施工现场单机离线防误触场景，出厂口令经编译期常量烘焙入二进制，不可修改且脱机运行；
+   - 敏感操作（入库/清除/高阶导出）全量受控核验，不设免密旁路，彻底杜绝一线人员误触破坏工程基准数据或误改口令引发整机功能锁死。
 
 ---
 

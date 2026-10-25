@@ -173,7 +173,37 @@ categories:
         slug: "Phase4-Topic-Pavement-Ditch-Repair"
         tier: 3
         status: "verified"
-      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-结构安全性分析与结构受力表达问题诊断与修复方案.md"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-3D分段选区MiniMap联动居中与分段总览TXT导出架构方案.md"
+        wiki_title: "专题：3D分段选区MiniMap联动与总览TXT导出"
+        slug: "Phase4-Topic-MiniMap-Linkage-Export"
+        tier: 1
+        status: "curated"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-快照侧边栏百段自适应视口折叠与批量管理工程方案.md"
+        wiki_title: "专题：快照侧边栏百段自适应折叠与批量管理"
+        slug: "Phase4-Topic-Snapshot-Sidebar-Batch-Management"
+        tier: 1
+        status: "curated"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-快照卡片展开态指标三段式重构方案.md"
+        wiki_title: "专题：快照卡片展开态指标三段式重构"
+        slug: "Phase4-Topic-Snapshot-Card-Three-Stage-Refactor"
+        tier: 2
+        status: "curated"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-快照批量入库与参数工程分组卡片化架构方案.md"
+        wiki_title: "专题：快照批量入库与参数工程分组卡片化"
+        slug: "Phase4-Topic-Snapshot-Batch-Storage-Grouping"
+        tier: 1
+        status: "curated"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-平台轻量一次性认证机制与敏感操作防护架构方案.md"
+        wiki_title: "专题：平台轻量一次性认证机制与敏感操作防护"
+        slug: "Phase4-Topic-Lightweight-One-Time-Auth"
+        tier: 1
+        status: "curated"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-施工设计图在线预览与ZIP压缩包批量下载架构方案.md"
+        wiki_title: "专题：施工设计图在线预览与ZIP批量下载"
+        slug: "Phase4-Topic-Construction-Drawing-Preview-Download"
+        tier: 1
+        status: "curated"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-最不利探针与结构受力表达问题诊断与修复方案.md"
         wiki_title: "专题：探针结构受力问题诊断与修复"
         slug: "Phase4-Topic-Stress-Probe-Diagnosis"
         tier: 3
@@ -224,6 +254,11 @@ categories:
       - source: "docs/stages/stage6-delivery/阶段6-GitHub-Wiki知识库体系化构建与自动化同步方案.md"
         wiki_title: "GitHub Wiki 体系化构建与自动化同步方案"
         slug: "Phase6-GitHub-Wiki-Automation-Scheme"
+        tier: 1
+        status: "curated"
+      - source: "docs/stages/stage6-delivery/阶段6-专题-交付体系安全认证与密码生命周期配置架构方案.md"
+        wiki_title: "专题：交付体系安全认证与密码生命周期配置"
+        slug: "Phase6-Topic-Delivery-Security-Auth"
         tier: 1
         status: "curated"
 

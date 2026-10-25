@@ -226,7 +226,7 @@ CMD ["nginx", "-g", "daemon off;"]
 
 ### 3.4 生产目标服务器轻量部署编排 (`docker-compose.prod.yml`)
 
-生产机不再包含 `build:` 逻辑，杜绝源码泄漏：
+生产机不再包含 `build:` 逻辑，杜绝源码泄漏；同时将操作安全认证环境变量全量注入后端计算容器：
 
 ```yaml
 # deploy/server/docker-compose.prod.yml
@@ -234,7 +234,7 @@ version: "3.8"
 
 services:
   nginx:
-    image: ${DOCKER_REGISTRY_NAMESPACE}/tunnel-drainage-frontend:${APP_VERSION:-v1.0.0}
+    image: ${DOCKER_REGISTRY_NAMESPACE:-reaticle}/tunnel-drainage-frontend:${APP_VERSION:-v1.0.0}
     container_name: tunnel_nginx
     restart: always
     ports:
@@ -249,7 +249,7 @@ services:
       - tunnel_net
 
   backend:
-    image: ${DOCKER_REGISTRY_NAMESPACE}/tunnel-drainage-backend:${APP_VERSION:-v1.0.0}
+    image: ${DOCKER_REGISTRY_NAMESPACE:-reaticle}/tunnel-drainage-backend:${APP_VERSION:-v1.0.0}
     container_name: tunnel_backend
     restart: always
     environment:
@@ -257,6 +257,12 @@ services:
       - DB_PATH=/app/data/tunnel_params.db
       - LOG_DIR=/app/logs
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      # 平台操作权限与轻量一次性认证环境变量 (从 .env.production 集中注入)
+      - PLATFORM_AUTH_PASSWORD=${PLATFORM_AUTH_PASSWORD:-chongqing123456}
+      - PLATFORM_SECRET_KEY=${PLATFORM_SECRET_KEY:-cqu_tunnel_platform_secret_key_2026_authtoken_prod}
+      - PLATFORM_AUTH_ENABLED=${PLATFORM_AUTH_ENABLED:-true}
+      - AUTH_TOKEN_EXPIRE_MINUTES=${AUTH_TOKEN_EXPIRE_MINUTES:-120}
+      - PLATFORM_AUTH_MODE=server
     volumes:
       - tunnel_data:/app/data
       - tunnel_logs:/app/logs
@@ -273,6 +279,73 @@ networks:
   tunnel_net:
     driver: bridge
 ```
+
+配套生产环境变量基准文件 `deploy/server/.env.production`：
+```bash
+# deploy/server/.env.production
+DOCKER_REGISTRY_NAMESPACE=reaticle
+APP_VERSION=v1.0.0
+HTTP_PORT=80
+HTTPS_PORT=443
+LOG_LEVEL=info
+
+# ==========================================
+# 平台轻量一次性认证与操作权限配置 (发布期设定)
+# ==========================================
+# 平台操作员密码 (生产环境建议更换强密码，默认出厂口令: chongqing123456)
+PLATFORM_AUTH_PASSWORD=chongqing123456
+# HMAC-SHA256 签名密钥 (高熵随机字符串，用于会话令牌验签)
+PLATFORM_SECRET_KEY=cqu_tunnel_platform_secret_key_2026_authtoken_prod
+# 是否强制启用操作权限守卫 (服务器版强制为 true)
+PLATFORM_AUTH_ENABLED=true
+# 认证令牌有效时长 (分钟，默认 120 分钟)
+AUTH_TOKEN_EXPIRE_MINUTES=120
+```
+
+---
+
+### 3.5 平台认证安全密钥与密码发布期生命周期规约 (Platform Auth Release Lifecycle)
+
+依据 [[阶段6-专题-交付体系安全认证与密码生命周期配置架构方案|Phase6-Topic-Delivery-Security-Auth]]，系统针对不同交付与运行场景实施明确的密码生命周期分工：
+
+```
++---------------------------------------------------------------------------------------------------------+
+|                                    平台认证口令与安全密钥发布期定型架构                                    |
++---------------------------------------------------------------------------------------------------------+
+|                                                                                                         |
+|   【模式 A: 单机桌面版 (Tauri / PyInstaller)】               【模式 B: Docker 服务器版 (Linux / Web)】    |
+|                                                                                                         |
+|   1. 如何初设：                                               1. 在哪里配置：                           |
+|      - CI/CD 自动构建：注入默认简单口令 `chongqing123456`        - CI/CD 构建：采用默认简单密码；          |
+|      - 本机手动发布：支持参数/交互输入定制口令，固化至二进制     - 本机手动发布：生成带定制口令的 `.env`    |
+|                                                                                                         |
+|   2. 之后不可修改 (Immutable Runtime)：                       2. 纯运维级改密 (Ops-Level Config Rotation)：|
+|      - 出厂字节码固化口令，软件完全脱机运行；                    - 遵循云原生 12-Factor App 静态配置标准；  |
+|      - 彻底消除现场设计人员误改密/遗忘引发单机死锁；              - 宿主机编辑 .env 执行 restart backend 生效； |
+|      - 敏感操作全量受控核验，不设任何免密旁路。                   - 零在线改密 API，无 SQLite 动态改密表。   |
+|                                                                                                         |
++---------------------------------------------------------------------------------------------------------+
+```
+
+#### 3.5.1 单机版 (Desktop Standalone Edition)
+1. **如何初设**：
+   - **GitHub CI-CD 自动构建**：统一使用预设出厂口令 `chongqing123456`，免除 CI 交互停顿与 Secret 脆弱依赖；
+   - **本机手动发布**：开发者或发版人员运行 `./deploy/scripts/build-desktop.ps1` 时，可通过 `-OperatorPassword <pwd>` 参数或交互式提示输入专属口令，并在打包 PyInstaller Sidecar 时直接烘焙固化进二进制。
+2. **本地编译后不可修改且不设免密旁路 (Immutable & Zero-Bypass)**：
+   - **零改密端点与零 UI 暴露**：系统彻底移除在线改密端点，前端不设改密弹窗与交互表单，收敛攻击面与系统复杂度；
+   - **防死锁与防误触保障**：出厂口令经编译期常量固化，杜绝野外施工现场单机作业时因私自修改或遗忘口令导致整机功能锁死；
+   - **强制敏感操作核验**：关键工程参数入库、清除历史工程记录、三维断面导出等操作严格校验出厂口令，不设任何免密旁路。
+
+#### 3.5.2 服务器版 (Docker Server Edition)
+1. **在哪里配置与手动发布**：
+   - **Docker 镜像保持中立**：通用镜像内绝不硬编码任何客户私有密码，保障镜像推送到 Docker Hub 时的安全性；
+   - **本机手动发布物料**：管理员运行 `./deploy/scripts/build-server.ps1` 本地发布时，交互式提示输入生产操作口令，自动写入随附交付的 `dist-docker/.env.production`；
+   - **环境变量映射**：通过 `docker-compose.prod.yml` 的 `environment` 节将 `PLATFORM_AUTH_PASSWORD` 注入容器。
+2. **纯运维级改密与生效 (Ops-Level Mutation & Hot Restart)**：
+   - **运维级静态修改**：
+     管理员可在宿主机直接编辑 `.env` 或 `.env.production`，随后执行 `docker compose restart backend`，15 秒内无缝完成容器热重启生效；
+   - **零在线改密架构规范**：
+     坚决不设 Web 端在线改密 API，消灭数据库持久化动态密码表，彻底消灭“环境变量 vs 数据库持久化哈希”的优先级冲突与配置漂移反模式。
 
 ---
 
@@ -666,6 +739,11 @@ services:
       - APP_ENV=production
       - SERVER_PORT=8000
       - CORS_ORIGINS=*
+      # 安全认证配置项 (默认出厂口令: chongqing123456)
+      - PLATFORM_AUTH_PASSWORD=${PLATFORM_AUTH_PASSWORD:-chongqing123456}
+      - PLATFORM_SECRET_KEY=${PLATFORM_SECRET_KEY:-cqu_tunnel_platform_secret_key_2026_authtoken_prod}
+      - PLATFORM_AUTH_ENABLED=${PLATFORM_AUTH_ENABLED:-true}
+      - AUTH_TOKEN_EXPIRE_MINUTES=${AUTH_TOKEN_EXPIRE_MINUTES:-120}
     ports:
       - "8000:8000"
     volumes:
@@ -697,6 +775,10 @@ docker compose up -d
 | `SERVER_PORT` | `8000` | 后端 FastAPI 监听端口 |
 | `CORS_ORIGINS` | `*` | 跨域允许来源列表，逗号分隔 |
 | `TYPST_FONT_DIR` | `/usr/share/fonts` | Typst 计算书渲染字体挂载目录 |
+| `PLATFORM_AUTH_PASSWORD` | `chongqing123456` | **平台操作员安全密码**：用于批量导入、修改参数、批量计算、执行云计算与台账写操作认证，生产环境建议配置强口令 |
+| `PLATFORM_SECRET_KEY` | `cqu_tunnel_platform...` | **HMAC 签名令牌密钥**：用于签发与核验会话令牌防伪 |
+| `PLATFORM_AUTH_ENABLED` | `true` | **操作安全守卫开关**：生产服务器强制启用 (`true`)，单机版可通过环境变量或设置关闭 |
+| `AUTH_TOKEN_EXPIRE_MINUTES` | `120` | **会话令牌有效时长**：操作员完成一次认证后的免密漫游时长（分钟） |
 
 ## 维护与支持
 如遇工程计算书排版、网络拓扑解算或 3D 渲染问题，请查阅官方 GitHub 知识库与 Issue 跟踪面板。
