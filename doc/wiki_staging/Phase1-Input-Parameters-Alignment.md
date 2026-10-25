@@ -170,7 +170,7 @@ flowchart TD
     end
 
     E4 --> F["调用 mc.get_safety_factor(..., 'HRB400', ...) 固定HRB400"]
-    F --> G{原始安全系数 nowK > tol_safety_factor?}
+    F --> G{分区安全系数 nowK > tol_safety_factor?}
     G -- 满足 (无需堵水) --> H[输出原始排水方案 results]
     G -- 不满足 (需注浆堵水) --> I[步进迭代求解容许水头 waterHead]
     I --> J["反算临界注浆半径 rg_crit 与临界方案"]

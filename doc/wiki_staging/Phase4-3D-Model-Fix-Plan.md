@@ -65,7 +65,7 @@ flowchart TD
         V3D --> |"1. 管道截面半径 r = d / 2<br/>2. 3D 发光 & 间距/尺寸 标注"| DPG["DrainagePipeGenerator.ts<br/>(排水管网)"]
         V3D --> |"1. 初始注浆圈 (rg, tg)<br/>2. 临界注浆圈 (rg_crit, tg_crit)"| RM["Reinforcement.ts<br/>(注浆圈)"]
         V3D --> |"双洞坐标平移: X = ± D/2<br/>流线 & 粒子向双轴收敛"| ENV["Environment.ts<br/>(水文环境)"]
-        V3D --> |"1. 100节点->24单元重采样映射<br/>2. viewMode 绑定<br/>3. 双洞坐标平移"| PP["PostProcessing.ts<br/>(受力图 & 3D 最不利探针)"]
+        V3D --> |"1. 100节点->24单元重采样映射<br/>2. viewMode 绑定<br/>3. 双洞坐标平移"| PP["PostProcessing.ts<br/>(受力图 & 3D 结构安全性分析)"]
         
         PP --> |"绑定分区里程 DK10+000 ~ DK10+050"| Overlay["Overlay 探针悬浮看板"]
     end
@@ -135,7 +135,7 @@ flowchart TD
         <label class="layer-item">
           <input type="checkbox" v-model="layerVisibility.probe" @change="updateLayerVisibility" />
           <span class="layer-color-dot probe-dot"></span>
-          <span class="layer-label">最不利探针</span>
+          <span class="layer-label">结构安全性分析</span>
         </label>
       </div>
 ```
@@ -380,9 +380,9 @@ const updateLayerVisibility = () => {
 
 2. **双洞工况水文与探针验证**：
    - 切换参数至 `tunnel_type = "double"`（双洞模式）。
-   - 确认水流粒子与辐射流线分别向左右双洞轴心汇聚；最不利探针贴合左右洞衬砌表面，不再悬空在中央空气中。
+   - 确认水流粒子与辐射流线分别向左右双洞轴心汇聚；结构安全性分析贴合左右洞衬砌表面，不再悬空在中央空气中。
 
 3. **最不利单元与安全系数一致性验证**：
-   - 在分屏比对视图下，确认左侧原始视图探针显示原始安全系数（如 1.42），右侧临界视图探针显示临界安全系数（如 2.01）。
+   - 在分屏比对视图下，确认左侧原始视图探针显示分区安全系数（如 1.42），右侧临界视图探针显示临界安全系数（如 2.01）。
    - 确认探针高亮位置准确映射至 24 单元对应的破坏位置（如拱脚 `#10`），不再固定停留在 `#0`。
    - 确认 Overlay 看板标题正确显示【分区里程】（如 `DK10+000 ~ DK10+050`）。

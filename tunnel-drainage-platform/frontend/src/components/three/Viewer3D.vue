@@ -403,7 +403,7 @@
           <label class="layer-item">
             <input type="checkbox" v-model="layerVisibility.probe" @change="updateLayerVisibility" />
             <span class="layer-color-dot probe-dot"></span>
-            <span class="layer-label">最不利探针</span>
+            <span class="layer-label">结构安全性分析</span>
           </label>
         </div>
       </div>
@@ -1876,7 +1876,7 @@ const setCameraState = (state: { position: number[]; target: number[] }) => {
 
 defineExpose({ setCameraState });
 
-// 仅更新当前活动分段的 3D 最不利探针与云图 (全部不选时自动回退至全线最危险截面)
+// 仅更新当前活动分段的 3D 结构安全性分析与云图 (全部不选时自动回退至全线最危险截面)
 const renderActiveSegmentProbe = (snapOverride?: Snapshot | null) => {
   if (!probeManager) return;
   let targetSnap: Snapshot | null = null;

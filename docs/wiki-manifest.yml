@@ -173,7 +173,7 @@ categories:
         slug: "Phase4-Topic-Pavement-Ditch-Repair"
         tier: 3
         status: "verified"
-      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-最不利探针与结构受力表达问题诊断与修复方案.md"
+      - source: "docs/stages/stage4-3d-visual/topics/阶段4-专题-结构安全性分析与结构受力表达问题诊断与修复方案.md"
         wiki_title: "专题：探针结构受力问题诊断与修复"
         slug: "Phase4-Topic-Stress-Probe-Diagnosis"
         tier: 3

@@ -24,7 +24,7 @@ export class StressProbeManager {
   public probeGroup: THREE.Group;       // 探针高亮、引线与指示标组
   public diagramGroup: THREE.Group;     // 弯矩/轴力/安全系数受力多边形组
   public elementColors: THREE.Color[];
-  
+
   private kGroup: THREE.Group | null = null;
   private mGroup: THREE.Group | null = null;
   private nGroup: THREE.Group | null = null;
@@ -39,7 +39,7 @@ export class StressProbeManager {
     this.probeGroup = new THREE.Group();
     this.diagramGroup = new THREE.Group();
     this.elementColors = new Array(24).fill(0).map(() => new THREE.Color(0x00aaff));
-    
+
     this.scene.add(this.probeGroup);
     this.scene.add(this.diagramGroup);
   }
@@ -143,7 +143,7 @@ export class StressProbeManager {
 
       if (k <= tolSafetyFactor) {
         const ratio = Math.max(0, (k - 1.0) / (tolSafetyFactor - 1.0 || 1.0));
-        color.setHSL(0.0 + ratio * 0.08, 1.0, 0.5); 
+        color.setHSL(0.0 + ratio * 0.08, 1.0, 0.5);
       } else {
         const ratio = Math.min(1.0, (k - tolSafetyFactor) / 5.0);
         color.setHSL(0.25 + ratio * 0.35, 0.85, 0.5);
@@ -264,16 +264,16 @@ export class StressProbeManager {
       const M2 = M_list[(i + 1) % count] || 0;
 
       quadPositions.push(
-        P1.x, P1.y, P1.z,  Q1.x, Q1.y, Q1.z,  Q2.x, Q2.y, Q2.z,
-        P1.x, P1.y, P1.z,  Q2.x, Q2.y, Q2.z,  P2.x, P2.y, P2.z
+        P1.x, P1.y, P1.z, Q1.x, Q1.y, Q1.z, Q2.x, Q2.y, Q2.z,
+        P1.x, P1.y, P1.z, Q2.x, Q2.y, Q2.z, P2.x, P2.y, P2.z
       );
 
       const c1 = M1 > 0 ? new THREE.Color(0xff4433) : new THREE.Color(0x00aaff);
       const c2 = M2 > 0 ? new THREE.Color(0xff4433) : new THREE.Color(0x00aaff);
 
       quadColors.push(
-        c1.r, c1.g, c1.b,  c1.r, c1.g, c1.b,  c2.r, c2.g, c2.b,
-        c1.r, c1.g, c1.b,  c2.r, c2.g, c2.b,  c2.r, c2.g, c2.b
+        c1.r, c1.g, c1.b, c1.r, c1.g, c1.b, c2.r, c2.g, c2.b,
+        c1.r, c1.g, c1.b, c2.r, c2.g, c2.b, c2.r, c2.g, c2.b
       );
     }
 
@@ -365,8 +365,8 @@ export class StressProbeManager {
       const N2_abs = Math.abs(N_list[(i + 1) % count] || 0);
 
       quadPositions.push(
-        P1.x, P1.y, P1.z,  Q1.x, Q1.y, Q1.z,  Q2.x, Q2.y, Q2.z,
-        P1.x, P1.y, P1.z,  Q2.x, Q2.y, Q2.z,  P2.x, P2.y, P2.z
+        P1.x, P1.y, P1.z, Q1.x, Q1.y, Q1.z, Q2.x, Q2.y, Q2.z,
+        P1.x, P1.y, P1.z, Q2.x, Q2.y, Q2.z, P2.x, P2.y, P2.z
       );
 
       const int1 = maxN > 0 ? N1_abs / maxN : 0.5;
@@ -375,8 +375,8 @@ export class StressProbeManager {
       const c2 = new THREE.Color().setHSL(0.55 - int2 * 0.35, 0.85, 0.5);
 
       quadColors.push(
-        c1.r, c1.g, c1.b,  c1.r, c1.g, c1.b,  c2.r, c2.g, c2.b,
-        c1.r, c1.g, c1.b,  c2.r, c2.g, c2.b,  c2.r, c2.g, c2.b
+        c1.r, c1.g, c1.b, c1.r, c1.g, c1.b, c2.r, c2.g, c2.b,
+        c1.r, c1.g, c1.b, c2.r, c2.g, c2.b, c2.r, c2.g, c2.b
       );
     }
 
@@ -416,7 +416,7 @@ export class StressProbeManager {
   }
 
   /**
-   * 7. 基于快照更新受力表达与最不利探针挂载
+   * 7. 基于快照更新受力表达与结构安全性分析挂载
    */
   public updateFromSnapshot(
     snapshot: any,
@@ -447,8 +447,8 @@ export class StressProbeManager {
 
     // 1. 严格依据 viewMode 选取状态字段
     const isCriticalMode = viewMode === 'critical' && (snapshot?.results?.critical_state || snapshot?.critical_state);
-    const state = isCriticalMode 
-      ? (snapshot?.results?.critical_state ?? snapshot?.critical_state) 
+    const state = isCriticalMode
+      ? (snapshot?.results?.critical_state ?? snapshot?.critical_state)
       : (snapshot?.results?.original_state ?? snapshot?.original_state ?? {});
     const echart = snapshot?.results?.echart_data ?? snapshot?.echart_data ?? {};
     const liningRes = isCriticalMode ? (echart.lining_res_critical ?? {}) : (echart.lining_res_original ?? {});
@@ -543,7 +543,7 @@ export class StressProbeManager {
       this.mGroup.add(subMGroup);
       this.nGroup.add(subNGroup);
 
-      // 构建 3D 最不利探针
+      // 构建 3D 结构安全性分析
       const controlNode = nodes[controlIdx24] || nodes[0];
       const P_control = controlNode.position.clone();
       const norm_control = controlNode.normal.clone();

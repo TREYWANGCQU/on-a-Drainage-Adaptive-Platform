@@ -266,7 +266,7 @@ def compare_results():
     
     # 3. 比对字段
     check_items = [
-        ("原始安全系数", benchmark["original_state"]["safety_factor"], cloud_result["original_state"]["safety_factor"]),
+        ("分区安全系数", benchmark["original_state"]["safety_factor"], cloud_result["original_state"]["safety_factor"]),
         ("原始拱顶水压 (kPa)", benchmark["original_state"]["P_crown"], cloud_result["original_state"]["P_crown"]),
         ("临界控制水压 P_crit (kPa)", benchmark["critical_state"]["P_crit"], cloud_result["critical_state"]["P_crit_input"]),
         ("临界注浆半径 rg_crit (m)", benchmark["critical_state"]["rg_crit"], cloud_result["critical_state"]["rg_crit"]),

@@ -20,7 +20,7 @@ STATUS: FAIL
 > 1. **受力单位放大 1000 倍**：Overlay 标量看板与探针悬浮框将后端原始 $\text{N}$ 与 $\text{N}\cdot\text{m}$ 未经千分位缩放直接标示为 $\text{kN}$ 与 $\text{kN}\cdot\text{m}$。
 > 2. **图层划分与结构属性混淆**：缺失【初始注浆圈】（外半径为输入参数 $r_g$）图层；原【注浆加固圈】未重命名为【临界注浆加固圈】（厚度为计算值 $t_{g\_crit}$）；保留了阶段4不应存在的【系统锚杆】图层。
 > 3. **排水管网表达不当与几何半径混淆**：盲管 Mesh 几何误将管径（Diameter）当作半径（Radius）导致粗细翻倍；且排水管相对于隧道整体尺寸较小（0.05~0.1m vs 10~12m），缺乏间距、分布、尺寸的图层标注与合理的 3D 增强表达。
-> 4. **双洞空间坐标错位**：双洞工况（`tunnel_type == "double"`）下，【水文环境】图层（水流粒子与辐射流线）与【最不利探针】图层未叠加 $\pm D_{spacing}/2$ 的 X 轴平移矩阵，导致粒子与探针在左右双洞中间的空气中悬空。
+> 4. **双洞空间坐标错位**：双洞工况（`tunnel_type == "double"`）下，【水文环境】图层（水流粒子与辐射流线）与【结构安全性分析】图层未叠加 $\pm D_{spacing}/2$ 的 X 轴平移矩阵，导致粒子与探针在左右双洞中间的空气中悬空。
 > 5. **最不利受力单元安全系数不一致**：`PostProcessing.ts` 模式硬编码优先读取 `critical_state`，导致在原始状态视图下探针读取临界安全系数；同时后端求解器（100 节点）与前端（24 单元）索引未重采样对齐，导致数组越界回退取错数值。
 > 6. **受力单元 #0 成因与里程映射缺失**：最不利单元 `#0` 系后端 100 节点索引越界后前端 `nodes[controlIdx]` 强制回退至 `nodes[0]` 的异常表现，且探针悬浮框未与隧道的【分区里程】（`start_chainage ~ end_chainage`）绑定。
 
@@ -68,7 +68,7 @@ STATUS: FAIL
 
 ## 5. 缺陷与错误 (ERRORS)
 
-### 5.1 【致命】最不利探针内力数值与单位放大 1000 倍
+### 5.1 【致命】结构安全性分析内力数值与单位放大 1000 倍
 
 * **代码节点**：
   - 后端求解：[mechcalc.py:L184-L185](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/backend/app/services/mechcalc.py#L184-L185) 输出的 `N_elem` 单位为 $\text{N}$，`M_elem` 单位为 $\text{N}\cdot\text{m}$。
@@ -91,7 +91,7 @@ STATUS: FAIL
   1. **半径混淆**：`TubeGeometry` 第三个参数传入了管径 $d$（如 0.05m），导致生成的管道 3D 粗细翻倍。
   2. **尺度表达缺失**：排水管网尺寸相对于 10m~12m 的隧道主体极小（$d=0.05\sim 0.1\text{m}$），在全景视图下极易被遮挡或难以看清。缺少独立的尺寸、分布、间距图层 Overlay 标注（如 `间距: 5.0m, 管径: Φ100mm`）以及合理的 3D 视觉高亮/防穿模发光表达。
 
-### 5.4 双洞工况下【水文环境】与【最不利探针】空间坐标错位
+### 5.4 双洞工况下【水文环境】与【结构安全性分析】空间坐标错位
 
 * **代码节点**：
   - [Environment.ts:L297-L298](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/frontend/src/components/three/Environment.ts#L297-L298)
@@ -106,7 +106,7 @@ STATUS: FAIL
 * **代码节点**：[PostProcessing.ts:L438-L451](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/frontend/src/components/three/PostProcessing.ts#L438-L451)
 * **诊断分析**：
   `const state = snapshot?.critical_state ?? snapshot?.original_state ?? {};`
-  硬编码逻辑导致只要 snapshot 中存在 `critical_state`，无论前端处于【原始状态】还是【临界加固状态】视图，`PostProcessing.ts` 都会强行提取 `critical_state.final_safety_factor`（如 2.01）。当用户在分屏左侧查看原始状态（原始安全系数如 1.42）时，3D 探针上却错误地显示着临界状态的 2.01，造成探针数值与云计算看板的原始/临界状态安全系数严重不一致。
+  硬编码逻辑导致只要 snapshot 中存在 `critical_state`，无论前端处于【原始状态】还是【临界加固状态】视图，`PostProcessing.ts` 都会强行提取 `critical_state.final_safety_factor`（如 2.01）。当用户在分屏左侧查看原始状态（分区安全系数如 1.42）时，3D 探针上却错误地显示着临界状态的 2.01，造成探针数值与云计算看板的原始/临界状态安全系数严重不一致。
 
 ### 5.6 最不利单元 #0 的成因诊断与里程映射缺失
 
@@ -154,7 +154,7 @@ STATUS: FAIL
   <label class="layer-item">
     <input type="checkbox" v-model="layerVisibility.probe" @change="updateLayerVisibility" />
     <span class="layer-color-dot probe-dot"></span>
-    <span class="layer-label">最不利探针</span>
+    <span class="layer-label">结构安全性分析</span>
   </label>
 </div>
 ```
@@ -183,13 +183,13 @@ private createRingInstancedMesh(diam: number, count: number, color: number): THR
 
 ---
 
-### 6.3 修复双洞模式下【水文环境】与【最不利探针】的平移坐标
+### 6.3 修复双洞模式下【水文环境】与【结构安全性分析】的平移坐标
 
 1. **水文环境平移修复** ([Environment.ts](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/frontend/src/components/three/Environment.ts))：
    在 `initWaterParticles` 与 `initFlowLines` 中，当 `tunnelType === 'double'` 时，分别围绕 $X = -D_{spacing}/2$ 与 $X = +D_{spacing}/2$ 双轴线生成粒子与流线组。
 
-2. **最不利探针双洞对齐修复** ([PostProcessing.ts](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/frontend/src/components/three/PostProcessing.ts))：
-   扩展 `updateFromSnapshot` 接收 `tunnelType` 与 `D_spacing`，为双洞各生成一套受力图与最不利探针。
+2. **结构安全性分析双洞对齐修复** ([PostProcessing.ts](file:///d:/offices/Github/%E9%9A%A7%E9%81%93%E5%B7%A5%E7%A8%8B%E5%A4%9A%E7%BB%B4%E5%8D%8F%E5%90%8C%E6%99%BA%E8%83%BD%E6%8E%92%E6%B0%B4%E8%87%AA%E9%80%82%E5%BA%94%E5%B9%B3%E5%8F%B0/tunnel-drainage-platform/frontend/src/components/three/PostProcessing.ts))：
+   扩展 `updateFromSnapshot` 接收 `tunnelType` 与 `D_spacing`，为双洞各生成一套受力图与结构安全性分析。
 
 ---
 

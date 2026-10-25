@@ -127,7 +127,7 @@ d:/offices/Github/隧道工程多维协同智能排水自适应平台/
 | 26 | `阶段4-专题-自适应顶栏与百级快照侧边栏检索折叠架构方案.md` | `docs/stages/stage4-3d-visual/topics/阶段4-专题-自适应顶栏与百级快照侧边栏检索折叠架构方案.md` | `Phase4-Topic-Header-Sidebar-Retriever` | Tier 2 | Verified |
 | 27 | `阶段4-专题-排水管网3D模型专项问题诊断与完善方案.md` | `docs/stages/stage4-3d-visual/topics/阶段4-专题-排水管网3D模型专项问题诊断与完善方案.md` | `Phase4-Topic-Drainage-Network-Diagnosis` | Tier 2 | Verified |
 | 28 | `阶段4-专题-路面与排水沟几何修复方案.md` | `docs/stages/stage4-3d-visual/topics/阶段4-专题-路面与排水沟几何修复方案.md` | `Phase4-Topic-Pavement-Ditch-Repair` | Tier 3 | Verified |
-| 29 | `阶段4-专题-最不利探针与结构受力表达问题诊断与修复方案.md` | `docs/stages/stage4-3d-visual/topics/阶段4-专题-最不利探针与结构受力表达问题诊断与修复方案.md` | `Phase4-Topic-Stress-Probe-Diagnosis` | Tier 3 | Verified |
+| 29 | `阶段4-专题-结构安全性分析与结构受力表达问题诊断与修复方案.md` | `docs/stages/stage4-3d-visual/topics/阶段4-专题-结构安全性分析与结构受力表达问题诊断与修复方案.md` | `Phase4-Topic-Stress-Probe-Diagnosis` | Tier 3 | Verified |
 | 30~45 | 阶段4 第1~12次微观迭代排查记录 (共16篇原始草稿) | `docs/stages/stage4-3d-visual/iterations/阶段4-第[1~12]次-*.md` | `Phase4-Evolution-Summary` *(人工精修合并版)* | Tier 1 (精修) / Tier 4 (原始) | Curated (优先采用 `docs/wiki/Phase4-Evolution-Summary.md` 覆写发布) |
 | 46 | `阶段6-服务器与桌面独立GUI双模式交付系统架构方案.md` | `docs/stages/stage6-delivery/阶段6-服务器与桌面独立GUI双模式交付系统架构方案.md` | `Phase6-Dual-Mode-Delivery-Architecture` | Tier 1 | Curated |
 | 47 | `阶段6-GitHub自动发布与大版本CI-CD流水线方案.md` | `docs/stages/stage6-delivery/阶段6-GitHub自动发布与大版本CI-CD流水线方案.md` | `Phase6-GitHub-Release-Pipeline` | Tier 1 | Curated |

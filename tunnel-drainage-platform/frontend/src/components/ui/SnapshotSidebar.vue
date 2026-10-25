@@ -253,10 +253,10 @@
                   🖼️ 批量下载选中施工图 (PNG)
                 </el-dropdown-item>
                 <el-dropdown-item command="export_calc_books" divided>
-                  📚 批量导出选中计算书 (Typst ZIP)
+                  📚 批量导出选中计算书
                 </el-dropdown-item>
                 <el-dropdown-item command="export_all_filtered_calc_books">
-                  ⚡ 一键导出当前筛选全部计算书 (Typst ZIP)
+                  ⚡ 一键导出当前筛选全部计算书
                 </el-dropdown-item>
                 <el-dropdown-item command="export_json_raw" divided>
                   💾 批量导出选中计算结果 (JSON)
@@ -314,11 +314,11 @@
             class="batch-quick-btn"
             :loading="isBatchExporting"
             @click="batchExportCalcBooks()"
-            title="一键批量并发编译导出选中工况的 A4 标准计算书 (Typst ZIP)"
+            title="一键批量并发编译导出选中工况的 A4 标准计算书"
           >
             <el-icon v-if="!isBatchExporting"><DocumentCopy /></el-icon>
             <span class="batch-btn-text">
-              <span class="text-full">计算书(ZIP)</span>
+              <span class="text-full">计算书</span>
               <span class="text-compact">计算书</span>
             </span>
           </el-button>
@@ -417,15 +417,15 @@
                   <button 
                     type="button"
                     class="icon-action-btn book-btn" 
-                    title="A4 标准防排水设计计算书 (预览 / Typst 导出)"
+                    title="A4 标准防排水设计计算书"
                     @click.stop
                   >
                     <el-icon><Notebook /></el-icon>
                   </button>
                   <template #dropdown>
                     <el-dropdown-menu>
-                      <el-dropdown-item command="preview">👁️ 预览 A4 标准计算书 (6大章节)</el-dropdown-item>
-                      <el-dropdown-item command="pdf">📥 导出 A4 矢量计算书 (Typst PDF)</el-dropdown-item>
+                      <el-dropdown-item command="preview">👁️ 预览 A4 标准计算书</el-dropdown-item>
+                      <el-dropdown-item command="pdf">📥 导出 A4 矢量计算书</el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
@@ -484,7 +484,7 @@
                   <div class="headline-val">{{ snap.results.original_state?.waterHead?.toFixed(2) ?? '-' }} <span class="unit">m</span></div>
                 </div>
                 <div class="headline-card head-fs" :class="isRiskSnapshot(snap) ? 'is-danger' : 'is-safe'">
-                  <div class="headline-label">🛡️ 原始安全系数</div>
+                  <div class="headline-label">🛡️ 分区安全系数</div>
                   <div class="headline-val">{{ snap.results.original_state?.safety_factor?.toFixed(2) ?? '-' }}</div>
                 </div>
               </div>
