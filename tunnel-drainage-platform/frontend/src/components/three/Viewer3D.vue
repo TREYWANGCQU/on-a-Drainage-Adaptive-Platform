@@ -38,6 +38,15 @@
             <button v-if="selectorSearch" class="clear-search-btn" @click="selectorSearch = ''">✕</button>
           </div>
 
+          <!-- 分段总览 TXT 导出按钮 -->
+          <button 
+            class="export-txt-btn" 
+            @click.stop="exportSegmentOverviewTxt"
+            title="导出当前全线各分段安全系数与临界注浆厚度总览清单"
+          >
+            📄 导出总览
+          </button>
+
           <!-- 独占聚焦模式切换 -->
           <button 
             class="focus-mode-btn" 
@@ -53,7 +62,7 @@
       <!-- 2. 展开态主体区 (Mini-map 全线热力色带 + 虚拟化水平胶囊流) -->
       <div v-if="!isSelectorCollapsed" class="selector-body">
         <!-- 2.1 宏观全线安全热力色带 Mini-map -->
-        <div class="minimap-wrapper" title="全线安全热力色带 (点击快速定位对应工况)">
+        <div class="minimap-wrapper" title="全线安全热力色带">
           <canvas 
             ref="miniMapCanvasRef" 
             class="minimap-canvas" 
@@ -82,6 +91,7 @@
             <!-- 全局不聚焦/全线概览胶囊 -->
             <div 
               class="segment-pill all-overview-pill"
+              :data-segment-id="'overview'"
               :class="{ active: !activeSegment }"
               @click="unselectSegment"
               title="点击取消单段聚焦，进入全线贯通无选框状态"
@@ -93,6 +103,7 @@
             <div 
               v-for="snap in filteredSelectorSegments" 
               :key="snap.id"
+              :data-segment-id="snap.id"
               class="segment-pill"
               :class="{ 
                 active: activeSegment?.id === snap.id,
@@ -623,6 +634,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick, toRaw } from 'vue';
+import { ElMessage } from 'element-plus';
 import * as THREE from 'three';
 import { useSnapshotStore, extractSnapshotValue, Snapshot } from '@/store/snapshotStore';
 import { useParameterStore } from '@/store/parameterStore';
@@ -1187,6 +1199,172 @@ const scrollPills = (dir: 'left' | 'right') => {
   pillTrackRef.value.scrollBy({ left: offset, behavior: 'smooth' });
 };
 
+/**
+ * 基于视口绝对包围盒映射的胶囊水平居中算法 (解耦 offsetParent 与父级层级)
+ */
+const scrollPillToCenter = (snapId?: string | null) => {
+  nextTick(() => {
+    if (!pillTrackRef.value || isSelectorCollapsed.value) return;
+    const track = pillTrackRef.value;
+    const selector = snapId ? `[data-segment-id="${snapId}"]` : `[data-segment-id="overview"]`;
+    const targetEl = track.querySelector<HTMLElement>(selector);
+
+    if (targetEl) {
+      const trackRect = track.getBoundingClientRect();
+      const targetRect = targetEl.getBoundingClientRect();
+      // 绝对消除 offsetParent 依赖，精准获取相对滚动物理位置
+      const relLeft = targetRect.left - trackRect.left + track.scrollLeft;
+      const targetScroll = relLeft - (track.clientWidth - targetEl.offsetWidth) / 2;
+      const maxScroll = Math.max(0, track.scrollWidth - track.clientWidth);
+
+      track.scrollTo({
+        left: Math.max(0, Math.min(maxScroll, targetScroll)),
+        behavior: 'smooth'
+      });
+    }
+  });
+};
+
+// 集中式监听活动段变化，统一调度平滑居中滚动
+watch(() => snapshotStore.activeSegmentId, (newId) => {
+  scrollPillToCenter(newId);
+});
+
+// 监听选区栏折叠还原，展开时若有选中段自动补齐居中
+watch(isSelectorCollapsed, (collapsed) => {
+  if (!collapsed) {
+    scrollPillToCenter(snapshotStore.activeSegmentId);
+  }
+});
+
+/**
+ * 计算字符在等宽终端/文本环境下的视觉显示宽度 (CJK 全角字符计数 2，半角字符计数 1)
+ */
+function getVisualWidth(str: string): number {
+  let w = 0;
+  for (let i = 0; i < str.length; i++) {
+    w += str.charCodeAt(i) > 127 ? 2 : 1;
+  }
+  return w;
+}
+
+/**
+ * 等宽列填充函数
+ */
+function padCol(str: string, targetWidth: number): string {
+  const currentW = getVisualWidth(str);
+  const padLen = Math.max(0, targetWidth - currentW);
+  return str + ' '.repeat(padLen);
+}
+
+/**
+ * 纯前端分段总览成果清单 TXT 导出
+ */
+const exportSegmentOverviewTxt = () => {
+  const list = renderedSegments.value;
+  if (!list || list.length === 0) {
+    ElMessage.warning('当前无可导出的分段数据');
+    return;
+  }
+
+  const now = new Date();
+  const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+  const totalCount = list.length;
+  let dangerCount = 0;
+  let warningCount = 0;
+  let safeCount = 0;
+  let uncalcCount = 0;
+  let totalLenM = 0;
+
+  list.forEach(s => {
+    const fs = snapFs(s);
+    if (fs != null) {
+      if (fs < 1.0) dangerCount++;
+      else if (fs < 2.0) warningCount++;
+      else safeCount++;
+    } else {
+      uncalcCount++;
+    }
+    const start = extractSnapshotValue(s, 'start_chainage', 0);
+    const end = extractSnapshotValue(s, 'end_chainage', 50);
+    totalLenM += Math.abs(end - start);
+  });
+
+  const lines: string[] = [];
+  lines.push('='.repeat(96));
+  lines.push('           隧道工程多维协同智能排水自适应平台 - 计算分段成果总览清单');
+  lines.push('='.repeat(96));
+  lines.push(`导出时间: ${timeStr}`);
+  lines.push(`统计总览: 共 ${totalCount} 个分段 | 贯通总长: ${(totalLenM / 1000).toFixed(2)} km | 状态: 🔴超限: ${dangerCount} 段, 🟡预警: ${warningCount} 段, 🟢合规: ${safeCount} 段${uncalcCount > 0 ? `, ⚪待计算: ${uncalcCount} 段` : ''}`);
+  lines.push('='.repeat(96));
+  lines.push(
+    padCol('序号', 6) +
+    padCol('分区编号', 16) +
+    padCol('里程起点', 14) +
+    padCol('里程终点', 14) +
+    padCol('段长(m)', 10) +
+    padCol('安全系数(Fs)', 14) +
+    padCol('临界注浆厚度(m)', 16) +
+    '工况备注/加固评价'
+  );
+  lines.push('-'.repeat(96));
+
+  list.forEach((snap, idx) => {
+    const segIdx = `#${idx + 1}`;
+    const start = extractSnapshotValue(snap, 'start_chainage', 0);
+    const end = extractSnapshotValue(snap, 'end_chainage', 50);
+    const segLen = Math.abs(end - start).toFixed(2);
+    const startStr = `K${formatChain(start)}`;
+    const endStr = `K${formatChain(end)}`;
+
+    const fs = snapFs(snap);
+    let fsStr = '--';
+    let evalTag = '未计算';
+    if (fs != null) {
+      fsStr = fs.toFixed(2);
+      if (fs < 1.0) evalTag = '🔴 极度危险/超限';
+      else if (fs < 2.0) evalTag = '🟡 临界预警';
+      else evalTag = '🟢 安全合规';
+    }
+
+    const tgCrit = snap.results?.critical_state?.tg_crit ?? extractSnapshotValue(snap, 'tg_crit', 0);
+    const tgCritNum = (typeof tgCrit === 'number' && !isNaN(tgCrit)) ? Math.max(0, tgCrit) : 0;
+    const tgCritStr = tgCritNum > 0 ? tgCritNum.toFixed(2) : '0.00';
+
+    const remark = snap.remark ? `[${snap.remark}] ${evalTag}` : evalTag;
+
+    lines.push(
+      padCol(String(idx + 1), 6) +
+      padCol(segIdx, 16) +
+      padCol(startStr, 14) +
+      padCol(endStr, 14) +
+      padCol(segLen, 10) +
+      padCol(fsStr, 14) +
+      padCol(tgCritStr, 16) +
+      remark
+    );
+  });
+
+  lines.push('='.repeat(96));
+  lines.push('说明:');
+  lines.push('1. 里程桩号遵循标准隧道标段格式 (K+m)；');
+  lines.push('2. 分区安全系数 Fs 依据极限承载力方程计算得出；');
+  lines.push('3. 分区临界注浆圈厚度为满足既定目标抗浮/承载所需之最小厚度，若原截面已合规则标注为 0.00m。');
+  lines.push('='.repeat(96));
+
+  const content = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `隧道工程计算分段成果总览_${timeStr.replace(/[: ]/g, '_')}.txt`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 // 全部不选 / 取消聚焦状态
 const unselectSegment = () => {
   snapshotStore.setActiveSegment(null);
@@ -1374,6 +1552,9 @@ const handleMiniMapClick = (e: MouseEvent) => {
     if (activeSegment.value?.id === match.id) {
       unselectSegment();
     } else {
+      if (selectorSearch.value) {
+        selectorSearch.value = '';
+      }
       selectSegment(match, true);
     }
   }
@@ -2145,6 +2326,9 @@ const renderSceneData = () => {
 
   nextTick(() => {
     drawMiniMap();
+    if (snapshotStore.activeSegmentId) {
+      scrollPillToCenter(snapshotStore.activeSegmentId);
+    }
   });
 
   switchVisualParadigm(visualParadigm.value);
@@ -2378,7 +2562,7 @@ canvas {
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 4px;
   color: #f8fafc;
-  font-size: 11px;
+  font-size: 12px;
   padding: 3px 20px 3px 8px;
   width: 130px;
   outline: none;
@@ -2401,12 +2585,36 @@ canvas {
   font-size: 10px;
 }
 
+.export-txt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.export-txt-btn:hover {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: #38bdf8;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
 .focus-mode-btn {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: #cbd5e1;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   padding: 3px 8px;
   cursor: pointer;
   white-space: nowrap;
@@ -2507,6 +2715,7 @@ canvas {
 }
 
 .pill-slider-track {
+  position: relative;
   flex: 1;
   display: flex;
   gap: 6px;
