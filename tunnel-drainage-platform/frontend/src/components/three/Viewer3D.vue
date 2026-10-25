@@ -17,7 +17,7 @@
           <span class="collapse-toggle-btn" :title="isSelectorCollapsed ? '展开分段选区栏' : '折叠分段选区栏'">
             {{ isSelectorCollapsed ? '▼' : '▲' }}
           </span>
-          <span class="selector-title">📌 计算分段总览</span>
+          <span class="selector-title">📌 分区总览</span>
           <div class="stats-pills">
             <span class="stat-pill total">共 {{ segmentStats.total }} 段 ({{ segmentStats.totalKm }}km)</span>
             <span v-if="segmentStats.danger > 0" class="stat-pill danger">🔴 {{ segmentStats.danger }} 危险</span>
