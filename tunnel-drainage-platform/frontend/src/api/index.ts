@@ -5,6 +5,7 @@ import type { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'a
 import { ElMessage } from 'element-plus';
 
 import { resolveApiBaseUrl } from './adapter';
+import { useAuthStore } from '../store/authStore';
 
 /**
  * 实例化 Axios 并配置基础参数
@@ -28,15 +29,40 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config;
 });
 
+const STORAGE_KEY_TOKEN = 'platform_operator_token';
+
+let isReauthenticating = false;
+let failedQueue: Array<{
+  resolve: (value?: any) => void;
+  reject: (reason?: any) => void;
+  config: InternalAxiosRequestConfig;
+}> = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      if (prom.config.headers && token) {
+        prom.config.headers['X-Operator-Token'] = token;
+        prom.config.headers['Authorization'] = `Bearer ${token}`;
+      }
+      prom.resolve(apiClient(prom.config));
+    }
+  });
+  failedQueue = [];
+};
+
 /**
- * 请求拦截器：组装 Bearer Token 鉴权头
- * 适用于向第三方综合管廊平台或协同系统输出 API 时的身份核验
+ * 请求拦截器：组装 X-Operator-Token / Bearer Token 鉴权头
+ * 适用于平台敏感写操作、高耗算力有限元计算及第三方管廊系统集成
  */
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('access_token');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const opToken = sessionStorage.getItem(STORAGE_KEY_TOKEN) || localStorage.getItem(STORAGE_KEY_TOKEN);
+    if (opToken && config.headers) {
+      config.headers['X-Operator-Token'] = opToken;
+      config.headers['Authorization'] = `Bearer ${opToken}`;
     }
     return config;
   },
@@ -47,18 +73,54 @@ apiClient.interceptors.request.use(
 
 /**
  * 响应拦截器：统一处理 HTTP 异常
- * 将底层网络错误或业务逻辑异常转化为可视化的 UI 提示
+ * 内置 Single-Flight 并发互斥门禁，当凭证失效或收到 401 时激活操作认证弹窗并排队重发
  */
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
     // 直接返回业务数据报文
     return response.data;
   },
-  (error) => {
-    // 若请求是被 AbortController 主动取消，静默放行，不弹出全局错误弹窗
+  async (error) => {
+    // 若请求是被 AbortController 主动取消，静默放行
     if (axios.isCancel(error)) {
       return Promise.reject(error);
     }
+
+    const originalRequest = error.config as (InternalAxiosRequestConfig & { _retry?: boolean });
+    const isAuthEndpoint = originalRequest?.url?.includes('/auth/verify') || originalRequest?.url?.includes('/auth/status');
+
+    // 捕获 401 且非认证端点自身，激活 Single-Flight 重验门禁
+    if (error.response && error.response.status === 401 && !isAuthEndpoint && originalRequest) {
+      if (!originalRequest._retry) {
+        originalRequest._retry = true;
+
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject, config: originalRequest });
+
+          if (!isReauthenticating) {
+            isReauthenticating = true;
+            try {
+              const authStore = useAuthStore();
+              authStore.wrapActionWithAuth(
+                () => {
+                  const newToken = authStore.token;
+                  isReauthenticating = false;
+                  processQueue(null, newToken);
+                },
+                '会话已超时，请重新认证'
+              ).catch((authErr) => {
+                isReauthenticating = false;
+                processQueue(authErr, null);
+              });
+            } catch (err) {
+              isReauthenticating = false;
+              processQueue(err, null);
+            }
+          }
+        });
+      }
+    }
+
     const errorMsg = error.response?.data?.detail || error.message || '计算服务响应异常';
     ElMessage.error(`数据交互失败: ${errorMsg}`);
     return Promise.reject(error);

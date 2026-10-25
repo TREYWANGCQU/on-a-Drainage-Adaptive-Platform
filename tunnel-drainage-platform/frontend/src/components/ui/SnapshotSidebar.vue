@@ -881,6 +881,7 @@ import {
   FolderAdd
 } from '@element-plus/icons-vue';
 import { useParameterStore } from '@/store/parameterStore';
+import { useAuthStore } from '@/store/authStore';
 import { 
   exportSnapshotBlueprint, 
   exportBatchBlueprintsZip, 
@@ -896,6 +897,7 @@ import { globalBatchScheduler } from '@/utils/batchScheduler';
 
 const snapshotStore = useSnapshotStore();
 const parameterStore = useParameterStore();
+const authStore = useAuthStore();
 const snapshots = computed(() => snapshotStore.snapshots);
 const scheduler = globalBatchScheduler;
 
@@ -1172,8 +1174,10 @@ const handleStartBatch = () => {
     ElMessage.success('序列库中所有工况均已计算完成，无需重复计算');
     return;
   }
-  ElMessage.info(`启动多核并发批量计算，待计算工况共 ${pendingSnaps.length} 项...`);
-  scheduler.start();
+  authStore.wrapActionWithAuth(() => {
+    ElMessage.info(`启动多核并发批量计算，待计算工况共 ${pendingSnaps.length} 项...`);
+    scheduler.start();
+  }, '批量并发计算');
 };
 
 const handlePauseBatch = () => {
@@ -1209,23 +1213,25 @@ const isRecalculatingSingle = ref<string | null>(null);
 
 // 单段重新计算
 const recalculateSingle = async (snap: any) => {
-  try {
-    isRecalculatingSingle.value = snap.id;
-    snap.status = 'calculating';
-    ElMessage.info(`开始重新计算区间 ${getSnapRemark(snap)}...`);
-    const payload = snap.params || {};
-    const res = await calculateDrainage(payload, { timeout: 120000 });
-    snap.results = res;
-    snap.status = 'done';
-    snap.hasCriticalState = Boolean(res?.critical_state && Object.keys(res.critical_state).length > 0);
-    snapshotStore.saveToLocal();
-    ElMessage.success(`区间 ${getSnapRemark(snap)} 重算完成`);
-  } catch (err: any) {
-    ElMessage.error(`重算失败: ${err.message || err}`);
-    snap.status = 'error';
-  } finally {
-    isRecalculatingSingle.value = null;
-  }
+  authStore.wrapActionWithAuth(async () => {
+    try {
+      isRecalculatingSingle.value = snap.id;
+      snap.status = 'calculating';
+      ElMessage.info(`开始重新计算区间 ${getSnapRemark(snap)}...`);
+      const payload = snap.params || {};
+      const res = await calculateDrainage(payload, { timeout: 120000 });
+      snap.results = res;
+      snap.status = 'done';
+      snap.hasCriticalState = Boolean(res?.critical_state && Object.keys(res.critical_state).length > 0);
+      snapshotStore.saveToLocal();
+      ElMessage.success(`区间 ${getSnapRemark(snap)} 重算完成`);
+    } catch (err: any) {
+      ElMessage.error(`重算失败: ${err.message || err}`);
+      snap.status = 'error';
+    } finally {
+      isRecalculatingSingle.value = null;
+    }
+  }, `重算分段 [${getSnapRemark(snap)}]`);
 };
 
 
@@ -1707,8 +1713,10 @@ const openBatchArchiveModal = (isSelectedOnly = false) => {
     ElMessage.warning('当前快照库为空，无可入库工况');
     return;
   }
-  archiveTargetIsSelectedOnly.value = isSelectedOnly;
-  batchArchiveModalVisible.value = true;
+  authStore.wrapActionWithAuth(() => {
+    archiveTargetIsSelectedOnly.value = isSelectedOnly;
+    batchArchiveModalVisible.value = true;
+  }, '批量持久化入库');
 };
 
 const handleArchiveGroupSelect = (val: string) => {

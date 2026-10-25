@@ -26,6 +26,11 @@ services:
       - DB_PATH=/app/data/tunnel_params.db
       - LOG_DIR=/app/logs
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - PLATFORM_AUTH_PASSWORD=${PLATFORM_AUTH_PASSWORD:-chongqing123456}
+      - PLATFORM_SECRET_KEY=${PLATFORM_SECRET_KEY:-cqu_tunnel_platform_secret_key_2026_authtoken_prod}
+      - PLATFORM_AUTH_ENABLED=${PLATFORM_AUTH_ENABLED:-true}
+      - AUTH_TOKEN_EXPIRE_MINUTES=${AUTH_TOKEN_EXPIRE_MINUTES:-120}
+      - PLATFORM_AUTH_MODE=server
     volumes:
       - tunnel_data:/app/data
       - tunnel_logs:/app/logs

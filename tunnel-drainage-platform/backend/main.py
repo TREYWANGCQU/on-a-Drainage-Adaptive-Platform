@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # 引入全局配置
 from app.core.config import settings
 # 引入 API 路由模块
+from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.calculate import router as calculate_drainage
 from app.api.v1.endpoints.database import router as database_router
 from app.api.v1.endpoints.calculation_book import router as calculation_book_router
@@ -33,6 +34,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# 注册认证与权限模块路由
+app.include_router(
+    auth_router,
+    prefix=f"{settings.API_V1_STR}/auth",
+    tags=["平台认证与权限"]
 )
 
 # 注册计算模块路由
@@ -115,6 +123,10 @@ if __name__ == "__main__":
     if args.db_dir:
         os.makedirs(args.db_dir, exist_ok=True)
         settings.DB_PATH = os.path.join(args.db_dir, "tunnel_params.db")
+
+    # 会话临时安全鉴权凭据覆盖
+    if args.secret:
+        settings.PLATFORM_AUTH_PASSWORD = args.secret
 
     # 挂载看门狗守护
     if args.parent_pid:

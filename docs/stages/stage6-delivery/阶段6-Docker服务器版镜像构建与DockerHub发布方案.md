@@ -223,7 +223,7 @@ CMD ["nginx", "-g", "daemon off;"]
 
 ### 3.4 生产目标服务器轻量部署编排 (`docker-compose.prod.yml`)
 
-生产机不再包含 `build:` 逻辑，杜绝源码泄漏：
+生产机不再包含 `build:` 逻辑，杜绝源码泄漏；同时将操作安全认证环境变量全量注入后端计算容器：
 
 ```yaml
 # deploy/server/docker-compose.prod.yml
@@ -231,7 +231,7 @@ version: "3.8"
 
 services:
   nginx:
-    image: ${DOCKER_REGISTRY_NAMESPACE}/tunnel-drainage-frontend:${APP_VERSION:-v1.0.0}
+    image: ${DOCKER_REGISTRY_NAMESPACE:-reaticle}/tunnel-drainage-frontend:${APP_VERSION:-v1.0.0}
     container_name: tunnel_nginx
     restart: always
     ports:
@@ -246,7 +246,7 @@ services:
       - tunnel_net
 
   backend:
-    image: ${DOCKER_REGISTRY_NAMESPACE}/tunnel-drainage-backend:${APP_VERSION:-v1.0.0}
+    image: ${DOCKER_REGISTRY_NAMESPACE:-reaticle}/tunnel-drainage-backend:${APP_VERSION:-v1.0.0}
     container_name: tunnel_backend
     restart: always
     environment:
@@ -254,6 +254,12 @@ services:
       - DB_PATH=/app/data/tunnel_params.db
       - LOG_DIR=/app/logs
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      # 平台操作权限与轻量一次性认证环境变量 (从 .env.production 集中注入)
+      - PLATFORM_AUTH_PASSWORD=${PLATFORM_AUTH_PASSWORD:-chongqing123456}
+      - PLATFORM_SECRET_KEY=${PLATFORM_SECRET_KEY:-cqu_tunnel_platform_secret_key_2026_authtoken_prod}
+      - PLATFORM_AUTH_ENABLED=${PLATFORM_AUTH_ENABLED:-true}
+      - AUTH_TOKEN_EXPIRE_MINUTES=${AUTH_TOKEN_EXPIRE_MINUTES:-120}
+      - PLATFORM_AUTH_MODE=server
     volumes:
       - tunnel_data:/app/data
       - tunnel_logs:/app/logs
@@ -270,6 +276,85 @@ networks:
   tunnel_net:
     driver: bridge
 ```
+
+配套生产环境变量基准文件 `deploy/server/.env.production`：
+```bash
+# deploy/server/.env.production
+DOCKER_REGISTRY_NAMESPACE=reaticle
+APP_VERSION=v1.0.0
+HTTP_PORT=80
+HTTPS_PORT=443
+LOG_LEVEL=info
+
+# ==========================================
+# 平台轻量一次性认证与操作权限配置 (发布期设定)
+# ==========================================
+# 平台操作员密码 (生产环境建议更换强密码，默认出厂口令: chongqing123456)
+PLATFORM_AUTH_PASSWORD=chongqing123456
+# HMAC-SHA256 签名密钥 (高熵随机字符串，用于会话令牌验签)
+PLATFORM_SECRET_KEY=cqu_tunnel_platform_secret_key_2026_authtoken_prod
+# 是否强制启用操作权限守卫 (服务器版强制为 true)
+PLATFORM_AUTH_ENABLED=true
+# 认证令牌有效时长 (分钟，默认 120 分钟)
+AUTH_TOKEN_EXPIRE_MINUTES=120
+```
+
+---
+
+### 3.5 平台认证安全密钥与密码发布期生命周期规约 (Platform Auth Release Lifecycle)
+
+针对工程现实中“既防篡改防误触、又防死锁防撞库”的核心诉求，平台对操作口令采取**“配置能力收敛在发布与部署期、运行时界面彻底杜绝改密”**的发布级工程定型设计：
+
+```
++---------------------------------------------------------------------------------------------------------+
+|                                    平台认证口令与安全密钥发布期定型架构                                    |
++---------------------------------------------------------------------------------------------------------+
+|                                                                                                         |
+|   【模式 A: 单机桌面版 (Tauri / PyInstaller)】               【模式 B: Docker 服务器版 (Linux / Web)】    |
+|                                                                                                         |
+|   1. 如何初设：                                               1. 在哪里配置：                           |
+|      - 发布打包期出厂固化初始默认口令: `chongqing123456`          - 位于部署目录 `.env.production` 与     |
+|      - 或通过桌面宿主启动子进程时传参: `--secret <PWD>`            `docker-compose.prod.yml` 环境变量中    |
+|                                                                                                         |
+|   2. 之后不可修改 (Immutable Runtime)：                       2. 运维集中轮转 (Zero-UI Attack Surface)：|
+|      - 桌面工作台严禁提供修改密码 UI 入口；                      - Web 页面杜绝任何改密接口，杜绝侧信道撞库；|
+|      - 彻底消除现场设计人员误改密/遗忘引发单机死锁；              - 管理员在宿主机修改 `.env.production`，  |
+|      - 纯净离线环境可通过设置切换“单机免密模式”。                 重启容器即刻热重载生效，旧 Token 优雅失效。  |
+|                                                                                                         |
++---------------------------------------------------------------------------------------------------------+
+```
+
+#### 3.5.1 单机版 (Desktop Standalone Edition)
+1. **如何初设**：
+   - **出厂代码固化**：在客户端编译发布期（PyInstaller 冻结脚本 / Tauri 构建流水线），系统底层安全常量默认注入出厂口令 `chongqing123456`；
+   - **伴生参数定制 (可选)**：若面向特定设计院或项目部进行专属交付，桌面外壳程序在唤醒后台伴生进程时，通过命令行参数 `--secret <项目专属口令>` 注入初始口令，并配合看门狗心跳（`--parent-pid`）完成物理级信任握手。
+2. **之后不可修改 (Immutable post-release)**：
+   - **零改密 UI 暴露**：桌面客户端运行时界面与 API 中**完全不暴露任何修改密码的表单或接口**；
+   - **防死锁保障**：现场工程师多人在单机交接或演示时，杜绝由于某一人私自修改密码、遗忘口令导致单机工程资产被物理锁死的事故；
+   - **离线免密模式开关**：若现场工程师在纯净单机封闭环境中工作，可在工作台设置中直接启用“单机免密模式”（底层传入 `PLATFORM_AUTH_ENABLED=false` 或 `--no-auth`），直接跳过验证，兼顾极客自由与绝对防护。
+
+#### 3.5.2 服务器版 (Docker Server Edition)
+1. **在哪里配置**：
+   - **配置文件物理落点**：
+     - 服务器版认证口令**绝不在源码或镜像内部硬编码**，而是严格遵循云原生 12-Factor 原则，集中外置于生产部署包根目录的 **`.env.production`** 文件中：
+       - `PLATFORM_AUTH_PASSWORD`：操作员敏感操作认证口令（默认: `chongqing123456`，建议生产环境更换为复杂口令）；
+       - `PLATFORM_SECRET_KEY`：无状态 HMAC-SHA256 签名密钥（32 字节高熵随机串）；
+       - `PLATFORM_AUTH_ENABLED`：强制为 `true`（生产服务器禁止关闭）；
+       - `AUTH_TOKEN_EXPIRE_MINUTES`：会话令牌时效（默认 120 分钟）。
+     - 通过 `docker-compose.prod.yml` 的 `environment` 节透明注入容器运行时的 FastAPI 进程。
+2. **密码修改与热生效机制**：
+   - **消灭 Web 端改密攻击面**：服务器公网或局域网环境下，严禁在 Web 界面向普通前端用户开放改密入口，消除跨站请求伪造 (CSRF)、会话劫持与暴力破解侧信道漏洞；
+   - **运维级一键热生效 (Hot Rotation)**：
+     当企业网络安全团队需要周期性轮转密码，或操作人员离职交接需要重置口令时，运维管理员只需登录 Linux 宿主机：
+     ```bash
+     # 1. 编辑生产环境变量
+     nano /opt/tunnel-drainage-server/.env.production
+     # 修改 PLATFORM_AUTH_PASSWORD="NewSecurePassword_2026!"
+
+     # 2. 一键热生效后端容器
+     docker compose -f docker-compose.prod.yml up -d backend
+     ```
+   - **优雅自动重验**：后端容器在 3 秒内平滑重载。前端先前持有的旧令牌在下一次触碰敏感操作时，将被后端拦截并返回 `401 Unauthorized`；前端 Single-Flight 拦截网关自动激活 `AuthDialog.vue`，提示“会话已失效，请重新输入操作密码”，操作员键入新密码即刻恢复操作，全过程零停机。
 
 ---
 
@@ -663,6 +748,11 @@ services:
       - APP_ENV=production
       - SERVER_PORT=8000
       - CORS_ORIGINS=*
+      # 安全认证配置项 (默认出厂口令: chongqing123456)
+      - PLATFORM_AUTH_PASSWORD=${PLATFORM_AUTH_PASSWORD:-chongqing123456}
+      - PLATFORM_SECRET_KEY=${PLATFORM_SECRET_KEY:-cqu_tunnel_platform_secret_key_2026_authtoken_prod}
+      - PLATFORM_AUTH_ENABLED=${PLATFORM_AUTH_ENABLED:-true}
+      - AUTH_TOKEN_EXPIRE_MINUTES=${AUTH_TOKEN_EXPIRE_MINUTES:-120}
     ports:
       - "8000:8000"
     volumes:
@@ -694,6 +784,10 @@ docker compose up -d
 | `SERVER_PORT` | `8000` | 后端 FastAPI 监听端口 |
 | `CORS_ORIGINS` | `*` | 跨域允许来源列表，逗号分隔 |
 | `TYPST_FONT_DIR` | `/usr/share/fonts` | Typst 计算书渲染字体挂载目录 |
+| `PLATFORM_AUTH_PASSWORD` | `chongqing123456` | **平台操作员安全密码**：用于批量导入、修改参数、批量计算、执行云计算与台账写操作认证，生产环境建议配置强口令 |
+| `PLATFORM_SECRET_KEY` | `cqu_tunnel_platform...` | **HMAC 签名令牌密钥**：用于签发与核验会话令牌防伪 |
+| `PLATFORM_AUTH_ENABLED` | `true` | **操作安全守卫开关**：生产服务器强制启用 (`true`)，单机版可通过环境变量或设置关闭 |
+| `AUTH_TOKEN_EXPIRE_MINUTES` | `120` | **会话令牌有效时长**：操作员完成一次认证后的免密漫游时长（分钟） |
 
 ## 维护与支持
 如遇工程计算书排版、网络拓扑解算或 3D 渲染问题，请查阅官方 GitHub 知识库与 Issue 跟踪面板。

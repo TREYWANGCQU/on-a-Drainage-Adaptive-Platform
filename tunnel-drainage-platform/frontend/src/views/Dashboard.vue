@@ -64,6 +64,23 @@
           class="theme-switch"
         />
 
+        <!-- 5.5 平台权限与操作员鉴权状态微标胶囊 -->
+        <div 
+          class="auth-status-capsule" 
+          :class="{ 'is-auth': authStore.isAuthorized, 'is-guest': !authStore.isAuthorized }"
+          @click="handleAuthCapsuleClick"
+        >
+          <span class="auth-icon">{{ authStore.isAuthorized ? '🔓' : '🔒' }}</span>
+          <span class="auth-status-text">
+            {{ authStore.isAuthorized ? `${authStore.remainingMinutes} min` : '阅览' }}
+          </span>
+          <el-tooltip v-if="authStore.isAuthorized && authStore.authRequired" content="主动锁定会话" placement="bottom">
+            <el-button link size="small" class="lock-now-btn" @click.stop="handleManualLock">
+              锁定
+            </el-button>
+          </el-tooltip>
+        </div>
+
         <!-- 6. 核心云计算主按钮：通过 is-dot 徽标非侵入式提示待计算状态 -->
         <el-badge :is-dot="parameterStore.isDirty" class="calc-badge">
           <el-button 
@@ -124,6 +141,8 @@
     <el-dialog v-model="compareDialogVisible" title="3D 双视角对比" fullscreen destroy-on-close class="compare-dialog">
       <CompareView />
     </el-dialog>
+    <!-- 全局轻量操作安全认证弹窗 -->
+    <AuthDialog />
   </div>
 </template>
 
@@ -139,9 +158,11 @@ import ParameterForm from '@/components/ui/ParameterForm.vue';
 import SnapshotSidebar from '@/components/ui/SnapshotSidebar.vue';
 import ParameterDatabase from '@/views/ParameterDatabase.vue';
 import CompareView from '@/views/CompareView.vue';
+import AuthDialog from '@/components/ui/AuthDialog.vue';
 import { useSnapshotStore } from '@/store/snapshotStore';
 import { useParameterStore } from '@/store/parameterStore'; // 引入参数 Store
 import { useThemeStore } from '@/store/themeStore'; // 引入主题 Store
+import { useAuthStore } from '@/store/authStore'; // 引入安全认证 Store
 import { calculateDrainage } from '@/api/index'; // 引入计算接口
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { downloadTemplate, parseUploadFile } from '@/utils/excelIO'; // 确保路径对应实际项目
@@ -150,6 +171,7 @@ const router = useRouter();
 const themeStore = useThemeStore();
 const snapshotStore = useSnapshotStore();
 const parameterStore = useParameterStore(); // 实例化参数 Store
+const authStore = useAuthStore(); // 实例化认证 Store
 
 // [新增] 弹窗控制状态
 const dbDialogVisible = ref(false);
@@ -169,7 +191,11 @@ watch(isTechBlueRef, (isDark) => {
 const fileInput = ref<HTMLInputElement | null>(null);
 
 // 下载对应当前洞型的模板
-const triggerUpload = () => fileInput.value?.click();
+const triggerUpload = () => {
+  authStore.wrapActionWithAuth(() => {
+    fileInput.value?.click();
+  }, '批量导入 Excel');
+};
 
 // 触发文件上传
 const handleFileChange = async (e: Event) => {
@@ -187,39 +213,45 @@ const handleFileChange = async (e: Event) => {
   }
 };
 
+const handleAuthCapsuleClick = () => {
+  if (!authStore.isAuthorized) {
+    authStore.wrapActionWithAuth(() => {
+      ElMessage.success('身份认证成功，已激活当前会话全量操作权限');
+    }, '身份认证');
+  }
+};
 
-
-
-
+const handleManualLock = () => {
+  authStore.clearAuth();
+  ElMessage.info('已主动锁定会话，敏感操作需重新验证');
+};
 
 onMounted(() => {
-  // 页面初始化时挂载本地持久化的快照与序列数据
+  // 页面初始化时感知后端认证环境并挂载本地持久化快照
+  authStore.initAuth();
   snapshotStore.loadFromLocal();
 });
 
-const executeCalculation = async () => {
-  // TODO: 对接 api/index.ts 封装的 Axios Axios 实例发起 POST 请求
-  try {
-    ElMessage.info('计算指令已发送，等待计算引擎回传数据...');
+const executeCalculation = () => {
+  authStore.wrapActionWithAuth(async () => {
+    try {
+      ElMessage.info('计算指令已发送，等待计算引擎回传数据...');
 
-    // 提取当前表单参数
-    const payload = parameterStore.currentPayload;
+      // 提取当前表单参数
+      const payload = parameterStore.currentPayload;
 
-    // 发起 POST 请求对接 uvicorn
-    const result = await calculateDrainage(payload);
-    //console.log('API result:', JSON.stringify(result, null, 2));  // debug输出内容
-    // 收到返回值后存档并驱动 3D 渲染
-    //snapshotStore.createSnapshot(result);
+      // 发起 POST 请求对接 uvicorn
+      const result = await calculateDrainage(payload);
 
-    // [新增] 将最新结果推入状态机，消除脏数据屏蔽层
-    parameterStore.setCalculatedResults(result);
+      // 将最新结果推入状态机，消除脏数据屏蔽层
+      parameterStore.setCalculatedResults(result);
 
-    snapshotStore.createSnapshot('执行云计算生成节点', result);
-    ElMessage.success('计算完成，空间坐标已更新');
-  } catch (error) {
-    // 网络或业务异常已在 axios 拦截器中抛出 UI 提示，此处捕获以防止 Promise 报错漏报
-    console.error('引擎调度异常:', error);
-  }
+      snapshotStore.createSnapshot('执行云计算生成节点', result);
+      ElMessage.success('计算完成，空间坐标已更新');
+    } catch (error) {
+      console.error('引擎调度异常:', error);
+    }
+  }, '执行云计算');
 };
 
 // ==========================================
@@ -653,5 +685,60 @@ onMounted(() => {
   transition: all 0.3s ease;
 }
 
+/* 权限指示微标胶囊 (满足 font-size >= 12px) */
+.auth-status-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.25s ease;
+  line-height: 1;
+}
+
+.auth-status-capsule.is-guest {
+  background: rgba(148, 163, 184, 0.15);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: var(--el-text-color-regular, #64748b);
+}
+
+.auth-status-capsule.is-guest:hover {
+  background: rgba(148, 163, 184, 0.25);
+  border-color: rgba(100, 116, 139, 0.5);
+  color: #2563eb;
+}
+
+.auth-status-capsule.is-auth {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #059669;
+}
+
+.auth-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.auth-status-text {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+.lock-now-btn {
+  font-size: 12px !important;
+  color: #dc2626 !important;
+  padding: 0 2px !important;
+  margin-left: 2px !important;
+  height: auto !important;
+}
+
+.lock-now-btn:hover {
+  color: #b91c1c !important;
+  text-decoration: underline;
+}
 
 </style>

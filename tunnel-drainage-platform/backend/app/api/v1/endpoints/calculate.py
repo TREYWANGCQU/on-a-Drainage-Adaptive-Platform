@@ -1,10 +1,11 @@
-# backend/app/api/v1/endpoints/calculate.py
+# tunnel-drainage-platform/backend/app/api/v1/endpoints/calculate.py
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.concurrency import run_in_threadpool
 import time
 from typing import Union
 from app.models.schemas import SingleTubeSchema, DoubleTubeSchema
+from app.core.deps import require_operator_auth
 
 # 引入实际的底层计算引擎
 from app.services.drainage_engine import run_calculation 
@@ -12,7 +13,10 @@ from app.services.drainage_engine import run_calculation
 router = APIRouter()
 
 @router.post("/drainage", summary="执行隧道多维协同智能排水自适应优化计算")
-async def calculate_drainage(data: Union[SingleTubeSchema, DoubleTubeSchema]):
+async def calculate_drainage(
+    data: Union[SingleTubeSchema, DoubleTubeSchema],
+    auth_ctx: dict = Depends(require_operator_auth)
+):
     """
     排水计算核心接口：
     1. 接收单洞(38参数)或双洞(40参数)模型数据。

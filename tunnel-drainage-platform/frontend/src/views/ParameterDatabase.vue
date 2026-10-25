@@ -397,11 +397,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useSnapshotStore } from '@/store/snapshotStore';
+import { useAuthStore } from '@/store/authStore';
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
 import apiClient from '@/api/index';
 
 const emit = defineEmits(['close']);
 const snapshotStore = useSnapshotStore();
+const authStore = useAuthStore();
 
 // 视口与基础检索状态
 const activeView = ref<'cards' | 'flat'>('cards');
@@ -689,44 +691,50 @@ const captureViewportCover = async (group: any) => {
 };
 
 const confirmDeleteGroup = (group: any) => {
-  ElMessageBox.confirm(
-    `确定要彻底删除工程组 [${group.group_name}] 吗？该操作将级联清空名下全部 ${group.segment_count} 个分段资产及封面图片，数据不可恢复！`,
-    '⚠️ 危险：级联删除工程组',
-    {
-      confirmButtonText: '确定彻底删除',
-      cancelButtonText: '取消',
-      type: 'error',
-      confirmButtonClass: 'el-button--danger'
-    }
-  ).then(async () => {
-    try {
-      await apiClient.delete(`/database/projects/${group.id}`);
-      ElMessage.success(`已成功删除工程组 [${group.group_name}]`);
-      fetchData();
-    } catch (err: any) {
-      ElMessage.error('删除工程组失败: ' + (err.message || err));
-    }
-  }).catch(() => {});
+  authStore.wrapActionWithAuth(() => {
+    ElMessageBox.confirm(
+      `确定要彻底删除工程组 [${group.group_name}] 吗？该操作将级联清空名下全部 ${group.segment_count} 个分段资产及封面图片，数据不可恢复！`,
+      '⚠️ 危险：级联删除工程组',
+      {
+        confirmButtonText: '确定彻底删除',
+        cancelButtonText: '取消',
+        type: 'error',
+        confirmButtonClass: 'el-button--danger'
+      }
+    ).then(async () => {
+      try {
+        await apiClient.delete(`/database/projects/${group.id}`);
+        ElMessage.success(`已成功删除工程组 [${group.group_name}]`);
+        fetchData();
+      } catch (err: any) {
+        ElMessage.error('删除工程组失败: ' + (err.message || err));
+      }
+    }).catch(() => {});
+  }, `级联删除工程组 [${group.group_name}]`);
 };
 
 const deleteFlatRecord = async (id: number) => {
-  try {
-    await ElMessageBox.confirm('数据删除后不可恢复，是否继续？', '风险提示', { type: 'warning' });
-    await apiClient.delete(`/database/parameters/${id}`);
-    ElMessage.success('清理成功');
-    fetchData();
-  } catch (e) { }
+  authStore.wrapActionWithAuth(async () => {
+    try {
+      await ElMessageBox.confirm('数据删除后不可恢复，是否继续？', '风险提示', { type: 'warning' });
+      await apiClient.delete(`/database/parameters/${id}`);
+      ElMessage.success('清理成功');
+      fetchData();
+    } catch (e) { }
+  }, '删除分段记录');
 };
 
 const deleteDrawerRecord = async (id: number) => {
-  try {
-    await apiClient.delete(`/database/parameters/${id}`);
-    ElMessage.success('分段已移除');
-    if (currentActiveGroup.value) {
-      openGroupDrawer(currentActiveGroup.value);
-    }
-    fetchData();
-  } catch (e) { }
+  authStore.wrapActionWithAuth(async () => {
+    try {
+      await apiClient.delete(`/database/parameters/${id}`);
+      ElMessage.success('分段已移除');
+      if (currentActiveGroup.value) {
+        openGroupDrawer(currentActiveGroup.value);
+      }
+      fetchData();
+    } catch (e) { }
+  }, '删除分段记录');
 };
 
 // ==========================================

@@ -1,7 +1,35 @@
 <!-- frontend/src/components/ui/ParameterForm.vue -->
 <template>
   <div class="form-container">
-    <el-form :model="formData" :rules="formRules" ref="formRef" label-width="140px" size="small">
+    <!-- 表单权限软锁指示条 -->
+    <div class="form-header-bar">
+      <div class="form-title-group">
+        <span class="form-title-text">📐 几何与水文参数</span>
+        <span class="param-count-badge">{{ paramStore.activeTunnelType === 'single' ? '38项参数' : '40项参数' }}</span>
+      </div>
+
+      <div class="form-lock-control">
+        <el-button 
+          v-if="!isFormEditable" 
+          size="small" 
+          type="primary" 
+          plain 
+          class="unlock-form-btn"
+          @click="handleUnlockClick"
+          title="点击输入密码解锁表单参数编辑"
+        >
+          🔒 解锁修改
+        </el-button>
+        <div v-else class="unlocked-indicator">
+          <span class="unlocked-badge">🔓 已激活编辑态</span>
+          <el-button link size="small" class="relock-btn" @click="authStore.lockForm()">
+            锁定
+          </el-button>
+        </div>
+      </div>
+    </div>
+
+    <el-form :model="formData" :rules="formRules" ref="formRef" label-width="140px" size="small" :disabled="!isFormEditable">
       <el-collapse v-model="activeNames">
 
         <el-collapse-item title="📍 基础定位与地质水文参数" name="1">
@@ -273,7 +301,7 @@
 
       <!-- 表单底部操作区 -->
       <div class="form-actions">
-        <el-button type="success" plain icon="UploadCloud" @click="saveDialogVisible = true">
+        <el-button type="success" plain icon="UploadCloud" @click="handleOpenSaveDialog">
           另存为至参数库
         </el-button>
       </div>
@@ -344,13 +372,30 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { useParameterStore } from '@/store/parameterStore';
+import { useAuthStore } from '@/store/authStore';
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
 import apiClient from '@/api/index'; // 使用已封装好端口与拦截器的 Axios 实例
 
 const paramStore = useParameterStore();
+const authStore = useAuthStore();
 const formRef = ref<FormInstance>();
 const activeNames = ref(['1', '2', '3']); // 默认展开核心区，折叠高级区(4)
+
+// 表单可编辑性计算：仅在免密模式或表单软锁已激活时允许编辑，与全局会话凭据解耦以支持回锁防误触
+const isFormEditable = computed(() => {
+  return !authStore.authRequired || authStore.authMode === 'disabled' || authStore.isFormUnlocked;
+});
+
+const handleUnlockClick = () => {
+  authStore.requestFormUnlock();
+};
+
+const handleOpenSaveDialog = () => {
+  authStore.wrapActionWithAuth(() => {
+    saveDialogVisible.value = true;
+  }, '单段参数入库');
+};
 
 // 通过计算属性映射当前负荷数据，保障与兄弟组件响应式同步
 const formData = computed(() => paramStore.currentPayload);
@@ -519,13 +564,85 @@ const submitToDatabase = async () => {
 .form-container {
   padding-bottom: 20px;
 }
+
+/* 顶部状态与软锁指示条 */
+.form-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: var(--el-fill-color-light, #f8fafc);
+  border: 1px solid var(--el-border-color-lighter, #e2e8f0);
+  border-radius: 6px;
+}
+
+.form-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-title-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary, #1e293b);
+}
+
+.param-count-badge {
+  font-size: 12px;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.form-lock-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.unlock-form-btn {
+  font-size: 12px !important;
+  font-weight: 500;
+}
+
+.unlocked-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.unlocked-badge {
+  font-size: 12px;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.relock-btn {
+  font-size: 12px !important;
+  color: #94a3b8 !important;
+  padding: 0 4px !important;
+}
+
+.relock-btn:hover {
+  color: #dc2626 !important;
+  text-decoration: underline;
+}
+
 .form-actions {
   margin-top: 20px;
   display: flex;
   justify-content: center;
-  border-top: 1px dashed var(--sys-border);
+  border-top: 1px dashed var(--sys-border, #e2e8f0);
   padding-top: 15px;
 }
+
 .cascade-lock-tip {
   font-size: 12px;
   color: var(--el-color-info);

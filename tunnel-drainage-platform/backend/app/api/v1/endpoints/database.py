@@ -1,4 +1,4 @@
-# backend/app/api/v1/endpoints/database.py
+# tunnel-drainage-platform/backend/app/api/v1/endpoints/database.py
 import os
 import re
 import uuid
@@ -14,6 +14,7 @@ from sqlalchemy import select, func, delete
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.domain import TunnelParameter, ProjectGroup
+from app.core.deps import require_operator_auth
 
 router = APIRouter()
 
@@ -186,7 +187,8 @@ async def list_group_parameters(project_id: int, db: AsyncSession = Depends(get_
 async def update_project_group(
     project_id: int,
     group_in: ProjectGroupUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    auth_ctx: dict = Depends(require_operator_auth)
 ):
     """
     【再编辑工程信息】更新工程组名称、工程分类与地质水文概况描述。若更新分类，级联更新其下分段分类。
@@ -224,7 +226,11 @@ async def update_project_group(
     return group
 
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_project_group(project_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_project_group(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    auth_ctx: dict = Depends(require_operator_auth)
+):
     """
     【删除工程组】级联清理工程组实体与其名下全部计算分段，并删除本地孤立封面文件。
     """
@@ -243,7 +249,8 @@ async def delete_project_group(project_id: int, db: AsyncSession = Depends(get_d
 async def upload_project_cover(
     project_id: int,
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    auth_ctx: dict = Depends(require_operator_auth)
 ):
     """
     【上传工程封面图片】验证格式与大小，持久化并更新 cover_image_url。
@@ -284,7 +291,8 @@ async def upload_project_cover(
 async def save_project_cover_base64(
     project_id: int,
     payload: CoverBase64Request,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    auth_ctx: dict = Depends(require_operator_auth)
 ):
     """
     【3D 视口画布截屏一键转封面】接收前端 canvas base64 数据并保存为静态图片。
@@ -326,7 +334,8 @@ async def save_project_cover_base64(
 @router.post("/parameters/batch", status_code=status.HTTP_201_CREATED)
 async def batch_archive_parameters(
     req: BatchArchiveRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    auth_ctx: dict = Depends(require_operator_auth)
 ):
     """
     【百段批量入库核心端点】
@@ -454,7 +463,11 @@ async def batch_archive_parameters(
     }
 
 @router.post("/parameters", response_model=ParameterResponse, status_code=status.HTTP_201_CREATED)
-async def create_parameter(param_in: ParameterCreate, db: AsyncSession = Depends(get_db)):
+async def create_parameter(
+    param_in: ParameterCreate,
+    db: AsyncSession = Depends(get_db),
+    auth_ctx: dict = Depends(require_operator_auth)
+):
     """
     【单段入库兼容】支持关联既有工程组或归入默认组，同步更新工程组统计字段。
     """
@@ -536,7 +549,11 @@ async def get_parameter(param_id: int, db: AsyncSession = Depends(get_db)):
     return parameter
 
 @router.delete("/parameters/{param_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_parameter(param_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_parameter(
+    param_id: int,
+    db: AsyncSession = Depends(get_db),
+    auth_ctx: dict = Depends(require_operator_auth)
+):
     """
     【删除】删除单条分段记录，并更新所属工程组统计。
     """

@@ -648,7 +648,7 @@ export class DrainagePipeGenerator {
     // 1. 环向盲管标注
     const ringDiamMm = Math.round(this.config.ringDiam * 1000);
     const ringSpacingM = this.config.ringSpacing.toFixed(1);
-    const ringText = `${prefix}环向盲管: Φ${ringDiamMm}mm @ ${ringSpacingM}m 🔍`;
+    const ringText = `${prefix}环向排水管: HDPE双壁打孔波纹管, DN Φ${ringDiamMm}mm@${ringSpacingM}m 🔍`;
     const ringSprite = this.createTextSprite(ringText, labelColor);
     ringSprite.position.set(mainXOffset, rInterface + 0.6, -this.config.startChainage);
     ringSprite.userData = {
@@ -666,8 +666,8 @@ export class DrainagePipeGenerator {
 
     // 2. 纵向排水管标注 (拱脚管位)
     const longDiamMm = Math.round(this.config.longDiam * 1000);
-    const longText = `${prefix}拱脚纵向排水管: Φ${longDiamMm}mm 🔍`;
-    const longSprite = this.createTextSprite(longText, '#2ecc71');
+    const longText = `${prefix}纵向排水管: HDPE双壁打孔波纹管， DN Φ${longDiamMm}mm 🔍`;
+    const longSprite = this.createTextSprite(longText, '#2ec`c71');
     longSprite.position.set(mainXOffset + ditchGeo.xLongFoot, ditchGeo.yLongFoot + 0.5, -this.config.startChainage - length * 0.4);
     longSprite.userData = {
       isAnnotation: true,
@@ -684,7 +684,7 @@ export class DrainagePipeGenerator {
 
     // 3. 横向排水管标注
     const latDiamMm = Math.round(this.config.latDiam * 1000);
-    const latText = `${prefix}穿衬横向排水管 (3%坡度): Φ${latDiamMm}mm 🔍`;
+    const latText = `${prefix}横向排水管: HDPE双壁波纹管， DN Φ${latDiamMm}mm 🔍`;
     const latSprite = this.createTextSprite(latText, '#e74c3c');
     const xOutlet = this.config.hasCentralDitch !== false ? 0.35 : ditchGeo.sideDitchX;
     const midX = (ditchGeo.xLongFoot + xOutlet) / 2;
@@ -694,7 +694,7 @@ export class DrainagePipeGenerator {
       isAnnotation: true,
       pipeCategory: 'lateral',
       nodeType: 'standard',
-      name: '穿衬横向排水管',
+      name: '横向排水管',
       diameter: latDiamMm,
       spacing: parseFloat(ringSpacingM) * 2,
       permeability: '1.8×10⁻² cm/s',

@@ -33,6 +33,13 @@ class Settings(BaseSettings):
         "*"
     ]
 
+    # 安全认证机制配置
+    PLATFORM_AUTH_PASSWORD: str = os.getenv("PLATFORM_AUTH_PASSWORD", "chongqing123456")
+    PLATFORM_SECRET_KEY: str = os.getenv("PLATFORM_SECRET_KEY", "cqu_tunnel_platform_secret_key_2026_authtoken")
+    PLATFORM_AUTH_ENABLED: bool = os.getenv("PLATFORM_AUTH_ENABLED", "true").lower() in ("true", "1", "yes")
+    AUTH_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("AUTH_TOKEN_EXPIRE_MINUTES", "120"))
+    PLATFORM_AUTH_MODE: str = os.getenv("PLATFORM_AUTH_MODE", "server") # "server" | "desktop"
+
     class Config:
         case_sensitive = True
 
