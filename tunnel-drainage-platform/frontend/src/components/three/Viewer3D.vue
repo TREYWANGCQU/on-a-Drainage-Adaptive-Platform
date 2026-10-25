@@ -720,6 +720,7 @@ const switchVisualParadigm = (mode: 'cyber' | 'studio') => {
   rManagerInstances.forEach(rm => rm.setVisualParadigm(mode));
   pipeGenInstances.forEach(pg => pg.setVisualParadigm(mode));
   envInstances.forEach(env => env.setVisualParadigm(mode));
+  applyFocusIsolation();
   scheduleRender();
 };
 
@@ -943,6 +944,7 @@ const updateLayerVisibility = () => {
     probeManager.diagramGroup.visible = layerVisibility.probe;
   }
 
+  applyFocusIsolation();
   updateParticleAnimationLoop();
   scheduleRender();
 };
@@ -1216,11 +1218,17 @@ const selectSegment = (snap: Snapshot, shouldFly: boolean = true) => {
     flyToSegment(snap);
   }
   drawMiniMap();
+  applyFocusIsolation();
   scheduleRender();
 };
 
 // 独占聚焦模式切换 (虚化非活动分段)
 const toggleFocusIsolation = () => {
+  // 若当前尚未选中任何分段，且即将开启独占聚焦模式，则自动选择第 1 段作为聚焦目标
+  if (!isFocusIsolationMode.value && !activeSegment.value && renderedSegments.value.length > 0) {
+    selectSegment(renderedSegments.value[0], true);
+  }
+
   isFocusIsolationMode.value = !isFocusIsolationMode.value;
   applyFocusIsolation();
   scheduleRender();
@@ -1230,25 +1238,48 @@ const applyFocusIsolation = () => {
   const activeId = activeSegment.value?.id;
   const isIso = isFocusIsolationMode.value;
 
-  tGenInstances.forEach((tg, idx) => {
-    const snap = renderedSegments.value[idx];
-    const isCur = snap && snap.id === activeId;
-    const meshes = tg.getMeshes();
-    meshes.forEach((m: any) => {
-      if (m && m.material) {
-        if (Array.isArray(m.material)) {
-          m.material.forEach((mat: any) => {
-            mat.transparent = true;
-            mat.opacity = (!isIso || isCur) ? 1.0 : 0.2;
-            mat.needsUpdate = true;
-          });
-        } else {
-          m.material.transparent = true;
-          m.material.opacity = (!isIso || isCur) ? 1.0 : 0.2;
-          m.material.needsUpdate = true;
-        }
+  renderedSegments.value.forEach((snap, idx) => {
+    const isCur = activeId != null && snap.id === activeId;
+    const isDimmed = isIso && !isCur;
+
+    // 1. 隧道衬砌主体与内部路面水沟
+    const tg = tGenInstances[idx];
+    if (tg) {
+      tg.setIsolationState(isDimmed, visualParadigm.value);
+    }
+
+    // 2. 加固注浆圈（非活动段在独占模式下隐匿以大幅降低视觉噪音与 GPU 负荷）
+    const rm = rManagerInstances[idx];
+    if (rm) {
+      if (rm.groutingMesh) {
+        rm.groutingMesh.visible = !isDimmed && layerVisibility.initialGrouting;
       }
-    });
+      if (rm.criticalGroutingMesh) {
+        rm.criticalGroutingMesh.visible = !isDimmed && props.mode !== 'original' && layerVisibility.criticalGrouting;
+      }
+    }
+
+    // 3. 排水管网与 3D 参数标注图层
+    const pg = pipeGenInstances[idx];
+    if (pg) {
+      pg.getMeshes().forEach(mesh => {
+        mesh.visible = !isDimmed && layerVisibility.pipes;
+      });
+      if (pg.annotationGroup) {
+        pg.annotationGroup.visible = !isDimmed && layerVisibility.pipes && layerVisibility.pipeAnnotations;
+      }
+    }
+
+    // 4. 水文环境要素 (流线、水粒子等随段弱化/隐匿)
+    const env = envInstances[idx];
+    if (env) {
+      const envVisible = !isDimmed && layerVisibility.environment;
+      if (env.waterPlane) env.waterPlane.visible = envVisible;
+      if (env.groundPlane) env.groundPlane.visible = envVisible && layerVisibility.ground;
+      if (env.depthIndicator) env.depthIndicator.visible = envVisible && layerVisibility.ground;
+      if (env.flowLines) env.flowLines.visible = envVisible && layerVisibility.flowLines;
+      if (env.waterParticles) env.waterParticles.visible = envVisible && layerVisibility.waterParticles;
+    }
   });
 };
 
@@ -2130,7 +2161,14 @@ watch(
 watch(
   () => snapshotStore.activeSegmentId,
   (newId) => {
-    if (!newId) return;
+    if (!newId) {
+      if (isFocusIsolationMode.value) {
+        isFocusIsolationMode.value = false;
+      }
+      applyFocusIsolation();
+      scheduleRender();
+      return;
+    }
     const found = renderedSegments.value.find(s => s.id === newId);
     if (found) {
       renderActiveSegmentProbe(found);

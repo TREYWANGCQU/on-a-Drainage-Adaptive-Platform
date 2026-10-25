@@ -21,6 +21,7 @@ export class TunnelGenerator {
   private readonly c_ring: number = 1;  // 隧道主体单环实例数恒定为1
 
   private readonly has_central_ditch: boolean;
+  private isIsolatedDimmed: boolean = false;
 
   constructor(
     type: TunnelType,
@@ -345,9 +346,55 @@ export class TunnelGenerator {
   }
 
   /**
+   * 独占聚焦模式虚化/高亮切换 (虚化非活动分段)
+   */
+  public setIsolationState(isIsolatedDimmed: boolean, mode: 'studio' | 'cyber'): void {
+    this.isIsolatedDimmed = isIsolatedDimmed;
+    this.applyIsolationVisuals(mode);
+  }
+
+  /**
+   * 应用当前隔离与范式混合视觉表现
+   */
+  private applyIsolationVisuals(mode: 'studio' | 'cyber'): void {
+    const liningOpacity = this.isIsolatedDimmed ? 0.04 : 0.22;
+    [this.mesh, this.primaryMesh].forEach(meshObj => {
+      if (!meshObj) return;
+      const mat = meshObj.material as THREE.ShaderMaterial;
+      if (mat && mat.uniforms && mat.uniforms.uOpacity) {
+        mat.uniforms.uOpacity.value = liningOpacity;
+        mat.needsUpdate = true;
+      }
+    });
+
+    if (this.roadMesh) {
+      const roadMat = this.roadMesh.material as THREE.MeshStandardMaterial;
+      roadMat.transparent = true;
+      roadMat.opacity = this.isIsolatedDimmed ? 0.12 : 0.55;
+      roadMat.depthWrite = !this.isIsolatedDimmed;
+      roadMat.needsUpdate = true;
+    }
+
+    if (this.ditchMesh) {
+      const ditchMat = this.ditchMesh.material as THREE.MeshStandardMaterial;
+      ditchMat.transparent = true;
+      ditchMat.opacity = this.isIsolatedDimmed ? 0.12 : 0.65;
+      ditchMat.depthWrite = !this.isIsolatedDimmed;
+      ditchMat.needsUpdate = true;
+    }
+
+    if (this.ditchEdgeMesh) {
+      const edgeMat = this.ditchEdgeMesh.material as THREE.LineBasicMaterial;
+      edgeMat.opacity = this.isIsolatedDimmed ? 0.10 : 0.45;
+      edgeMat.needsUpdate = true;
+    }
+  }
+
+  /**
    * 动态切换双视觉范式 (Light Studio 影棚风 vs Dark Cyber 赛博暗夜风)
    */
   public setVisualParadigm(mode: 'studio' | 'cyber'): void {
+    const liningOpacity = this.isIsolatedDimmed ? 0.04 : 0.22;
     [this.mesh, this.primaryMesh].forEach(meshObj => {
       if (!meshObj) return;
       const mat = meshObj.material as THREE.ShaderMaterial;
@@ -355,13 +402,13 @@ export class TunnelGenerator {
         if (mode === 'studio') {
           mat.uniforms.uBaseColor.value.setHex(0x1e293b);
           mat.uniforms.uFresnelColor.value.setHex(0x38bdf8);
-          mat.uniforms.uOpacity.value = 0.22; // 珍珠水晶玻璃 (Opacity <= 0.25)
+          mat.uniforms.uOpacity.value = liningOpacity; // 珍珠水晶玻璃 (Opacity <= 0.25)
           mat.uniforms.uFresnelPower.value = 3.5;
           mat.uniforms.uShowGrid.value = 0.0;
         } else {
           mat.uniforms.uBaseColor.value.setHex(0x1e293b);
           mat.uniforms.uFresnelColor.value.setHex(0x38bdf8);
-          mat.uniforms.uOpacity.value = 0.22;
+          mat.uniforms.uOpacity.value = liningOpacity;
           mat.uniforms.uFresnelPower.value = 3.5;
           mat.uniforms.uShowGrid.value = 1.0;
         }
@@ -373,14 +420,15 @@ export class TunnelGenerator {
       const roadMat = this.roadMesh.material as THREE.MeshStandardMaterial;
       if (mode === 'studio') {
         roadMat.color.setHex(0x0f172a);
-        roadMat.opacity = 0.55;
+        roadMat.opacity = this.isIsolatedDimmed ? 0.12 : 0.55;
         roadMat.roughness = 0.50;
         roadMat.metalness = 0.20;
       } else {
         roadMat.color.setHex(0x0f172a);
-        roadMat.opacity = 0.55;
+        roadMat.opacity = this.isIsolatedDimmed ? 0.12 : 0.55;
         roadMat.roughness = 0.60;
       }
+      roadMat.depthWrite = !this.isIsolatedDimmed;
       roadMat.needsUpdate = true;
     }
 
@@ -389,9 +437,10 @@ export class TunnelGenerator {
       ditchMat.color.setHex(0x1e3a5a);
       ditchMat.emissive.setHex(0x000000);
       ditchMat.emissiveIntensity = 0.0;
-      ditchMat.opacity = 0.65;
+      ditchMat.opacity = this.isIsolatedDimmed ? 0.12 : 0.65;
       ditchMat.roughness = mode === 'studio' ? 0.50 : 0.40;
       ditchMat.metalness = 0.20;
+      ditchMat.depthWrite = !this.isIsolatedDimmed;
       ditchMat.needsUpdate = true;
     }
 
@@ -399,10 +448,10 @@ export class TunnelGenerator {
       const edgeMat = this.ditchEdgeMesh.material as THREE.LineBasicMaterial;
       if (mode === 'studio') {
         edgeMat.color.setHex(0x38bdf8);
-        edgeMat.opacity = 0.45;
+        edgeMat.opacity = this.isIsolatedDimmed ? 0.10 : 0.45;
       } else {
         edgeMat.color.setHex(0x00f3ff);
-        edgeMat.opacity = 0.45;
+        edgeMat.opacity = this.isIsolatedDimmed ? 0.10 : 0.45;
       }
       edgeMat.needsUpdate = true;
     }
