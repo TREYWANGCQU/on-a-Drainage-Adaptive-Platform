@@ -477,62 +477,112 @@
           <!-- 5.2 深度展开态（详细指标网格与现代化操作胶囊） -->
           <div class="card-expanded-body" v-show="isCardExpanded(snap.id)">
             <div class="results-dashboard" v-if="snap.results">
-              <!-- 顶部核心水力安全指标双卡 -->
-              <div class="headline-metrics-row">
-                <div class="headline-card head-water">
-                  <div class="headline-label">💧 原始设计水头</div>
-                  <div class="headline-val">{{ snap.results.original_state?.waterHead?.toFixed(2) ?? '-' }} <span class="unit">m</span></div>
-                </div>
-                <div class="headline-card head-fs" :class="isRiskSnapshot(snap) ? 'is-danger' : 'is-safe'">
-                  <div class="headline-label">🛡️ 分区安全系数</div>
-                  <div class="headline-val">{{ snap.results.original_state?.safety_factor?.toFixed(2) ?? '-' }}</div>
-                </div>
-              </div>
-
-              <!-- 4 宫格推荐设计参数卡片 -->
-              <div class="metrics-grid">
-                <div class="metric-tile">
-                  <span class="m-label">环向管间距</span>
-                  <div class="m-val">{{ getOrigMetric(snap, 'ring_spacing_recommend')?.toFixed(2) || '-' }} <span class="m-unit">m</span></div>
-                </div>
-                <div class="metric-tile">
-                  <span class="m-label">环向管孔径</span>
-                  <div class="m-val">{{ getOrigMetric(snap, 'ring_diam_recommend') != null ? (getOrigMetric(snap, 'ring_diam_recommend') * 1000).toFixed(0) : '-' }} <span class="m-unit">mm</span></div>
-                </div>
-                <div class="metric-tile">
-                  <span class="m-label">横向导水管径</span>
-                  <div class="m-val">{{ getOrigMetric(snap, 'lateral_diam_recommend') != null ? (getOrigMetric(snap, 'lateral_diam_recommend') * 1000).toFixed(0) : '-' }} <span class="m-unit">mm</span></div>
-                </div>
-                <div class="metric-tile">
-                  <span class="m-label">分区总涌水量 Q</span>
-                  <div class="m-val">{{ (getOrigMetric(snap, 'Q') ?? snap.results.original_state?.q_drain)?.toFixed(2) || '-' }} <span class="m-unit">m³/d</span></div>
-                </div>
-              </div>
-
-              <!-- 临界超限加固指标卡片（如有） -->
-              <div class="critical-reinforce-panel" v-if="snap.results.critical_state">
-                <div class="critical-header">
-                  <span class="critical-title">⚡ 临界工况加固设计参数</span>
-                  <span class="critical-fs-tag">
-                    临界 Fs: <b>{{ snap.results.critical_state?.final_safety_factor?.toFixed(2) ?? '-' }}</b>
+              <!-- 1. 顶部工程定位与安全总览 (Top Meta Header) -->
+              <div class="top-meta-header">
+                <div class="header-left-meta">
+                  <span class="zone-badge" :title="getSnapRemark(snap)">{{ getGlobalIndex(snap) }}</span>
+                  <span class="chainage-badge" title="工程里程范围">
+                    <span class="chainage-icon">📏</span>
+                    <span class="chainage-text">{{ getFormattedChainageRange(snap) }}</span>
                   </span>
                 </div>
-                <div class="metrics-grid critical-grid">
-                  <div class="metric-tile crit-tile">
-                    <span class="m-label">加固水头</span>
-                    <div class="m-val text-crit">{{ snap.results.critical_state?.final_waterHead?.toFixed(2) }} <span class="m-unit">m</span></div>
+                <div 
+                  class="fs-indicator-badge"
+                  :class="isRiskSnapshot(snap) ? 'is-danger' : 'is-safe'"
+                  :title="isRiskSnapshot(snap) ? '二衬承载安全系数低于容许值 2.00，已触发超限加固预警' : '二衬承载安全系数满足规范门禁 (Fs >= 2.00)'"
+                >
+                  <span class="fs-shield">🛡️</span>
+                  <span class="fs-text">Fs {{ getSnapshotFs(snap)?.toFixed(2) ?? '-' }}</span>
+                  <span class="fs-status-tag">{{ isRiskSnapshot(snap) ? '(超限)' : '(达标)' }}</span>
+                </div>
+              </div>
+
+              <!-- 2. 中部水力与外水压力自适应层 (Middle Hydraulics Panel) -->
+              <!-- 分支 A：满足安全规范 (Fs >= 2.00) -->
+              <div class="hydraulics-panel safe-hydraulics" v-if="!isRiskSnapshot(snap)">
+                <div class="hydraulics-grid">
+                  <div class="metric-box">
+                    <div class="metric-title">💧 分区总涌水量 Q</div>
+                    <div class="metric-value-wrap">
+                      <span class="metric-number">{{ (snap.results.original_state?.Q ?? snap.results.original_state?.q_drain)?.toFixed(2) ?? '-' }}</span>
+                      <span class="metric-unit">m³/d</span>
+                    </div>
                   </div>
-                  <div class="metric-tile crit-tile">
-                    <span class="m-label">临界环向间距</span>
-                    <div class="m-val text-crit">{{ getCritMetric(snap, 'ring_spacing_recommend')?.toFixed(2) || '-' }} <span class="m-unit">m</span></div>
+                  <div class="metric-box">
+                    <div class="metric-title">🌊 二衬最大外水压力 P</div>
+                    <div class="metric-value-wrap">
+                      <span class="metric-number">{{ getMaxWaterPressure(snap.results.original_state)?.toFixed(2) ?? '-' }}</span>
+                      <span class="metric-unit">kPa</span>
+                    </div>
                   </div>
-                  <div class="metric-tile crit-tile">
-                    <span class="m-label">临界环向孔径</span>
-                    <div class="m-val text-crit">{{ getCritMetric(snap, 'ring_diam_recommend') != null ? (getCritMetric(snap, 'ring_diam_recommend') * 1000).toFixed(0) : '-' }} <span class="m-unit">mm</span></div>
+                </div>
+              </div>
+
+              <!-- 分支 B：不满足安全规范 (Fs < 2.00) -->
+              <div class="hydraulics-panel dual-state-panel" v-else>
+                <!-- 原始超限工况子卡片 -->
+                <div class="state-subcard orig-danger">
+                  <div class="subcard-header">
+                    <span class="subcard-tag tag-danger">⚠️ 原始超限工况</span>
+                    <span class="subcard-fs">Fs {{ snap.results.original_state?.safety_factor?.toFixed(2) ?? '-' }}</span>
                   </div>
-                  <div class="metric-tile crit-tile">
-                    <span class="m-label">临界排涌量 Q</span>
-                    <div class="m-val text-crit">{{ (getCritMetric(snap, 'Q') ?? snap.results.critical_state?.final_Q)?.toFixed(2) || '-' }} <span class="m-unit">m³/d</span></div>
+                  <div class="subcard-metrics-row">
+                    <div class="sub-metric-item">
+                      <span class="sub-label">涌水量 Q</span>
+                      <span class="sub-val">{{ (snap.results.original_state?.Q ?? snap.results.original_state?.q_drain)?.toFixed(2) ?? '-' }} <span class="sub-unit">m³/d</span></span>
+                    </div>
+                    <div class="sub-metric-item">
+                      <span class="sub-label">外水压力 P</span>
+                      <span class="sub-val">{{ getMaxWaterPressure(snap.results.original_state)?.toFixed(2) ?? '-' }} <span class="sub-unit">kPa</span></span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 临界加固达标方案子卡片 -->
+                <div class="state-subcard crit-solution" v-if="snap.results.critical_state">
+                  <div class="subcard-header">
+                    <span class="subcard-tag tag-success">⚡ 临界控压加固方案</span>
+                    <span class="subcard-fs highlight-fs">加固后 Fs {{ (snap.results.critical_state?.final_safety_factor ?? snap.results.critical_state?.safety_factor)?.toFixed(2) ?? '2.00' }}</span>
+                  </div>
+                  <div class="subcard-metrics-row crit-metrics-row">
+                    <div class="sub-metric-item highlight-item">
+                      <span class="sub-label">注浆加固厚度 tg</span>
+                      <span class="sub-val text-tg">{{ getGroutingThickness(snap).toFixed(2) }} <span class="sub-unit">m</span></span>
+                    </div>
+                    <div class="sub-metric-item">
+                      <span class="sub-label">加固涌水量 Q</span>
+                      <span class="sub-val">{{ (snap.results.critical_state?.Q ?? snap.results.critical_state?.final_Q)?.toFixed(2) ?? '-' }} <span class="sub-unit">m³/d</span></span>
+                    </div>
+                    <div class="sub-metric-item">
+                      <span class="sub-label">加固外水压力 P</span>
+                      <span class="sub-val">{{ getMaxWaterPressure(snap.results.critical_state)?.toFixed(2) ?? '-' }} <span class="sub-unit">kPa</span></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3. 底部最终施工管网收敛参数 (Bottom Drainage Specs) -->
+              <div class="final-pipes-panel">
+                <div class="pipes-header">
+                  <span class="pipes-title">
+                    🛠️ 排水管网参数
+                    <span class="pipes-mode-badge" :class="getFinalPipeSpecs(snap).isCriticalAdopted ? 'mode-crit' : 'mode-orig'">
+                      {{ getFinalPipeSpecs(snap).isCriticalAdopted ? '临界加固收敛' : '标准设计采纳' }}
+                    </span>
+                  </span>
+                </div>
+                <div class="pipes-grid">
+                  <div class="pipe-item">
+                    <span class="pipe-name">纵向排水管</span>
+                    <span class="pipe-val">Φ {{ getFinalPipeSpecs(snap).d_long_mm }} mm</span>
+                  </div>
+                  <div class="pipe-item">
+                    <span class="pipe-name">横向排水管</span>
+                    <span class="pipe-val">Φ {{ getFinalPipeSpecs(snap).d_lat_mm }}mm @ {{ getFinalPipeSpecs(snap).s_lat_m.toFixed(1) }} m</span>
+                  </div>
+                  <div class="pipe-item">
+                    <span class="pipe-name">环向排水管</span>
+                    <span class="pipe-val">Φ {{ getFinalPipeSpecs(snap).d_ring_mm }} mm @ {{ getFinalPipeSpecs(snap).s_ring_m.toFixed(1) }} m</span>
                   </div>
                 </div>
               </div>
@@ -820,7 +870,7 @@ import {
   FolderAdd
 } from '@element-plus/icons-vue';
 import { useParameterStore } from '@/store/parameterStore';
-import { exportSnapshotBlueprint } from '@/utils/blueprintGenerator';
+import { exportSnapshotBlueprint, formatEngineeringChainage } from '@/utils/blueprintGenerator';
 import { 
   exportBatchCalculationBooksZip, 
   exportCalculationBookPdf 
@@ -1382,6 +1432,77 @@ const getCritMetric = (snap: any, key: string) => {
   return crit?.[key] ?? null;
 };
 
+// 提取卡片全线全局序号 (#01, #02...)
+const getGlobalIndex = (snap: any): string => {
+  const idx = snapshots.value.findIndex((s: any) => s.id === snap.id);
+  if (idx === -1) return '#--';
+  return `#${String(idx + 1).padStart(2, '0')}`;
+};
+
+// 格式化工程桩号区间 (如 DK0+000 ~ DK0+047)
+const getFormattedChainageRange = (snap: any): string => {
+  const start = formatEngineeringChainage(getChainage(snap, 'start'));
+  const end = formatEngineeringChainage(getChainage(snap, 'end'));
+  return `${start} ~ ${end}`;
+};
+
+// 获取二衬最大外水压力 (仰拱 -> 均布 -> 拱顶 降级防御)
+const getMaxWaterPressure = (state: any): number | null => {
+  if (!state) return null;
+  const val = state.P_invert ?? state.P ?? state.P_crown ?? state.P_crit_input;
+  return typeof val === 'number' ? val : null;
+};
+
+// 获取临界注浆加固厚度 (优先 tg_crit，降级 rg_crit - rp)
+const getGroutingThickness = (snap: any): number => {
+  const crit = snap?.results?.critical_state;
+  if (!crit) return 0;
+  if (typeof crit.tg_crit === 'number' && crit.tg_crit > 0) {
+    return crit.tg_crit;
+  }
+  const rgCrit = crit.rg_crit;
+  const rp = snap?.results?.input_parameter?.r_p ?? 8.57;
+  if (typeof rgCrit === 'number' && rgCrit > rp) {
+    return rgCrit - rp;
+  }
+  return 0;
+};
+
+// 收敛排水管网参数 (达标采纳原始推荐，超限采纳临界推荐)
+const getFinalPipeSpecs = (snap: any) => {
+  const isRisk = getSnapshotFs(snap) != null && getSnapshotFs(snap)! < 2.0;
+  const targetState = (isRisk && snap.results?.critical_state)
+    ? snap.results.critical_state
+    : snap.results?.original_state;
+
+  // 1. 纵向排水管 (米转毫米，标准直径 100mm)
+  const rawLongDiam = targetState?.long_diam_recommend ?? targetState?.d_long ?? 0.1;
+  const d_long_mm = Math.round(rawLongDiam * 1000);
+
+  // 2. 横向排水管 (排查 0.0 穿透，标准工程推荐间距 20.0m，直径 80mm)
+  const rawLatDiam = targetState?.lateral_diam_recommend ?? targetState?.d_lat ?? 0.08;
+  const d_lat_mm = Math.round(rawLatDiam * 1000);
+  const s_lat_m = (targetState?.lateral_spacing_recommend && targetState.lateral_spacing_recommend > 0)
+    ? targetState.lateral_spacing_recommend
+    : (snap.results?.input_parameter?.S_lat && snap.results.input_parameter.S_lat > 0 ? snap.results.input_parameter.S_lat : 20.0);
+
+  // 3. 环向排水管 (米转毫米，标准间距 10.0m，直径 50mm)
+  const rawRingDiam = targetState?.ring_diam_recommend ?? targetState?.d_ring ?? 0.05;
+  const d_ring_mm = Math.round(rawRingDiam * 1000);
+  const s_ring_m = (targetState?.ring_spacing_recommend && targetState.ring_spacing_recommend > 0)
+    ? targetState.ring_spacing_recommend
+    : (targetState?.S_ring && targetState.S_ring > 0 ? targetState.S_ring : 10.0);
+
+  return {
+    isCriticalAdopted: isRisk && Boolean(snap.results?.critical_state),
+    d_long_mm,
+    d_lat_mm,
+    s_lat_m,
+    d_ring_mm,
+    s_ring_m
+  };
+};
+
 const getFsClass = (fs: number | null) => {
   if (fs == null) return '';
   return fs < 2.0 ? 'fs-danger' : 'fs-safe';
@@ -1893,8 +2014,8 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
    =================================================== */
 .batch-monitor-banner {
   padding: 10px 12px;
-  background: var(--sys-bg-active, #f0fdf4);
-  border: 1px solid var(--sys-border-active, #bbf7d0);
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
@@ -1904,18 +2025,18 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
 }
 
 .batch-monitor-banner.is-running {
-  background: #f0f9ff;
-  border-color: #bae6fd;
+  background: rgba(2, 132, 199, 0.08);
+  border-color: rgba(2, 132, 199, 0.25);
 }
 
 .batch-monitor-banner.is-paused {
-  background: #fffbeb;
-  border-color: #fde68a;
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.25);
 }
 
 .batch-monitor-banner.has-failed {
-  background: #fef2f2;
-  border-color: #fecaca;
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
 }
 
 .monitor-header {
@@ -1930,7 +2051,7 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
   align-items: center;
   gap: 6px;
   font-weight: 600;
-  color: var(--sys-text-primary, #1e293b);
+  color: var(--el-text-color-primary, #1e293b);
   font-size: 12px;
 }
 
@@ -1982,7 +2103,7 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--sys-text-secondary, #64748b);
+  color: var(--el-text-color-secondary, #64748b);
   font-size: 12px;
 }
 
@@ -2015,28 +2136,28 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
 }
 
 .count-done {
-  background: #dcfce7;
-  color: #166534;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
 }
 
 .count-calc {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: rgba(2, 132, 199, 0.15);
+  color: #0284c7;
 }
 
 .count-paused {
-  background: #fef3c7;
-  color: #92400e;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
 }
 
 .count-err {
-  background: #fee2e2;
-  color: #991b1b;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
 }
 
 .monitor-eta {
   font-size: 12px;
-  color: var(--sys-text-secondary, #64748b);
+  color: var(--el-text-color-secondary, #64748b);
 }
 
 .monitor-eta b {
@@ -2052,7 +2173,7 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
 
 /* 批量导出进度条 */
 .batch-export-box {
-  background: var(--el-fill-color-lighter, #f1f5f9);
+  background: var(--el-fill-color-light, #f1f5f9);
   padding: 6px 10px;
   border-radius: 6px;
   border: 1px solid var(--sys-border, #e2e8f0);
@@ -2098,7 +2219,7 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
 
 .action-icon-btn {
   padding: 5px 7px;
-  font-size: 11.5px;
+  font-size: 12px;
   flex-shrink: 0;
   border-radius: 5px;
   display: inline-flex;
@@ -2138,7 +2259,7 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
 
 .batch-count-tag {
   font-size: 12px;
-  color: #1e293b;
+  color: var(--el-text-color-primary, #1e293b);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -2247,7 +2368,7 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
 
 .snapshot-card.is-risk {
   border-color: rgba(239, 68, 68, 0.35);
-  background: rgba(254, 242, 242, 0.3);
+  background: rgba(239, 68, 68, 0.05);
 }
 
 /* 状态色带/指示条 */
@@ -2312,7 +2433,7 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
   font-size: 12px;
   font-weight: 700;
   font-family: 'JetBrains Mono', 'Consolas', monospace;
-  color: #1e3a8a;
+  color: var(--el-color-primary, #3b82f6);
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.06));
   border: 1px solid rgba(59, 130, 246, 0.25);
   padding: 1.5px 6px;
@@ -2513,7 +2634,7 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
   padding-top: 8px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 
 .pending-dashboard {
@@ -2521,11 +2642,11 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
   align-items: center;
   gap: 6px;
   padding: 12px 10px;
-  font-size: 11.5px;
-  color: #94a3b8;
-  background: var(--el-fill-color-lighter, #f8fafc);
+  font-size: 12px;
+  color: var(--el-text-color-secondary, #94a3b8);
+  background: var(--el-fill-color-light, #f8fafc);
   border-radius: 6px;
-  border: 1px dashed var(--sys-border, #e2e8f0);
+  border: 1px dashed var(--el-border-color-lighter, #e2e8f0);
   margin-top: 8px;
 }
 
@@ -2534,129 +2655,314 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
   color: #f59e0b;
 }
 
-/* 顶部水头与安全系数双卡片 */
-.headline-metrics-row {
+/* 1. 顶部工程定位栏 */
+.top-meta-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--el-fill-color-light, #f8fafc);
+  border-radius: 6px;
+  border: 1px solid var(--el-border-color-lighter, #e2e8f0);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.header-left-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.zone-badge {
+  font-weight: 700;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(64, 158, 255, 0.12);
+  color: var(--el-color-primary, #409eff);
+  border: 1px solid rgba(64, 158, 255, 0.25);
+  letter-spacing: 0.5px;
+}
+
+.chainage-badge {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--el-text-color-primary, #1e293b);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.chainage-icon {
+  font-size: 12px;
+}
+
+.fs-indicator-badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.fs-indicator-badge.is-safe {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.fs-indicator-badge.is-danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  animation: pulseRisk 2s infinite ease-in-out;
+}
+
+.fs-shield {
+  font-size: 12px;
+}
+
+.fs-text {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.fs-status-tag {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 2. 中部水力指标面板 */
+.hydraulics-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hydraulics-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.metric-box {
+  padding: 8px 10px;
+  background: var(--el-bg-color, #ffffff);
+  border: 1px solid var(--el-border-color-lighter, #e2e8f0);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 0.15s ease;
+}
+
+.metric-box:hover {
+  border-color: var(--el-border-color-light, #cbd5e1);
+}
+
+.metric-box .metric-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--el-text-color-secondary, #64748b);
+}
+
+.metric-value-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.metric-box .metric-number {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  color: var(--el-text-color-primary, #0f172a);
+}
+
+.metric-box .metric-unit {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--el-text-color-secondary, #94a3b8);
+}
+
+/* 临界超限对比双列卡片 */
+.dual-state-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.state-subcard {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
 }
 
-.headline-card {
-  padding: 5px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--sys-border, #e2e8f0);
-  background: var(--el-fill-color-light, #f8fafc);
+.state-subcard.orig-danger {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
 }
 
-.headline-card.head-water {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.06), rgba(6, 182, 212, 0.04));
-  border-color: rgba(59, 130, 246, 0.2);
+.state-subcard.crit-solution {
+  background: rgba(13, 148, 136, 0.08);
+  border-color: rgba(13, 148, 136, 0.25);
+  border-left: 3px solid #0d9488;
 }
 
-.headline-card.head-fs.is-safe {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(5, 150, 105, 0.04));
-  border-color: rgba(16, 185, 129, 0.25);
-}
-
-.headline-card.head-fs.is-danger {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(249, 115, 22, 0.05));
-  border-color: rgba(239, 68, 68, 0.3);
-}
-
-.headline-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--el-text-color-secondary, #64748b);
-  margin-bottom: 2px;
-}
-
-.headline-val {
-  font-size: 14px;
-  font-weight: 800;
-  font-family: 'JetBrains Mono', 'Consolas', monospace;
-  color: #1e293b;
-}
-
-.head-fs.is-safe .headline-val { color: #059669; }
-.head-fs.is-danger .headline-val { color: #dc2626; }
-
-.headline-val .unit {
-  font-size: 10.5px;
-  font-weight: 500;
-  color: #64748b;
-}
-
-/* 4 宫格指标 */
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 5px;
-}
-
-.metric-tile {
-  background: var(--el-fill-color-light, #f8fafc);
-  border: 1px solid var(--sys-border, #e2e8f0);
-  border-radius: 5px;
-  padding: 4px 7px;
+.subcard-header {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
 
-.m-label {
-  font-size: 9.5px;
-  color: var(--el-text-color-secondary, #64748b);
-}
-
-.m-val {
+.subcard-tag {
   font-size: 12px;
   font-weight: 700;
-  color: #2563eb;
+}
+
+.subcard-tag.tag-danger {
+  color: #ef4444;
+}
+
+.subcard-tag.tag-success {
+  color: #14b8a6;
+}
+
+.subcard-fs {
+  font-size: 12px;
   font-family: 'JetBrains Mono', monospace;
-  margin-top: 1px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary, #64748b);
 }
 
-.m-unit {
-  font-size: 9.5px;
-  font-weight: normal;
-  color: #94a3b8;
-}
-
-/* 临界加固面板 */
-.critical-reinforce-panel {
-  margin-top: 2px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.05), rgba(249, 115, 22, 0.05));
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  border-left: 3px solid #ef4444;
-}
-
-.critical-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 5px;
-}
-
-.critical-title {
-  font-size: 10.5px;
+.subcard-fs.highlight-fs {
+  color: #14b8a6;
   font-weight: 700;
-  color: #dc2626;
 }
 
-.critical-fs-tag {
-  font-size: 10px;
-  color: #dc2626;
+.subcard-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.crit-metrics-row {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.sub-metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sub-metric-item.highlight-item {
+  background: rgba(13, 148, 136, 0.12);
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.sub-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary, #64748b);
+}
+
+.sub-val {
+  font-size: 12px;
+  font-weight: 700;
   font-family: 'JetBrains Mono', monospace;
+  color: var(--el-text-color-primary, #1e293b);
 }
 
-.crit-tile {
-  background: rgba(255, 255, 255, 0.8);
-  border-color: rgba(239, 68, 68, 0.15);
+.sub-val.text-tg {
+  color: #14b8a6;
 }
 
-.text-crit {
-  color: #dc2626 !important;
+.sub-unit {
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--el-text-color-secondary, #94a3b8);
+}
+
+/* 3. 底部最终管网施工参数 */
+.final-pipes-panel {
+  padding: 8px 10px;
+  background: var(--el-fill-color-light, #f8fafc);
+  border: 1px solid var(--el-border-color-lighter, #e2e8f0);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pipes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pipes-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--el-text-color-primary, #334155);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pipes-mode-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.pipes-mode-badge.mode-orig {
+  background: var(--el-fill-color, #e2e8f0);
+  color: var(--el-text-color-regular, #475569);
+}
+
+.pipes-mode-badge.mode-crit {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--el-color-primary, #3b82f6);
+}
+
+.pipes-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.pipe-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--el-bg-color, #ffffff);
+  padding: 5px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--el-border-color-lighter, #e2e8f0);
+}
+
+.pipe-name {
+  font-size: 12px;
+  color: var(--el-text-color-secondary, #64748b);
+}
+
+.pipe-val {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--el-text-color-primary, #1e293b);
 }
 
 /* 卡片底部操作栏 */
@@ -2674,8 +2980,8 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
 .time-meta {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font-size: 10.5px;
+  gap: 4px;
+  font-size: 12px;
   color: #94a3b8;
   font-family: 'JetBrains Mono', monospace;
 }
@@ -2684,18 +2990,18 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
 .action-capsules-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
 .capsule-btn {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 3px 8px;
-  font-size: 11px;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
   font-weight: 600;
-  border-radius: 5px;
+  border-radius: 6px;
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
@@ -2718,7 +3024,7 @@ const handleCardMoreCommand = (snap: any, cmd: string) => {
 }
 
 .capsule-btn .arrow-tiny {
-  font-size: 9px;
+  font-size: 12px;
   margin-left: -1px;
 }
 
