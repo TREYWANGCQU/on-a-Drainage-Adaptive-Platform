@@ -49,4 +49,5 @@
 
 ### 📝 全局附录与配置资产
 * [[平台工程更新日志 (CHANGELOG)|CHANGELOG]]
+* [[Release Notes v1.1.0 发布说明|Release-Notes-v1.1.0]]
 * [[计算书参数 Prompt 工程资产|Prompt-Calculation-Asset]]

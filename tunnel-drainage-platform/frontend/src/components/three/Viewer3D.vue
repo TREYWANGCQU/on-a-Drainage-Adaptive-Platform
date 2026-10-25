@@ -210,6 +210,7 @@
           >
             轴力图 N
           </button>
+          <!-- 
           <button 
             :class="{ active: currentForceMode === 'COMBINED' }" 
             @click="setForceMode('COMBINED')"
@@ -217,6 +218,7 @@
           >
             综合受力
           </button>
+          -->
         </div>
 
         <!-- 数值图例面板 (可折叠打开) -->
@@ -295,7 +297,47 @@
             <div class="quick-btn-group"></div>
           </div>
           <div class="layer-divider"></div>
-          <!-- 隧道衬砌图层组 -->
+          <!-- 1. 水文环境图层组 (原第4位调整至第1位) -->
+          <div class="layer-group-header">
+            <label class="layer-item">
+              <input type="checkbox" v-model="layerVisibility.environment" @change="updateLayerVisibility" />
+              <span class="layer-color-dot env-dot"></span>
+              <span class="layer-label">水文环境</span>
+            </label>
+            <span 
+              class="group-toggle-btn" 
+              @click.stop="isEnvGroupOpen = !isEnvGroupOpen"
+              :title="isEnvGroupOpen ? '折叠子图层' : '展开子图层'"
+            >
+              {{ isEnvGroupOpen ? '▼' : '▶' }}
+            </span>
+          </div>
+          <div v-if="isEnvGroupOpen" class="sub-layer-container">
+            <!-- 地面/地表效果不佳，作前端隐藏隔离处理 -->
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.flowLines" @change="updateLayerVisibility" />
+              <span class="layer-color-dot flowline-dot"></span>
+              <span class="layer-label">└ 地下水流线</span>
+            </label>
+            <label class="layer-item sub-layer-item inline-between">
+              <div class="left-group">
+                <input type="checkbox" v-model="layerVisibility.waterParticles" @change="updateLayerVisibility" />
+                <span class="layer-color-dot particle-dot"></span>
+                <span class="layer-label">└ 地下水粒子特效</span>
+              </div>
+              <button 
+                v-if="layerVisibility.environment && layerVisibility.waterParticles"
+                class="mini-anim-btn" 
+                :class="{ paused: !isWaterParticleAnimated }"
+                @click.stop="toggleWaterParticleAnimation"
+                :title="isWaterParticleAnimated ? '暂停粒子流动' : '启动粒子流动'"
+              >
+                {{ isWaterParticleAnimated ? '⏸ 动态' : '▶ 冻结' }}
+              </button>
+            </label>
+          </div>
+
+          <!-- 2. 隧道衬砌图层组 -->
           <div class="layer-group-header">
             <label class="layer-item">
               <input 
@@ -333,23 +375,45 @@
             </label>
           </div>
 
-          <label class="layer-item">
-            <input type="checkbox" v-model="layerVisibility.initialGrouting" @change="updateLayerVisibility" />
-            <span class="layer-color-dot initial-grouting-dot"></span>
-            <span class="layer-label">初始注浆圈 (rg)</span>
-          </label>
-          <label class="layer-item">
-            <input type="checkbox" v-model="layerVisibility.criticalGrouting" @change="updateLayerVisibility" />
-            <span class="layer-color-dot critical-grouting-dot"></span>
-            <span class="layer-label">临界注浆加固圈 (tg_crit)</span>
-          </label>
+          <!-- 3. 防水设计图层组 (原初始与临界加固圈组合并升级) -->
+          <div class="layer-group-header">
+            <label class="layer-item">
+              <input 
+                ref="waterproofingParentCheckboxRef"
+                type="checkbox" 
+                :checked="isWaterproofingParentChecked" 
+                @change="toggleWaterproofingParentGroup" 
+              />
+              <span class="layer-color-dot waterproofing-dot"></span>
+              <span class="layer-label">防水设计</span>
+            </label>
+            <span 
+              class="group-toggle-btn" 
+              @click.stop="isWaterproofingGroupOpen = !isWaterproofingGroupOpen"
+              :title="isWaterproofingGroupOpen ? '折叠子图层' : '展开子图层'"
+            >
+              {{ isWaterproofingGroupOpen ? '▼' : '▶' }}
+            </span>
+          </div>
+          <div v-if="isWaterproofingGroupOpen" class="sub-layer-container">
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.initialGrouting" @change="onWaterproofingSubLayerChange" />
+              <span class="layer-color-dot initial-grouting-dot"></span>
+              <span class="layer-label">└ 初始注浆圈 (rg)</span>
+            </label>
+            <label class="layer-item sub-layer-item">
+              <input type="checkbox" v-model="layerVisibility.criticalGrouting" @change="onWaterproofingSubLayerChange" />
+              <span class="layer-color-dot critical-grouting-dot"></span>
+              <span class="layer-label">└ 设计注浆圈 (tg_crit)</span>
+            </label>
+          </div>
 
-          <!-- 排水管网图层组 -->
+          <!-- 4. 排水设计图层组 (原“排水管网”更新为“排水设计”) -->
           <div class="layer-group-header">
             <label class="layer-item">
               <input type="checkbox" v-model="layerVisibility.pipes" @change="updateLayerVisibility" />
               <span class="layer-color-dot pipes-dot"></span>
-              <span class="layer-label">排水管网</span>
+              <span class="layer-label">排水设计</span>
             </label>
             <span 
               class="group-toggle-btn" 
@@ -367,50 +431,7 @@
             </label>
           </div>
 
-          <!-- 水文环境图层组 -->
-          <div class="layer-group-header">
-            <label class="layer-item">
-              <input type="checkbox" v-model="layerVisibility.environment" @change="updateLayerVisibility" />
-              <span class="layer-color-dot env-dot"></span>
-              <span class="layer-label">水文环境</span>
-            </label>
-            <span 
-              class="group-toggle-btn" 
-              @click.stop="isEnvGroupOpen = !isEnvGroupOpen"
-              :title="isEnvGroupOpen ? '折叠子图层' : '展开子图层'"
-            >
-              {{ isEnvGroupOpen ? '▼' : '▶' }}
-            </span>
-          </div>
-          <div v-if="isEnvGroupOpen" class="sub-layer-container">
-            <label class="layer-item sub-layer-item">
-              <input type="checkbox" v-model="layerVisibility.ground" @change="updateLayerVisibility" />
-              <span class="layer-color-dot ground-dot"></span>
-              <span class="layer-label">└ 地面/地表</span>
-            </label>
-            <label class="layer-item sub-layer-item">
-              <input type="checkbox" v-model="layerVisibility.flowLines" @change="updateLayerVisibility" />
-              <span class="layer-color-dot flowline-dot"></span>
-              <span class="layer-label">└ 地下水流线</span>
-            </label>
-            <label class="layer-item sub-layer-item inline-between">
-              <div class="left-group">
-                <input type="checkbox" v-model="layerVisibility.waterParticles" @change="updateLayerVisibility" />
-                <span class="layer-color-dot particle-dot"></span>
-                <span class="layer-label">└ 地下水粒子特效</span>
-              </div>
-              <button 
-                v-if="layerVisibility.environment && layerVisibility.waterParticles"
-                class="mini-anim-btn" 
-                :class="{ paused: !isWaterParticleAnimated }"
-                @click.stop="toggleWaterParticleAnimation"
-                :title="isWaterParticleAnimated ? '暂停粒子流动' : '启动粒子流动'"
-              >
-                {{ isWaterParticleAnimated ? '⏸ 动态' : '▶ 冻结' }}
-              </button>
-            </label>
-          </div>
-
+          <!-- 5. 结构安全性分析 -->
           <label class="layer-item">
             <input type="checkbox" v-model="layerVisibility.probe" @change="updateLayerVisibility" />
             <span class="layer-color-dot probe-dot"></span>
@@ -842,28 +863,32 @@ const currentProbeStateTab = ref<'original' | 'critical'>('original');
 // 图层显隐与面板折叠状态
 const isPipeScaleCollapsed = ref(false);
 const isLayerPanelOpen = ref(true);
-const isLiningGroupOpen = ref(false);
-const isPipesGroupOpen = ref(false);
 const isEnvGroupOpen = ref(false);
+const isLiningGroupOpen = ref(false);
+const isWaterproofingGroupOpen = ref(false);
+const isPipesGroupOpen = ref(false);
 
 const liningParentCheckboxRef = ref<HTMLInputElement | null>(null);
+const waterproofingParentCheckboxRef = ref<HTMLInputElement | null>(null);
 
 const layerVisibility = reactive({
-  lining: true,             // 隧道衬砌 (主图层总控)
+  environment: true,        // 1. 水文环境 (主图层总控)
+  ground: false,            // └ 地面/地表 (效果不佳，作前端彻底隐藏处理)
+  flowLines: true,          // └ 地下水流线
+  waterParticles: true,     // └ 地下水粒子特效
+  lining: true,             // 2. 隧道衬砌 (主图层总控)
   liningSecondary: true,    // └ 隧道二衬 (r -> r1)
   liningPrimary: true,      // └ 初支 (r1 -> r2)
   liningRoadDitch: true,    // └ 路面与排水沟
-  initialGrouting: true,
-  criticalGrouting: true,
-  pipes: true,
-  pipeAnnotations: true,
-  environment: true,
-  ground: true,
-  flowLines: true,
-  waterParticles: true,
-  probe: true
+  waterproofing: true,      // 3. 防水设计 (主图层总控)
+  initialGrouting: true,    // └ 初始注浆圈 (rg)
+  criticalGrouting: true,   // └ 设计注浆圈 (tg_crit)
+  pipes: true,              // 4. 排水设计 (主图层总控)
+  pipeAnnotations: true,    // └ 排水管网参数标注
+  probe: true               // 5. 结构安全性分析
 });
 
+// 隧道衬砌图层组联动计算属性与方法
 const isLiningParentChecked = computed(() => {
   return layerVisibility.liningSecondary && layerVisibility.liningPrimary && layerVisibility.liningRoadDitch;
 });
@@ -893,6 +918,36 @@ const onLiningSubLayerChange = () => {
   updateLayerVisibility();
 };
 
+// 防水设计图层组联动计算属性与方法
+const isWaterproofingParentChecked = computed(() => {
+  return layerVisibility.initialGrouting && layerVisibility.criticalGrouting;
+});
+
+const isWaterproofingParentSomeChecked = computed(() => {
+  return layerVisibility.initialGrouting || layerVisibility.criticalGrouting;
+});
+
+watch([isWaterproofingParentChecked, isWaterproofingParentSomeChecked, isWaterproofingGroupOpen], () => {
+  if (waterproofingParentCheckboxRef.value) {
+    waterproofingParentCheckboxRef.value.indeterminate = 
+      isWaterproofingParentSomeChecked.value && !isWaterproofingParentChecked.value;
+  }
+}, { flush: 'post' });
+
+const toggleWaterproofingParentGroup = (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  const val = target.checked;
+  layerVisibility.waterproofing = val;
+  layerVisibility.initialGrouting = val;
+  layerVisibility.criticalGrouting = val;
+  updateLayerVisibility();
+};
+
+const onWaterproofingSubLayerChange = () => {
+  layerVisibility.waterproofing = isWaterproofingParentSomeChecked.value;
+  updateLayerVisibility();
+};
+
 const updateLayerVisibility = () => {
   // 1. 隧道衬砌 (分控二衬、初支、内部路面板与水沟槽)
   const liningParentVisible = layerVisibility.lining;
@@ -917,18 +972,19 @@ const updateLayerVisibility = () => {
     }
   });
 
-  // 2. 注浆加固圈（支持原始与临界）
+  // 2. 防水设计加固圈（支持父级总控、初始与设计注浆圈分控）
+  const waterproofingParentVisible = layerVisibility.waterproofing;
   rManagerInstances.forEach(rManager => {
     if (rManager.groutingMesh) {
-      rManager.groutingMesh.visible = layerVisibility.initialGrouting;
+      rManager.groutingMesh.visible = waterproofingParentVisible && layerVisibility.initialGrouting;
     }
     if (rManager.criticalGroutingMesh) {
       rManager.criticalGroutingMesh.visible = 
-        props.mode !== 'original' && layerVisibility.criticalGrouting;
+        waterproofingParentVisible && props.mode !== 'original' && layerVisibility.criticalGrouting;
     }
   });
 
-  // 3. 排水管网与标注
+  // 3. 排水设计与标注
   pipeGenInstances.forEach(pipeGen => {
     pipeGen.getMeshes().forEach(mesh => {
       mesh.visible = layerVisibility.pipes;
@@ -938,12 +994,12 @@ const updateLayerVisibility = () => {
     }
   });
 
-  // 4. 水文环境及其子图层 (地面/地表、埋深标注、地下水流线、地下水粒子特效)
+  // 4. 水文环境及其子图层 (地面/地表作前端隐藏隔离，地下水流线与粒子特效正常展示)
   const envVisible = layerVisibility.environment;
   envInstances.forEach(env => {
     if (env.waterPlane) env.waterPlane.visible = envVisible;
-    if (env.groundPlane) env.groundPlane.visible = envVisible && layerVisibility.ground;
-    if (env.depthIndicator) env.depthIndicator.visible = envVisible && layerVisibility.ground;
+    if (env.groundPlane) env.groundPlane.visible = false;
+    if (env.depthIndicator) env.depthIndicator.visible = false;
     if (env.flowLines) env.flowLines.visible = envVisible && layerVisibility.flowLines;
     if (env.waterParticles) {
       env.waterParticles.visible = envVisible && layerVisibility.waterParticles;
@@ -961,15 +1017,30 @@ const updateLayerVisibility = () => {
   scheduleRender();
 };
 
+// 活跃交互受控图层键集合 (排除已前端隐匿的 ground，保证全选不污染)
+const ACTIVE_LAYER_KEYS: (keyof typeof layerVisibility)[] = [
+  'environment',
+  'flowLines',
+  'waterParticles',
+  'lining',
+  'liningSecondary',
+  'liningPrimary',
+  'liningRoadDitch',
+  'waterproofing',
+  'initialGrouting',
+  'criticalGrouting',
+  'pipes',
+  'pipeAnnotations',
+  'probe'
+];
+
 // 全选/全不选 计算属性与控制函数
 const isAllLayersVisible = computed(() => {
-  const keys = Object.keys(layerVisibility) as (keyof typeof layerVisibility)[];
-  return keys.every(key => layerVisibility[key]);
+  return ACTIVE_LAYER_KEYS.every(key => layerVisibility[key]);
 });
 
 const isSomeLayersVisible = computed(() => {
-  const keys = Object.keys(layerVisibility) as (keyof typeof layerVisibility)[];
-  return keys.some(key => layerVisibility[key]);
+  return ACTIVE_LAYER_KEYS.some(key => layerVisibility[key]);
 });
 
 const selectAllCheckboxRef = ref<HTMLInputElement | null>(null);
@@ -981,10 +1052,11 @@ watch([isAllLayersVisible, isSomeLayersVisible, isLayerPanelOpen], () => {
 }, { flush: 'post' });
 
 const setAllLayersVisibility = (visible: boolean) => {
-  const keys = Object.keys(layerVisibility) as (keyof typeof layerVisibility)[];
-  keys.forEach(key => {
+  ACTIVE_LAYER_KEYS.forEach(key => {
     layerVisibility[key] = visible;
   });
+  // 确保 ground 始终被隔离隐藏
+  layerVisibility.ground = false;
   updateLayerVisibility();
 };
 
@@ -1429,11 +1501,13 @@ const applyFocusIsolation = () => {
     // 2. 加固注浆圈（非活动段在独占模式下隐匿以大幅降低视觉噪音与 GPU 负荷）
     const rm = rManagerInstances[idx];
     if (rm) {
+      const waterproofingVisible = !isDimmed && layerVisibility.waterproofing;
       if (rm.groutingMesh) {
-        rm.groutingMesh.visible = !isDimmed && layerVisibility.initialGrouting;
+        rm.groutingMesh.visible = waterproofingVisible && layerVisibility.initialGrouting;
       }
       if (rm.criticalGroutingMesh) {
-        rm.criticalGroutingMesh.visible = !isDimmed && props.mode !== 'original' && layerVisibility.criticalGrouting;
+        rm.criticalGroutingMesh.visible = 
+          waterproofingVisible && props.mode !== 'original' && layerVisibility.criticalGrouting;
       }
     }
 
@@ -1448,13 +1522,13 @@ const applyFocusIsolation = () => {
       }
     }
 
-    // 4. 水文环境要素 (流线、水粒子等随段弱化/隐匿)
+    // 4. 水文环境要素 (流线、水粒子等随段弱化/隐匿，地面要素保持前端隐藏)
     const env = envInstances[idx];
     if (env) {
       const envVisible = !isDimmed && layerVisibility.environment;
       if (env.waterPlane) env.waterPlane.visible = envVisible;
-      if (env.groundPlane) env.groundPlane.visible = envVisible && layerVisibility.ground;
-      if (env.depthIndicator) env.depthIndicator.visible = envVisible && layerVisibility.ground;
+      if (env.groundPlane) env.groundPlane.visible = false;
+      if (env.depthIndicator) env.depthIndicator.visible = false;
       if (env.flowLines) env.flowLines.visible = envVisible && layerVisibility.flowLines;
       if (env.waterParticles) env.waterParticles.visible = envVisible && layerVisibility.waterParticles;
     }
@@ -3285,6 +3359,7 @@ input:checked + .switch-slider:before {
 }
 
 .lining-dot { background-color: #808080; }
+.waterproofing-dot { background-color: #00d2ff; }
 .initial-grouting-dot { background-color: #00ffff; }
 .critical-grouting-dot { background-color: #ff6600; }
 .pipes-dot { background-color: #2ecc71; }
@@ -3312,7 +3387,8 @@ input:checked + .switch-slider:before {
   color: #38bdf8;
   border-radius: 4px;
   padding: 2px 6px;
-  font-size: 10px;
+  font-size: 12px;
+  line-height: 1.2;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -3330,7 +3406,7 @@ input:checked + .switch-slider:before {
 
 .sub-layer-item {
   margin-left: 14px;
-  font-size: 11px;
+  font-size: 12px;
   opacity: 0.9;
 }
 
