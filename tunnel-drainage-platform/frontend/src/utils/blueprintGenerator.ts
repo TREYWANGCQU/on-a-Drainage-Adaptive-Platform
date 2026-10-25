@@ -1,6 +1,8 @@
 // frontend/src/utils/blueprintGenerator.ts
 import { jsPDF } from 'jspdf';
+import JSZip from 'jszip';
 import { type Snapshot } from '@/store/snapshotStore';
+import { triggerBrowserBlobDownload } from '@/api/calculationBookApi';
 
 /**
  * 标准施工设计图参数模型
@@ -398,6 +400,15 @@ export class ConstructionBlueprintGenerator {
   private canvasHeight = 2970; // 对应 A3 297mm @ 10px/mm
   private p2d: HorseshoeProfile2D;
   private currentScaleConfig: StandardScaleConfig;
+  private activeCanvas: HTMLCanvasElement | null = null;
+
+  public get scaleConfig(): StandardScaleConfig {
+    return this.currentScaleConfig;
+  }
+
+  public get blueprintParams(): BlueprintParams {
+    return this.params;
+  }
 
   constructor(snap: Snapshot | any, overrideScale?: BlueprintParams['scale']) {
     this.params = extractBlueprintParams(snap);
@@ -451,10 +462,10 @@ export class ConstructionBlueprintGenerator {
   }
 
   /**
-   * 执行完整的参数化 A3 施工设计图绘制并返回离屏 Canvas
+   * 执行完整的参数化 A3 施工设计图绘制并返回 Canvas (支持传入现有目标 Canvas 或自动创建离屏 Canvas)
    */
-  public renderToCanvas(): HTMLCanvasElement {
-    const canvas = document.createElement('canvas');
+  public renderToCanvas(targetCanvas?: HTMLCanvasElement): HTMLCanvasElement {
+    const canvas = targetCanvas || document.createElement('canvas');
     canvas.width = this.canvasWidth;
     canvas.height = this.canvasHeight;
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -476,6 +487,7 @@ export class ConstructionBlueprintGenerator {
     // 5. 绘制隧道主体横断面结构与排水系统 (自适应视口排布)
     this.drawTunnelSectionAndDrainage(ctx);
 
+    this.activeCanvas = canvas;
     return canvas;
   }
 
@@ -1127,13 +1139,10 @@ export class ConstructionBlueprintGenerator {
   }
 
   /**
-   * 生成标准 A3 Landscape 矢量 PDF 文件并触发浏览器/桌面端极速下载
+   * 生成标准 A3 施工设计图的纯内存 PDF 二进制产物
    */
-  public async exportPDF(): Promise<void> {
+  public async generatePDFBlob(): Promise<{ blob: Blob; filename: string }> {
     const canvas = this.renderToCanvas();
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
-
-    // 创建 ISO A3 Landscape PDF (420mm x 297mm)
     const pdf = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',
@@ -1141,38 +1150,63 @@ export class ConstructionBlueprintGenerator {
       compress: true
     });
 
-    pdf.addImage(imgData, 'JPEG', 0, 0, 420, 297, undefined, 'FAST');
-
-    const fileName = `施工设计图_${this.params.chainageText.replace(/\s+/g, '')}_${this.params.isCritical ? '临界加固' : '原始工况'}_A3.pdf`;
-    pdf.save(fileName);
+    // jsPDF 原生支持直接将 HTMLCanvasElement 载入
+    pdf.addImage(canvas, 'JPEG', 0, 0, 420, 297, undefined, 'FAST');
+    const blob = pdf.output('blob');
+    const filename = `施工设计图_${this.params.chainageText.replace(/\s+/g, '')}_${this.params.isCritical ? '临界加固' : '原始工况'}_A3.pdf`;
+    return { blob, filename };
   }
 
   /**
-   * 生成超高清 PNG 图片文件并触发下载
+   * 生成标准 A3 施工设计图的纯内存 PNG 二进制产物
    */
-  public async exportPNG(): Promise<void> {
+  public async generatePNGBlob(): Promise<{ blob: Blob; filename: string }> {
     const canvas = this.renderToCanvas();
-    const fileName = `施工设计图_${this.params.chainageText.replace(/\s+/g, '')}_${this.params.isCritical ? '临界加固' : '原始工况'}_A3.png`;
+    const filename = `施工设计图_${this.params.chainageText.replace(/\s+/g, '')}_${this.params.isCritical ? '临界加固' : '原始工况'}_A3.png`;
 
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       canvas.toBlob((blob) => {
-        if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        resolve();
+        if (!blob) {
+          reject(new Error('Canvas 转 Blob 失败'));
+          return;
+        }
+        resolve({ blob, filename });
       }, 'image/png');
     });
+  }
+
+  /**
+   * 显存释放与资源清理
+   */
+  public destroy(): void {
+    if (this.activeCanvas) {
+      this.activeCanvas.width = 0;
+      this.activeCanvas.height = 0;
+      this.activeCanvas = null;
+    }
+  }
+
+  /**
+   * 生成标准 A3 Landscape 矢量 PDF 文件并触发浏览器下载
+   */
+  public async exportPDF(): Promise<void> {
+    const { blob, filename } = await this.generatePDFBlob();
+    triggerBrowserBlobDownload(blob, filename);
+    this.destroy();
+  }
+
+  /**
+   * 生成超高清 PNG 图片文件并触发浏览器下载
+   */
+  public async exportPNG(): Promise<void> {
+    const { blob, filename } = await this.generatePNGBlob();
+    triggerBrowserBlobDownload(blob, filename);
+    this.destroy();
   }
 }
 
 /**
- * 快捷导出快照施工图函数
+ * 快捷导出单份快照施工图函数
  */
 export async function exportSnapshotBlueprint(
   snap: Snapshot | any,
@@ -1186,3 +1220,151 @@ export async function exportSnapshotBlueprint(
     await generator.exportPNG();
   }
 }
+
+/**
+ * 批量导出进度信息模型
+ */
+export interface BatchExportProgressInfo {
+  current: number;
+  total: number;
+  currentSnap: any;
+  statusText: string;
+  percent: number;
+}
+
+/**
+ * 生成 00_施工图纸清单与参数汇总.txt 清单内容
+ */
+export function generateBatchManifest(
+  snapshots: any[],
+  format: 'pdf' | 'png',
+  projectName: string
+): string {
+  const now = new Date().toLocaleString('zh-CN', { hour12: false });
+  const lines: string[] = [];
+  lines.push('================================================================================');
+  lines.push(`  【施工图纸归档清单与工况参数汇总】 - ${projectName}`);
+  lines.push(`  归档时间: ${now} | 图纸幅面: ISO A3 横向 (420mm x 297mm) | 导出格式: ${format.toUpperCase()}`);
+  lines.push(`  图纸总计: ${snapshots.length} 份 | 压缩打包机制: 纯前端零 I/O 内存流式归档`);
+  lines.push('================================================================================\n');
+
+  lines.push(
+    ['序号', '工况ID', '里程桩号', '洞型', '状态', '环向盲管(mm/m)', '纵向管(mm)', '横向管(mm)', '安全系数', '设计水头(m)'].join('\t')
+  );
+  lines.push('--------------------------------------------------------------------------------');
+
+  snapshots.forEach((snap, idx) => {
+    const p = extractBlueprintParams(snap);
+    const num = String(idx + 1).padStart(2, '0');
+    const ringStr = `Φ${Math.round(p.ringDiam * 1000)} / ${p.ringSpacing.toFixed(1)}m`;
+    const longStr = `DN${Math.round(p.longDiam * 1000)}`;
+    const latStr = `DN${Math.round(p.latDiam * 1000)}`;
+    const fsStr = p.safetyFactor ? p.safetyFactor.toFixed(2) : '-';
+    const hStr = p.waterHead ? p.waterHead.toFixed(2) : '-';
+    const typeStr = p.tunnelType === 'double' ? '双洞' : '单洞';
+    const statusStr = p.isCritical ? '临界加固' : '原始工况';
+
+    lines.push(
+      [num, p.id, p.chainageText, typeStr, statusStr, ringStr, longStr, latStr, fsStr, hStr].join('\t')
+    );
+  });
+
+  lines.push('\n--------------------------------------------------------------------------------');
+  lines.push('工程说明：');
+  lines.push('1. 本归档包图纸由隧道工程多维协同智能排水自适应平台自动生成，严格遵照 GB/T 50104-2010 建筑制图标准。');
+  lines.push('2. 双洞间距在 D > 18.0m 时采用图面工程折断绘制法，保持 A3 版面与标注尺寸严格精确。');
+  lines.push('3. 施工图各项防排水推荐设计参数已与平台计算书（Calculation Book）完成拓扑贯通校核。');
+  lines.push('================================================================================');
+
+  return lines.join('\n');
+}
+
+/**
+ * 纯前端流式批量打包工况施工图为单一 ZIP 压缩包
+ */
+export async function exportBatchBlueprintsZip(
+  snapshots: any[],
+  format: 'pdf' | 'png' = 'pdf',
+  projectName: string = '隧道工程防排水系统',
+  onProgress?: (info: BatchExportProgressInfo) => void
+): Promise<string> {
+  if (!snapshots || snapshots.length === 0) {
+    throw new Error('未提供有效的工况快照列表进行批量导出');
+  }
+
+  const zip = new JSZip();
+  const formatUpper = format.toUpperCase();
+  const folderName = `【施工图纸】${projectName}_A3${formatUpper}`;
+  const zipFolder = zip.folder(folderName) || zip;
+
+  for (let i = 0; i < snapshots.length; i++) {
+    const snap = snapshots[i];
+    const generator = new ConstructionBlueprintGenerator(snap);
+    const params = generator.blueprintParams;
+
+    onProgress?.({
+      current: i + 1,
+      total: snapshots.length,
+      currentSnap: snap,
+      statusText: `正在绘制与封装 (${i + 1}/${snapshots.length}): ${params.chainageText} [${params.statusText}]`,
+      percent: Math.round(((i + 0.3) / snapshots.length) * 85)
+    });
+
+    if (format === 'pdf') {
+      const { blob, filename } = await generator.generatePDFBlob();
+      zipFolder.file(filename, blob);
+    } else {
+      const { blob, filename } = await generator.generatePNGBlob();
+      zipFolder.file(filename, blob);
+    }
+
+    // 释放大画布显存，防范 OOM
+    generator.destroy();
+
+    onProgress?.({
+      current: i + 1,
+      total: snapshots.length,
+      currentSnap: snap,
+      statusText: `完成第 ${i + 1}/${snapshots.length} 份图纸封装`,
+      percent: Math.round(((i + 1) / snapshots.length) * 85)
+    });
+
+    // 释放主线程微任务循环，给浏览器留出 GC 与响应窗口
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+
+  // 注入工程索引清单
+  const manifestContent = generateBatchManifest(snapshots, format, projectName);
+  zipFolder.file('00_施工图纸清单与参数汇总.txt', manifestContent);
+
+  onProgress?.({
+    current: snapshots.length,
+    total: snapshots.length,
+    currentSnap: null,
+    statusText: '正在执行 ZIP 内存流式压缩封装...',
+    percent: 92
+  });
+
+  const zipBlob = await zip.generateAsync({
+    type: 'blob',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 }
+  });
+
+  const d = new Date();
+  const timestamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+  const zipFilename = `【批量施工图】${projectName}_${formatUpper}_共${snapshots.length}段_${timestamp}.zip`;
+
+  triggerBrowserBlobDownload(zipBlob, zipFilename);
+
+  onProgress?.({
+    current: snapshots.length,
+    total: snapshots.length,
+    currentSnap: null,
+    statusText: '批量归档包已生成并触发下载',
+    percent: 100
+  });
+
+  return zipFilename;
+}
+

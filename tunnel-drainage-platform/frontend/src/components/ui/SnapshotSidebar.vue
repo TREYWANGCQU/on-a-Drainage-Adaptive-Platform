@@ -406,6 +406,7 @@
                   </button>
                   <template #dropdown>
                     <el-dropdown-menu>
+                      <el-dropdown-item command="preview">👁️ 预览 A3 施工设计图</el-dropdown-item>
                       <el-dropdown-item command="pdf">📑 导出 A3 矢量施工图 (PDF)</el-dropdown-item>
                       <el-dropdown-item command="png">🖼️ 导出高清设计图 (PNG)</el-dropdown-item>
                     </el-dropdown-menu>
@@ -442,6 +443,7 @@
                   </button>
                   <template #dropdown>
                     <el-dropdown-menu>
+                      <el-dropdown-item command="blueprint_preview">👁️ 预览 A3 施工图</el-dropdown-item>
                       <el-dropdown-item command="blueprint_pdf">📑 导出 A3 施工图 (PDF)</el-dropdown-item>
                       <el-dropdown-item command="calcbook_preview">📚 预览 A4 计算书</el-dropdown-item>
                       <el-dropdown-item command="recalc" divided>⚡ 重新计算当前段</el-dropdown-item>
@@ -617,6 +619,7 @@
                   </button>
                   <template #dropdown>
                     <el-dropdown-menu>
+                      <el-dropdown-item command="preview">👁️ 预览 A3 施工设计图</el-dropdown-item>
                       <el-dropdown-item command="pdf">📑 导出 A3 矢量施工图 (PDF)</el-dropdown-item>
                       <el-dropdown-item command="png">🖼️ 导出高清设计图 (PNG)</el-dropdown-item>
                     </el-dropdown-menu>
@@ -700,6 +703,14 @@
     <CalculationBookModal
       v-model="showCalcBookModal"
       :snapshot="currentCalcBookSnap"
+    />
+
+    <!-- 9. 施工设计图在线工程预览模态弹窗 -->
+    <BlueprintPreviewModal
+      v-model="showBlueprintPreviewModal"
+      :snapshot="currentBlueprintSnap"
+      :snapshot-list="filteredSnapshots"
+      @change-snapshot="handleChangeBlueprintPreviewSnap"
     />
 
     <!-- 8. 批量入库至工程数据库沉浸式模态弹窗 -->
@@ -870,12 +881,17 @@ import {
   FolderAdd
 } from '@element-plus/icons-vue';
 import { useParameterStore } from '@/store/parameterStore';
-import { exportSnapshotBlueprint, formatEngineeringChainage } from '@/utils/blueprintGenerator';
+import { 
+  exportSnapshotBlueprint, 
+  exportBatchBlueprintsZip, 
+  formatEngineeringChainage 
+} from '@/utils/blueprintGenerator';
 import { 
   exportBatchCalculationBooksZip, 
   exportCalculationBookPdf 
 } from '@/utils/calculationBook/bookExporter';
 import CalculationBookModal from '../calculationBook/CalculationBookModal.vue';
+import BlueprintPreviewModal from './BlueprintPreviewModal.vue';
 import { globalBatchScheduler } from '@/utils/batchScheduler';
 
 const snapshotStore = useSnapshotStore();
@@ -1220,7 +1236,7 @@ const isBatchExporting = ref(false);
 const batchExportProgress = ref(0);
 const batchExportStatusText = ref('');
 
-// 批量下载选中施工图 (PDF / PNG)
+// 批量下载选中施工图 (纯前端流式打包单一 ZIP 归档包)
 const batchDownloadBlueprints = async (format: 'pdf' | 'png' = 'pdf', targetSnaps?: any[]) => {
   const selected = targetSnaps || snapshots.value.filter((s: any) => s.selectedFor3D);
   if (selected.length === 0) {
@@ -1241,41 +1257,28 @@ const batchDownloadBlueprints = async (format: 'pdf' | 'png' = 'pdf', targetSnap
 
   isBatchExporting.value = true;
   batchExportProgress.value = 0;
-  let successCount = 0;
-  let failCount = 0;
+  batchExportStatusText.value = `正在初始化 ${validSnaps.length} 份施工图打包管线...`;
 
   try {
-    for (let i = 0; i < selected.length; i++) {
-      const snap = selected[i];
-      batchExportStatusText.value = `正在生成 A3 施工图 (${i + 1}/${selected.length}): ${getSnapRemark(snap)}...`;
-      batchExportProgress.value = Math.round(((i + 1) / selected.length) * 100);
-
-      try {
-        await exportSnapshotBlueprint(snap, format);
-        successCount++;
-        // 间隔 250ms 释放事件循环并避免多文件并发触发浏览器弹窗阻塞
-        await new Promise(r => setTimeout(r, 250));
-      } catch (e) {
-        console.error(`导出快照 ${snap.id} 施工图失败:`, e);
-        failCount++;
+    const zipFilename = await exportBatchBlueprintsZip(
+      validSnaps,
+      format,
+      '隧道工程防排水系统',
+      (info) => {
+        batchExportProgress.value = info.percent;
+        batchExportStatusText.value = info.statusText;
       }
-    }
+    );
 
-    if (failCount === 0) {
-      ElNotification({
-        title: '批量导出成功',
-        message: `已成功导出 ${successCount} 份 A3 标准施工设计图 (${format.toUpperCase()})`,
-        type: 'success',
-        duration: 3500
-      });
-    } else {
-      ElNotification({
-        title: '批量导出完成',
-        message: `成功导出 ${successCount} 份，失败 ${failCount} 份`,
-        type: 'warning',
-        duration: 4000
-      });
-    }
+    ElNotification({
+      title: '批量施工图打包成功',
+      message: `已成功生成并下载单一 ZIP 归档包: ${zipFilename} (共 ${validSnaps.length} 份)`,
+      type: 'success',
+      duration: 4500
+    });
+  } catch (err: any) {
+    console.error('批量导出施工图 ZIP 失败:', err);
+    ElMessage.error(`批量导出施工图失败: ${err.message || err}`);
   } finally {
     isBatchExporting.value = false;
     batchExportProgress.value = 0;
@@ -1607,7 +1610,24 @@ const handleCalcBookAction = async (snap: any, cmd: 'preview' | 'pdf' = 'preview
   }
 };
 
-const handleExportBlueprint = async (snap: any, format: 'pdf' | 'png' = 'pdf') => {
+// 施工图在线预览模态框控制
+const showBlueprintPreviewModal = ref(false);
+const currentBlueprintSnap = ref<any>(null);
+
+const handleOpenBlueprintPreview = (snap: any) => {
+  currentBlueprintSnap.value = snap;
+  showBlueprintPreviewModal.value = true;
+};
+
+const handleChangeBlueprintPreviewSnap = (snap: any) => {
+  currentBlueprintSnap.value = snap;
+};
+
+const handleExportBlueprint = async (snap: any, cmd: 'preview' | 'pdf' | 'png' = 'preview') => {
+  if (cmd === 'preview') {
+    handleOpenBlueprintPreview(snap);
+    return;
+  }
   // 下游报告导出安全状态门禁
   if (snap.status === 'pending' || !snap.results) {
     ElMessageBox.alert(
@@ -1619,10 +1639,10 @@ const handleExportBlueprint = async (snap: any, format: 'pdf' | 'png' = 'pdf') =
   }
   try {
     exportingId.value = snap.id;
-    ElMessage.info(`正在生成 ${format.toUpperCase()} 标准 A3 施工设计图，请稍候...`);
+    ElMessage.info(`正在生成 ${cmd.toUpperCase()} 标准 A3 施工设计图，请稍候...`);
     await new Promise((resolve) => setTimeout(resolve, 50));
-    await exportSnapshotBlueprint(snap, format);
-    ElMessage.success(`施工设计图已成功导出 (${format.toUpperCase()})`);
+    await exportSnapshotBlueprint(snap, cmd);
+    ElMessage.success(`施工设计图已成功导出 (${cmd.toUpperCase()})`);
   } catch (err: any) {
     console.error('导出施工设计图失败:', err);
     ElMessage.error(`导出施工图失败: ${err.message || err}`);
@@ -1835,7 +1855,9 @@ const handleBatchDeleteSelected = () => {
 
 // 卡片紧凑态收敛菜单操作
 const handleCardMoreCommand = (snap: any, cmd: string) => {
-  if (cmd === 'blueprint_pdf') {
+  if (cmd === 'blueprint_preview') {
+    handleOpenBlueprintPreview(snap);
+  } else if (cmd === 'blueprint_pdf') {
     handleExportBlueprint(snap, 'pdf');
   } else if (cmd === 'calcbook_preview') {
     handleCalcBookAction(snap, 'preview');
