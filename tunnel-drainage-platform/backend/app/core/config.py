@@ -2,6 +2,13 @@ import os
 from typing import List
 from pydantic_settings import BaseSettings
 
+# 优先尝试导入编译期固化常量（由打包脚本在冻结时注入）
+try:
+    from app.core._build_constants import BUILTIN_AUTH_PASSWORD, BUILTIN_AUTH_MODE
+except ImportError:
+    BUILTIN_AUTH_PASSWORD = None
+    BUILTIN_AUTH_MODE = None
+
 class Settings(BaseSettings):
     """
     全局配置类：管理环境变量、API版本、存储路径及跨域策略
@@ -33,12 +40,12 @@ class Settings(BaseSettings):
         "*"
     ]
 
-    # 安全认证机制配置
-    PLATFORM_AUTH_PASSWORD: str = os.getenv("PLATFORM_AUTH_PASSWORD", "chongqing123456")
+    # 安全认证机制配置：编译期固化常量优先，其次读取系统环境变量，最后回退至出厂默认值
+    PLATFORM_AUTH_PASSWORD: str = BUILTIN_AUTH_PASSWORD or os.getenv("PLATFORM_AUTH_PASSWORD", "chongqing123456")
+    PLATFORM_AUTH_MODE: str = BUILTIN_AUTH_MODE or os.getenv("PLATFORM_AUTH_MODE", "server") # "server" | "desktop"
     PLATFORM_SECRET_KEY: str = os.getenv("PLATFORM_SECRET_KEY", "cqu_tunnel_platform_secret_key_2026_authtoken")
     PLATFORM_AUTH_ENABLED: bool = os.getenv("PLATFORM_AUTH_ENABLED", "true").lower() in ("true", "1", "yes")
     AUTH_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("AUTH_TOKEN_EXPIRE_MINUTES", "120"))
-    PLATFORM_AUTH_MODE: str = os.getenv("PLATFORM_AUTH_MODE", "server") # "server" | "desktop"
 
     class Config:
         case_sensitive = True

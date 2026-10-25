@@ -143,11 +143,12 @@
 |     - dtolnay/rust-toolchain@stable (Rust MSVC, cargo cache: ~/.cargo/registry & target)               |
 |     - 验证预装环境: WiX Toolset 3.11 路径配置                                                           |
 |                                                                                                         |
-|   [Step 1: 编译与固化后端 Python Sidecar]                                                               |
+|   [Step 1: 编译与固化后端 Python Sidecar (出厂口令注入)]                                               |
 |     - cd tunnel-drainage-platform/backend                                                               |
 |     - pip install -r requirements.txt pyinstaller                                                       |
+|     - 声明 CI 默认环境变量: PLATFORM_AUTH_PASSWORD="chongqing123456" PLATFORM_AUTH_MODE="desktop"       |
 |     - pyinstaller packaging/sidecar.spec --distpath dist --workpath build -y                             |
-|     - 输出: backend/dist/tunnel-backend-sidecar.exe                                                     |
+|     - 输出: backend/dist/tunnel-backend-sidecar.exe (密码出厂固化，脱机不可修改)                         |
 |                                                                                                         |
 |   [Step 2: 注入外部二进制与 Typst 依赖至 Tauri 桥接目录]                                                 |
 |     - Copy 至 frontend/src-tauri/binaries/tunnel-backend-sidecar.exe                                     |
@@ -236,6 +237,20 @@
 2. **绿色便携免安装版 (`TunnelDrainagePlatform-{{ VERSION }}-x64-Portable.zip`)** 【应急与单机便携】：
    - **特点**：解压至任意目录即可双击 `TunnelDrainagePlatform.exe` 启动，无需安装，不向注册表写入全局项；
    - **适用场景**：隧道施工现场野外勘测笔记本、涉密专用工控机、U 盘即插即用作业。
+
+---
+
+## 🔐 操作认证与出厂默认口令说明 (Platform Security & Default Password)
+
+为防止隧道工程现场误触重算、覆盖历史标段资产或引发批量入库污染，平台内置了轻量即时操作安全守卫：
+- **出厂默认操作口令**：`chongqing123456`
+- **桌面独立版 (MSI / Portable)**：
+  - 本交付包口令在编译期已固化至二进制，运行时不可修改，用于关键工程参数入库与敏感操作防误触；
+  - 软件完全脱机运行，不设任何免密旁路与在线改密，彻底避免口令遗忘或误改导致的功能锁死；
+- **服务器版 (Docker / Web)**：
+  - 镜像本身保持中立纯净，首次部署请在随附的 `.env` 中修改 `PLATFORM_AUTH_PASSWORD` 为自定义强口令；
+  - 修改口令只需编辑 `.env` 后执行 `docker compose restart backend` 即可热重启生效（时延 $\le 15\text{s}$），系统坚决不设在线改密 API；
+- 详细架构规范参见：[阶段6-专题-交付体系安全认证与密码生命周期配置架构方案](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/docs/stages/stage6-delivery/阶段6-专题-交付体系安全认证与密码生命周期配置架构方案.md)。
 
 ---
 

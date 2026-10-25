@@ -26,7 +26,7 @@ ARCHIVE_NAME="tunnel-drainage-server-v1.0.0-docker.tar.gz"
 docker save tunnel-drainage-backend:v1.0.0 tunnel-drainage-frontend:v1.0.0 | gzip > "${RELEASE_DIR}/${ARCHIVE_NAME}"
 
 echo "[Step 3/4] 拷贝生产启动编排与配置资产..."
-cp "${DEPLOY_DIR}/docker-compose.yml" "${RELEASE_DIR}/"
+cp "${DEPLOY_DIR}/docker-compose.prod.yml" "${RELEASE_DIR}/docker-compose.yml"
 cp "${DEPLOY_DIR}/.env.example" "${RELEASE_DIR}/.env.production"
 mkdir -p "${RELEASE_DIR}/nginx"
 cp "${DEPLOY_DIR}/nginx/nginx.conf" "${RELEASE_DIR}/nginx/"

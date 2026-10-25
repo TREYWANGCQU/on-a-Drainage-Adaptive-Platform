@@ -35,3 +35,31 @@ dist-docker/
 *.zip
 tunnel-drainage-platform/backend/data/
 tunnel-drainage-platform/backend/app/data/
+
+# -------------------------------------------------------------
+# 阶段6：安全认证、密码配置与构建临时密钥隔离
+# -------------------------------------------------------------
+
+# 1. 编译期动态生成的密码与常量配置文件 (本地桌面打包瞬态)
+**/backend/app/core/_build_constants.py
+**/_build_*.py
+
+# 2. 生产与本地部署环境变量密钥文件
+.env
+.env.*
+!.env.example
+deploy/server/.env.production
+deploy/server/.env.local
+
+# 3. 本地代码签名证书与密钥资产
+*.pfx
+*.p12
+*.key
+*.pem
+*.keystore
+*.cer
+
+# 4. 运行时持久化 SQLite 数据库与敏感工程数据
+*.sqlite
+*.sqlite3
+**/tunnel_params.db
