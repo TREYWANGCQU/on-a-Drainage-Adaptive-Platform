@@ -1,11 +1,11 @@
-# tunnel-drainage-platform/backend/app/api/v1/endpoints/database.py
+# backend/app/api/v1/endpoints/database.py
 import os
 import re
 import uuid
 import base64
 import json
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Literal
+from typing import List, Dict, Any, Literal, TypeVar, Generic, Union
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,6 +67,37 @@ def generate_segment_name(
 # ---------------------------------------------------------
 # Pydantic 请求与响应模型 (DTO)
 # ---------------------------------------------------------
+T = TypeVar("T")
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    """标准通用服务端分页载荷"""
+    total: int = Field(description="匹配筛选条件的总记录数")
+    page: int = Field(description="当前页码 (1-based)")
+    page_size: int = Field(description="每页记录数")
+    items: List[T]
+
+class TunnelParameterSlimResponse(BaseModel):
+    """
+    轻量分段元数据 DTO (用于海量分页列表与抽屉展示，单条网络开销 < 180 字节)
+    """
+    id: int
+    group_id: int | None = None
+    group_name: str | None = Field(default=None, description="所属工程组名称 (通过 SQL OuterJoin 提取)")
+    project_name: str
+    tunnel_type: str
+    start_chainage: float
+    end_chainage: float
+    has_results: bool = Field(default=False, description="是否包含有效计算成果")
+    safety_factor: float | None = Field(default=None, description="控制安全系数 Fs")
+    is_warning: bool = Field(default=False, description="是否处于预警/临界加固状态")
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+class BatchParametersQuery(BaseModel):
+    """批量按需水合详情请求载荷"""
+    ids: List[int] = Field(..., min_length=1, max_length=100, description="需要调取完整参数与结果的ID列表")
+
 class BatchSegmentItem(BaseModel):
     remark: str | None = Field(default=None, description="原始备注说明")
     start_chainage: float = Field(..., description="分段起点里程(m)")
@@ -135,30 +166,59 @@ class ProjectGroupUpdate(BaseModel):
 class CoverBase64Request(BaseModel):
     image_base64: str = Field(..., description="Data URL Base64 图片数据")
 
+
 # ---------------------------------------------------------
 # 工程组 (ProjectGroup) 端点
 # ---------------------------------------------------------
 
-@router.get("/projects", response_model=List[ProjectGroupSummaryResponse])
+@router.get("/projects", response_model=Union[PaginatedResponse[ProjectGroupSummaryResponse], List[ProjectGroupSummaryResponse]])
 async def list_project_groups(
+    page: int | None = Query(default=None, ge=1, description="页码，不传或传 None 时按向后兼容模式返回全量列表"),
+    page_size: int = Query(default=12, ge=1, le=100, description="每页卡片数量"),
     search: str | None = Query(default=None, description="按工程组名模糊搜索"),
     tunnel_type: str | None = Query(default=None, description="按分类筛选"),
-    skip: int = 0,
-    limit: int = 100,
+    all: bool = Query(default=False, description="是否强制返回全量列表供下拉选择"),
+    skip: int | None = Query(default=None, description="历史兼容偏移量"),
+    limit: int | None = Query(default=None, description="历史兼容限制量"),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    【获取工程组卡片列表】秒级直读微标统计信息，无需反序列化数百段参数。
+    【获取工程组卡片列表】秒级直读微标统计信息，支持服务端分页，兼容旧版全量调用。
     """
-    stmt = select(ProjectGroup).order_by(ProjectGroup.updated_at.desc())
+    stmt = select(ProjectGroup)
     if search:
         stmt = stmt.where(ProjectGroup.group_name.ilike(f"%{search}%"))
     if tunnel_type:
         stmt = stmt.where(ProjectGroup.tunnel_type == tunnel_type)
     
-    stmt = stmt.offset(skip).limit(limit)
-    res = await db.execute(stmt)
-    return list(res.scalars().all())
+    # 若调用方显式传了 page 且未要求 all，执行真实分页
+    if page is not None and not all:
+        count_stmt = select(func.count(ProjectGroup.id))
+        if search:
+            count_stmt = count_stmt.where(ProjectGroup.group_name.ilike(f"%{search}%"))
+        if tunnel_type:
+            count_stmt = count_stmt.where(ProjectGroup.tunnel_type == tunnel_type)
+        total_res = await db.execute(count_stmt)
+        total = total_res.scalar() or 0
+        
+        stmt = stmt.order_by(ProjectGroup.updated_at.desc()).offset((page - 1) * page_size).limit(page_size)
+        res = await db.execute(stmt)
+        items = list(res.scalars().all())
+        return PaginatedResponse[ProjectGroupSummaryResponse](
+            total=total,
+            page=page,
+            page_size=page_size,
+            items=items
+        )
+    else:
+        # 向后平滑兼容：返回数组
+        stmt = stmt.order_by(ProjectGroup.updated_at.desc())
+        if skip is not None:
+            stmt = stmt.offset(skip)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        res = await db.execute(stmt)
+        return list(res.scalars().all())
 
 @router.get("/projects/{project_id}", response_model=ProjectGroupSummaryResponse)
 async def get_project_group(project_id: int, db: AsyncSession = Depends(get_db)):
@@ -171,17 +231,80 @@ async def get_project_group(project_id: int, db: AsyncSession = Depends(get_db))
         raise HTTPException(status_code=404, detail="Project group not found")
     return group
 
-@router.get("/projects/{project_id}/parameters", response_model=List[ParameterResponse])
-async def list_group_parameters(project_id: int, db: AsyncSession = Depends(get_db)):
+@router.get("/projects/{project_id}/parameters", response_model=Union[PaginatedResponse[TunnelParameterSlimResponse], List[ParameterResponse]])
+async def list_group_parameters(
+    project_id: int,
+    page: int = Query(default=1, ge=1, description="页码"),
+    page_size: int = Query(default=50, ge=1, le=200, description="每页分段数"),
+    search: str | None = Query(default=None, description="按分段命名过滤"),
+    status_filter: Literal["all", "done", "pending", "warning"] = Query(default="all", description="分段状态筛选"),
+    full: bool = Query(default=False, description="为 True 时一次性拉取整组全量包含大字段 JSON 的分段，专供一键整组载入工作台使用"),
+    db: AsyncSession = Depends(get_db)
+):
     """
-    【下钻抽屉查询】获取指定工程组名下的全部分段参数与计算状态列表。
+    【下钻抽屉查询】获取指定工程组名下的分段参数列表（支持 Slim 分页与 full=True 整组水合）。
     """
-    res = await db.execute(
-        select(TunnelParameter)
+    if full:
+        res = await db.execute(
+            select(TunnelParameter)
+            .where(TunnelParameter.group_id == project_id)
+            .order_by(TunnelParameter.start_chainage.asc())
+        )
+        return list(res.scalars().all())
+
+    # 联合 ProjectGroup.group_name 查询 Slim 投影
+    stmt = (
+        select(TunnelParameter, ProjectGroup.group_name)
+        .outerjoin(ProjectGroup, TunnelParameter.group_id == ProjectGroup.id)
         .where(TunnelParameter.group_id == project_id)
-        .order_by(TunnelParameter.start_chainage.asc())
     )
-    return list(res.scalars().all())
+    count_stmt = select(func.count(TunnelParameter.id)).where(TunnelParameter.group_id == project_id)
+
+    if search:
+        pattern = f"%{search}%"
+        stmt = stmt.where(TunnelParameter.project_name.ilike(pattern))
+        count_stmt = count_stmt.where(TunnelParameter.project_name.ilike(pattern))
+
+    if status_filter == "done":
+        stmt = stmt.where(TunnelParameter.has_results == 1)
+        count_stmt = count_stmt.where(TunnelParameter.has_results == 1)
+    elif status_filter == "pending":
+        stmt = stmt.where(TunnelParameter.has_results == 0)
+        count_stmt = count_stmt.where(TunnelParameter.has_results == 0)
+    elif status_filter == "warning":
+        stmt = stmt.where(TunnelParameter.is_warning == 1)
+        count_stmt = count_stmt.where(TunnelParameter.is_warning == 1)
+
+    total_res = await db.execute(count_stmt)
+    total = total_res.scalar() or 0
+
+    stmt = stmt.order_by(TunnelParameter.start_chainage.asc()).offset((page - 1) * page_size).limit(page_size)
+    res = await db.execute(stmt)
+    rows = res.all()
+
+    items = [
+        TunnelParameterSlimResponse(
+            id=row[0].id,
+            group_id=row[0].group_id,
+            group_name=row[1],
+            project_name=row[0].project_name,
+            tunnel_type=row[0].tunnel_type,
+            start_chainage=row[0].start_chainage,
+            end_chainage=row[0].end_chainage,
+            has_results=bool(row[0].has_results),
+            safety_factor=row[0].safety_factor,
+            is_warning=bool(row[0].is_warning),
+            created_at=row[0].created_at
+        )
+        for row in rows
+    ]
+    return PaginatedResponse[TunnelParameterSlimResponse](
+        total=total,
+        page=page,
+        page_size=page_size,
+        items=items
+    )
+
 
 @router.put("/projects/{project_id}", response_model=ProjectGroupSummaryResponse)
 async def update_project_group(
@@ -400,9 +523,17 @@ async def batch_archive_parameters(
         )
 
         has_results = bool(seg.results_json and (seg.results_json.get("original_state") or seg.results_json.get("critical_state")))
+        fs = None
+        if seg.results_json and seg.results_json.get("original_state"):
+            fs = seg.results_json["original_state"].get("safety_factor")
+        if fs is None and seg.results_json and seg.results_json.get("critical_state"):
+            fs = seg.results_json["critical_state"].get("final_safety_factor") or seg.results_json["critical_state"].get("safety_factor")
+        
+        is_warn = 1 if (seg.results_json and (seg.results_json.get("critical_state") or (fs is not None and fs < 1.2))) else 0
+
         if has_results:
             calc_count += 1
-            if seg.results_json.get("critical_state"):
+            if is_warn:
                 warn_count += 1
 
         all_starts.append(seg.start_chainage)
@@ -415,7 +546,10 @@ async def batch_archive_parameters(
             parameters_json=json.dumps(seg.parameters_json, ensure_ascii=False),
             results_json=json.dumps(seg.results_json, ensure_ascii=False) if seg.results_json else None,
             start_chainage=seg.start_chainage,
-            end_chainage=seg.end_chainage
+            end_chainage=seg.end_chainage,
+            has_results=1 if has_results else 0,
+            safety_factor=float(fs) if fs is not None else None,
+            is_warning=is_warn
         )
         db.add(param_record)
 
@@ -435,12 +569,17 @@ async def batch_archive_parameters(
         group.segment_count = total_segs
         group.start_chainage = min_s if min_s is not None else 0.0
         group.end_chainage = max_e if max_e is not None else 0.0
-        # 计算已算数
+        # 计算已算数与预警数
         calc_res = await db.execute(
             select(func.count(TunnelParameter.id))
-            .where(TunnelParameter.group_id == group.id, TunnelParameter.results_json.isnot(None))
+            .where(TunnelParameter.group_id == group.id, TunnelParameter.has_results == 1)
         )
         group.calculated_count = calc_res.scalar() or 0
+        warn_res = await db.execute(
+            select(func.count(TunnelParameter.id))
+            .where(TunnelParameter.group_id == group.id, TunnelParameter.is_warning == 1)
+        )
+        group.warning_count = warn_res.scalar() or 0
     else:
         group.segment_count = len(req.segments)
         group.calculated_count = calc_count
@@ -494,6 +633,13 @@ async def create_parameter(
         target_category = def_group.tunnel_type
 
     has_results = bool(param_in.results_json and (param_in.results_json.get("original_state") or param_in.results_json.get("critical_state")))
+    fs = None
+    if param_in.results_json and param_in.results_json.get("original_state"):
+        fs = param_in.results_json["original_state"].get("safety_factor")
+    if fs is None and param_in.results_json and param_in.results_json.get("critical_state"):
+        fs = param_in.results_json["critical_state"].get("final_safety_factor") or param_in.results_json["critical_state"].get("safety_factor")
+    
+    is_warn = 1 if (param_in.results_json and (param_in.results_json.get("critical_state") or (fs is not None and fs < 1.2))) else 0
 
     db_obj = TunnelParameter(
         group_id=group_id,
@@ -502,7 +648,10 @@ async def create_parameter(
         parameters_json=json.dumps(param_in.parameters_json, ensure_ascii=False),
         results_json=json.dumps(param_in.results_json, ensure_ascii=False) if param_in.results_json else None,
         start_chainage=start_c,
-        end_chainage=end_c
+        end_chainage=end_c,
+        has_results=1 if has_results else 0,
+        safety_factor=float(fs) if fs is not None else None,
+        is_warning=is_warn
     )
     db.add(db_obj)
     await db.flush()
@@ -514,7 +663,7 @@ async def create_parameter(
         group.segment_count = (group.segment_count or 0) + 1
         if has_results:
             group.calculated_count = (group.calculated_count or 0) + 1
-            if param_in.results_json.get("critical_state"):
+            if is_warn:
                 group.warning_count = (group.warning_count or 0) + 1
         group.start_chainage = min(group.start_chainage or 0.0, start_c)
         group.end_chainage = max(group.end_chainage or 0.0, end_c)
@@ -524,18 +673,100 @@ async def create_parameter(
     await db.refresh(db_obj)
     return db_obj
 
-@router.get("/parameters", response_model=List[ParameterResponse])
-async def list_parameters(skip: int = 0, limit: int = 500, db: AsyncSession = Depends(get_db)):
+@router.get("/parameters", response_model=PaginatedResponse[TunnelParameterSlimResponse])
+async def list_parameters(
+    page: int = Query(default=1, ge=1, description="当前页码 (1-based)"),
+    page_size: int = Query(default=50, ge=1, le=200, description="每页记录数"),
+    search: str | None = Query(default=None, description="按分段命名模糊过滤"),
+    tunnel_type: str | None = Query(default=None, description="按工程分类过滤"),
+    has_results: bool | None = Query(default=None, description="按计算成果状态过滤"),
+    warning_only: bool = Query(default=False, description="仅筛选预警分段"),
+    skip: int | None = Query(default=None, description="兼容旧接口偏移量"),
+    limit: int | None = Query(default=None, description="兼容旧接口数量限制"),
+    db: AsyncSession = Depends(get_db)
+):
     """
-    【检索列表】获取所有参数记录列表（扁平台账兼容）。
+    【扁平台账服务端分页检索】返回轻量 Slim 元数据，剥离大字段 JSON，支持毫秒级多维过滤。
     """
-    result = await db.execute(
-        select(TunnelParameter)
-        .order_by(TunnelParameter.created_at.desc())
-        .offset(skip)
-        .limit(limit)
+    stmt = (
+        select(TunnelParameter, ProjectGroup.group_name)
+        .outerjoin(ProjectGroup, TunnelParameter.group_id == ProjectGroup.id)
     )
-    return list(result.scalars().all())
+    count_stmt = select(func.count(TunnelParameter.id))
+
+    if search:
+        pattern = f"%{search}%"
+        stmt = stmt.where(TunnelParameter.project_name.ilike(pattern))
+        count_stmt = count_stmt.where(TunnelParameter.project_name.ilike(pattern))
+
+    if tunnel_type:
+        stmt = stmt.where(TunnelParameter.tunnel_type == tunnel_type)
+        count_stmt = count_stmt.where(TunnelParameter.tunnel_type == tunnel_type)
+
+    if has_results is not None:
+        flag = 1 if has_results else 0
+        stmt = stmt.where(TunnelParameter.has_results == flag)
+        count_stmt = count_stmt.where(TunnelParameter.has_results == flag)
+
+    if warning_only:
+        stmt = stmt.where(TunnelParameter.is_warning == 1)
+        count_stmt = count_stmt.where(TunnelParameter.is_warning == 1)
+
+    total_res = await db.execute(count_stmt)
+    total = total_res.scalar() or 0
+
+    # 兼容偏移量
+    cur_page = page
+    cur_size = page_size
+    offset_val = (cur_page - 1) * cur_size
+    if skip is not None:
+        offset_val = skip
+    if limit is not None:
+        cur_size = limit
+
+    stmt = stmt.order_by(TunnelParameter.created_at.desc()).offset(offset_val).limit(cur_size)
+    res = await db.execute(stmt)
+    rows = res.all()
+
+    items = [
+        TunnelParameterSlimResponse(
+            id=row[0].id,
+            group_id=row[0].group_id,
+            group_name=row[1],
+            project_name=row[0].project_name,
+            tunnel_type=row[0].tunnel_type,
+            start_chainage=row[0].start_chainage,
+            end_chainage=row[0].end_chainage,
+            has_results=bool(row[0].has_results),
+            safety_factor=row[0].safety_factor,
+            is_warning=bool(row[0].is_warning),
+            created_at=row[0].created_at
+        )
+        for row in rows
+    ]
+
+    return PaginatedResponse[TunnelParameterSlimResponse](
+        total=total,
+        page=cur_page,
+        page_size=cur_size,
+        items=items
+    )
+
+@router.post("/parameters/batch-details", response_model=List[ParameterResponse])
+async def get_parameters_batch_details(
+    query: BatchParametersQuery,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    【按需水合详情管线】仅针对指定的 ID 列表靶向拉取完整的 parameters_json 与 results_json 大字段。
+    """
+    if not query.ids:
+        return []
+    res = await db.execute(
+        select(TunnelParameter).where(TunnelParameter.id.in_(query.ids))
+    )
+    return list(res.scalars().all())
+
 
 @router.get("/parameters/{param_id}", response_model=ParameterResponse)
 async def get_parameter(param_id: int, db: AsyncSession = Depends(get_db)):

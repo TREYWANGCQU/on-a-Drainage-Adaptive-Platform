@@ -607,9 +607,10 @@ const saveForm = ref({
 // 打开弹窗时拉取最新工程组列表
 const fetchProjectGroupsForSave = async () => {
   try {
-    const res: any = await apiClient.get('/database/projects');
-    projectGroupList.value = res || [];
+    const res: any = await apiClient.get('/database/projects', { params: { all: true } });
+    projectGroupList.value = Array.isArray(res) ? res : (res?.items || []);
     if (projectGroupList.value.length > 0) {
+
       saveForm.value.groupId = projectGroupList.value[0].id;
       saveForm.value.tunnelClass = projectGroupList.value[0].tunnel_type;
     } else {

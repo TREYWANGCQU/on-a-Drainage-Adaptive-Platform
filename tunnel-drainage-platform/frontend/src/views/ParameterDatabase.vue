@@ -4,8 +4,7 @@
     <!-- 1. 顶部全局工具栏与双模态切换 -->
     <div class="header-toolbar">
       <div class="title-section">
-       
-        <el-radio-group v-model="activeView" size="default" class="view-mode-toggle">
+        <el-radio-group v-model="activeView" size="default" class="view-mode-toggle" @change="handleViewModeChange">
           <el-radio-button label="cards">🏛️ 工程分组卡片视图</el-radio-button>
           <el-radio-button label="flat">📋 全量数字资产明细</el-radio-button>
         </el-radio-group>
@@ -17,8 +16,10 @@
           :placeholder="activeView === 'cards' ? '检索工程组名/描述...' : '检索分段工程命名...'" 
           style="width: 240px" 
           clearable 
+          @keyup.enter="handleSearch"
+          @clear="handleSearch"
         />
-        <el-select v-model="filterClass" placeholder="全部工程分类" clearable style="width: 150px">
+        <el-select v-model="filterClass" placeholder="全部工程分类" clearable style="width: 150px" @change="handleSearch">
           <el-option label="公路" value="公路" />
           <el-option label="铁路" value="铁路" />
           <el-option label="城市道路" value="城市道路" />
@@ -27,7 +28,7 @@
           <el-option label="综合管廊" value="综合管廊" />
           <el-option label="其他" value="其他" />
         </el-select>
-        <el-button type="primary" @click="fetchData" icon="Search">查询</el-button>
+        <el-button type="primary" @click="handleSearch" icon="Search">查询</el-button>
 
         <!-- 扁平视图专享批量操作 -->
         <template v-if="activeView === 'flat'">
@@ -38,12 +39,20 @@
           >
             批量载入工作台 ({{ selectedRows.length }})
           </el-button>
+          <el-button
+            type="warning"
+            plain
+            :disabled="selectedRows.length === 0"
+            @click="batchAddFlatToBenchmark"
+          >
+            +加入对标 ({{ selectedRows.length }})
+          </el-button>
           <el-button 
             type="warning" 
-            @click="openCompare" 
-            :disabled="selectedRows.length < 2"
+            @click="openBenchmarkCompare" 
+            :disabled="cartStore.count < 2"
           >
-            对标分析 (需≥2项)
+            对标分析 (暂存篮 {{ cartStore.count }})
           </el-button>
         </template>
       </div>
@@ -51,10 +60,10 @@
 
     <!-- 2. 工程分组卡片视图 (Project Cards Grid) -->
     <div v-if="activeView === 'cards'" class="cards-view-wrap" v-loading="isLoading">
-      <template v-if="filteredGroups.length > 0">
+      <template v-if="projectGroups.length > 0">
         <div class="project-cards-grid">
           <div 
-            v-for="grp in filteredGroups" 
+            v-for="grp in projectGroups" 
             :key="grp.id" 
             class="project-card"
           >
@@ -163,6 +172,19 @@
             </div>
           </div>
         </div>
+
+        <!-- 卡片流服务端分页栏 -->
+        <div class="cards-pagination-wrap" v-if="cardsTotal > 0">
+          <el-pagination
+            v-model:current-page="cardsCurrentPage"
+            v-model:page-size="cardsPageSize"
+            :page-sizes="[8, 12, 16, 24]"
+            :total="cardsTotal"
+            layout="total, sizes, prev, pager, next, jumper"
+            @size-change="handleCardsSizeChange"
+            @current-change="handleCardsPageChange"
+          />
+        </div>
       </template>
       <el-empty v-else description="暂无符合条件的工程组，请在快照侧边栏执行“批量入库”" />
     </div>
@@ -170,7 +192,7 @@
     <!-- 3. 扁平全量台账明细视图 (Flat Table View) -->
     <div v-else class="flat-table-wrap">
       <el-table 
-        :data="filteredFlatData" 
+        :data="dbData" 
         v-loading="isLoading" 
         border 
         stripe 
@@ -187,7 +209,7 @@
         </el-table-column>
         <el-table-column label="归属工程组" width="160" show-overflow-tooltip>
           <template #default="scope">
-            <span class="group-name-cell">{{ getGroupNameById(scope.row.group_id) }}</span>
+            <span class="group-name-cell">{{ scope.row.group_name || '默认未分组' }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="project_name" label="分段工程命名" min-width="200" show-overflow-tooltip />
@@ -205,14 +227,14 @@
         </el-table-column>
         <el-table-column label="计算状态 / 安全系数" width="165" align="center">
           <template #default="scope">
-            <template v-if="scope.row.results_json">
+            <template v-if="scope.row.has_results">
               <el-tag type="success" effect="dark" size="small">已算</el-tag>
               <span 
-                v-if="extractFsFromRow(scope.row) !== null" 
+                v-if="scope.row.safety_factor !== null && scope.row.safety_factor !== undefined" 
                 class="fs-badge" 
-                :class="(extractFsFromRow(scope.row) || 0) < 1.2 ? 'fs-danger' : 'fs-normal'"
+                :class="scope.row.safety_factor < 1.2 ? 'fs-danger' : 'fs-normal'"
               >
-                Fs={{ extractFsFromRow(scope.row)?.toFixed(2) }}
+                Fs={{ Number(scope.row.safety_factor).toFixed(2) }}
               </span>
             </template>
             <el-tag v-else type="info" effect="plain" size="small">待算</el-tag>
@@ -224,10 +246,18 @@
           </template>
         </el-table-column>
         
-        <el-table-column label="操作" width="170" fixed="right" align="center">
+        <el-table-column label="操作" width="220" fixed="right" align="center">
           <template #default="scope">
             <el-button size="small" type="primary" link @click="loadSingleToWorkspace(scope.row)">
               载入工作台
+            </el-button>
+            <el-button 
+              size="small" 
+              :type="cartStore.isPinned(scope.row.id) ? 'success' : 'warning'" 
+              link 
+              @click="toggleBenchmarkItem(scope.row)"
+            >
+              {{ cartStore.isPinned(scope.row.id) ? '已在对标' : '+对标' }}
             </el-button>
             <el-button size="small" type="danger" link @click="deleteFlatRecord(scope.row.id)">
               移除
@@ -235,28 +265,61 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <!-- 扁平台账分页栏 -->
+      <div class="flat-pagination-wrap" v-if="flatTotal > 0">
+        <el-pagination
+          v-model:current-page="flatCurrentPage"
+          v-model:page-size="flatPageSize"
+          :page-sizes="[20, 50, 100]"
+          :total="flatTotal"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleFlatSizeChange"
+          @current-change="handleFlatPageChange"
+        />
+      </div>
     </div>
 
     <!-- 4. 工程分段明细下钻抽屉 (Drilldown Drawer) -->
     <el-drawer 
       v-model="drawerVisible" 
-      :title="`📁 [${currentActiveGroup?.group_name}] 分区计算资产明细 (${drawerSegments.length} 区段)`" 
+      :title="`📁 [${currentActiveGroup?.group_name}] 分区计算资产明细 (${drawerTotal} 区段)`" 
       size="75%" 
       append-to-body
       destroy-on-close
     >
       <div class="drawer-inner-container">
-        <!-- 抽屉顶部简报 -->
+        <!-- 抽屉顶部简报与过滤工具栏 -->
         <div class="drawer-header-info">
-          <el-tag :type="getTagType(currentActiveGroup?.tunnel_type || '')" effect="dark">
-            {{ currentActiveGroup?.tunnel_type }}
-          </el-tag>
-          <span class="drawer-span-badge">
-            📏 全线里程: {{ formatStationStr(currentActiveGroup?.start_chainage || 0) }} ~ {{ formatStationStr(currentActiveGroup?.end_chainage || 0) }}
-          </span>
-          <span class="drawer-desc-badge">
-            {{ currentActiveGroup?.description || '暂无描述' }}
-          </span>
+          <div class="drawer-info-left">
+            <el-tag :type="getTagType(currentActiveGroup?.tunnel_type || '')" effect="dark">
+              {{ currentActiveGroup?.tunnel_type }}
+            </el-tag>
+            <span class="drawer-span-badge">
+              📏 全线里程: {{ formatStationStr(currentActiveGroup?.start_chainage || 0) }} ~ {{ formatStationStr(currentActiveGroup?.end_chainage || 0) }}
+            </span>
+            <span class="drawer-desc-badge">
+              {{ currentActiveGroup?.description || '暂无描述' }}
+            </span>
+          </div>
+
+          <div class="drawer-filter-tools">
+            <el-input
+              v-model="drawerSearchQuery"
+              placeholder="搜索组内分段..."
+              clearable
+              size="small"
+              style="width: 170px;"
+              @keyup.enter="fetchDrawerSegments"
+              @clear="fetchDrawerSegments"
+            />
+            <el-radio-group v-model="drawerStatusFilter" size="small" @change="handleDrawerFilterChange">
+              <el-radio-button label="all">全部</el-radio-button>
+              <el-radio-button label="done">已算</el-radio-button>
+              <el-radio-button label="pending">待算</el-radio-button>
+              <el-radio-button label="warning">预警</el-radio-button>
+            </el-radio-group>
+          </div>
         </div>
 
         <!-- 分段明细表格 -->
@@ -267,7 +330,7 @@
           stripe 
           size="small"
           @selection-change="handleDrawerSelectionChange"
-          style="width: 100%; height: calc(100vh - 260px);"
+          style="width: 100%; flex: 1;"
         >
           <el-table-column type="selection" width="50" align="center" />
           <el-table-column prop="id" label="ID" width="70" align="center" />
@@ -277,17 +340,21 @@
               {{ formatStationStr(scope.row.start_chainage) }} ~ {{ formatStationStr(scope.row.end_chainage) }}
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="100" align="center">
+          <el-table-column label="状态" width="90" align="center">
             <template #default="scope">
-              <el-tag :type="scope.row.results_json ? 'success' : 'warning'" size="small">
-                {{ scope.row.results_json ? '已算' : '待算' }}
+              <el-tag :type="scope.row.has_results ? 'success' : 'warning'" size="small">
+                {{ scope.row.has_results ? '已算' : '待算' }}
               </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="安全系数 Fs" width="110" align="center">
             <template #default="scope">
-              <span v-if="scope.row.results_json">
-                {{ extractFsFromRow(scope.row) != null ? extractFsFromRow(scope.row)?.toFixed(2) : '-' }}
+              <span 
+                v-if="scope.row.safety_factor !== null && scope.row.safety_factor !== undefined"
+                class="fs-badge"
+                :class="scope.row.safety_factor < 1.2 ? 'fs-danger' : 'fs-normal'"
+              >
+                Fs={{ Number(scope.row.safety_factor).toFixed(2) }}
               </span>
               <span v-else class="text-secondary">-</span>
             </template>
@@ -297,10 +364,18 @@
               {{ new Date(scope.row.created_at).toLocaleString() }}
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="160" align="center" fixed="right">
+          <el-table-column label="操作" width="190" align="center" fixed="right">
             <template #default="scope">
               <el-button size="small" type="primary" plain @click="loadSingleToWorkspace(scope.row)">
                 载入
+              </el-button>
+              <el-button 
+                size="small" 
+                :type="cartStore.isPinned(scope.row.id) ? 'success' : 'warning'" 
+                plain 
+                @click="toggleBenchmarkItem(scope.row)"
+              >
+                {{ cartStore.isPinned(scope.row.id) ? '已在对标' : '+对标' }}
               </el-button>
               <el-button size="small" type="danger" link @click="deleteDrawerRecord(scope.row.id)">
                 移除
@@ -309,11 +384,25 @@
           </el-table-column>
         </el-table>
 
+        <!-- 抽屉分页工具条 -->
+        <div class="drawer-pagination-wrap" v-if="drawerTotal > 0">
+          <el-pagination
+            v-model:current-page="drawerCurrentPage"
+            v-model:page-size="drawerPageSize"
+            :page-sizes="[20, 50, 100]"
+            :total="drawerTotal"
+            layout="total, sizes, prev, pager, next"
+            size="small"
+            @size-change="fetchDrawerSegments"
+            @current-change="fetchDrawerSegments"
+          />
+        </div>
+
         <!-- 抽屉吸底批量导回工作台工具栏 -->
         <div class="drawer-bottom-bar">
           <div class="drawer-bar-left">
             <span class="selection-indicator">
-              已选 <b>{{ selectedDrawerRows.length }}</b> / {{ drawerSegments.length }} 项分段
+              已选 <b>{{ selectedDrawerRows.length }}</b> / {{ drawerTotal }} 项分段
             </span>
             <el-radio-group v-model="restoreMode" size="small" class="restore-mode-toggle">
               <el-radio-button label="replace">覆盖当前工作区</el-radio-button>
@@ -321,6 +410,14 @@
             </el-radio-group>
           </div>
           <div class="drawer-bar-right">
+            <el-button 
+              type="warning" 
+              plain
+              :disabled="selectedDrawerRows.length === 0" 
+              @click="batchAddDrawerToBenchmark"
+            >
+              +加入对标 ({{ selectedDrawerRows.length }})
+            </el-button>
             <el-button 
               type="primary" 
               :disabled="selectedDrawerRows.length === 0" 
@@ -374,14 +471,26 @@
       @change="handleCoverFileSelected" 
     />
 
-    <!-- 7. 参数对标分析抽屉 (保全历史分析能力) -->
-    <el-drawer v-model="compareDrawerVisible" title="📊 工程参数多维对标分析" size="80%" append-to-body>
+    <!-- 7. 全局对标暂存浮动坞 -->
+    <BenchmarkFloatingDock @start-compare="openBenchmarkCompare" />
+
+    <!-- 8. 参数多维对标分析抽屉 (保全历史分析能力与全集并集聚合) -->
+    <el-drawer v-model="compareDrawerVisible" :title="`📊 工程参数多维对标分析 (${detailedCompareRows.length}项对比)`" size="85%" append-to-body>
       <div class="compare-toolbar">
         <el-tag type="info" effect="plain" class="compare-info-tag">
-          💡 已选中 <strong>{{ selectedRows.length }}</strong> 项工程进行多维参数对比（红色高亮表示参数在工程间存在差异）
+          💡 已对标 <strong>{{ detailedCompareRows.length }}</strong> 项工程（红色高亮表示参数在工程间存在差异，表头已聚合全选定项键名全集）
         </el-tag>
+        <div class="compare-toolbar-actions">
+          <el-button type="primary" size="small" plain @click="exportBenchmarkCSV">
+            📥 导出对标 CSV 报告
+          </el-button>
+          <el-button type="danger" size="small" plain @click="cartStore.clearCart">
+            清空暂存篮
+          </el-button>
+        </div>
       </div>
-      <el-table :data="compareKeys" border size="small" stripe style="width: 100%;">
+
+      <el-table :data="compareKeys" border size="small" stripe style="width: 100%; height: calc(100vh - 180px);">
         <el-table-column label="参数名称 (标识/单位)" width="220" fixed="left">
           <template #default="scope">
             <div class="param-name-cell">
@@ -393,12 +502,26 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="简单注释说明" min-width="260" fixed="left" show-overflow-tooltip>
+        <el-table-column label="参数注释说明" min-width="240" fixed="left" show-overflow-tooltip>
           <template #default="scope">
             <span class="param-comment">{{ getParamMeta(scope.row.key).comment }}</span>
           </template>
         </el-table-column>
-        <el-table-column v-for="row in selectedRows" :key="row.id" :label="row.project_name" align="center" min-width="160">
+        <el-table-column 
+          v-for="row in detailedCompareRows" 
+          :key="row.id" 
+          :label="row.project_name" 
+          align="center" 
+          min-width="170"
+        >
+          <template #header>
+            <div class="compare-col-header">
+              <span class="col-header-name" :title="row.project_name">{{ row.project_name }}</span>
+              <el-tag size="small" effect="plain" class="col-header-tag">
+                {{ row.tunnel_type || '公路' }}
+              </el-tag>
+            </div>
+          </template>
           <template #default="scope">
             <span :class="{'diff-highlight': isDifferent(scope.row.key)}">
               {{ formatParamValue(scope.row.key, parseJSON(row.parameters_json)[scope.row.key]) }}
@@ -415,6 +538,8 @@ import { ref, computed, onMounted } from 'vue';
 import { useSnapshotStore } from '@/store/snapshotStore';
 import { useAuthStore } from '@/store/authStore';
 import { useThemeStore } from '@/store/themeStore';
+import { useBenchmarkCartStore, BenchmarkItemMeta } from '@/store/benchmarkCartStore';
+import BenchmarkFloatingDock from '@/components/database/BenchmarkFloatingDock.vue';
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
 import apiClient from '@/api/index';
 
@@ -422,6 +547,7 @@ const emit = defineEmits(['close']);
 const snapshotStore = useSnapshotStore();
 const authStore = useAuthStore();
 const themeStore = useThemeStore();
+const cartStore = useBenchmarkCartStore();
 
 // 视口与基础检索状态
 const activeView = ref<'cards' | 'flat'>('cards');
@@ -429,9 +555,17 @@ const searchQuery = ref('');
 const filterClass = ref('');
 const isLoading = ref(false);
 
-// 工程组列表与扁平分段列表
+// 卡片视图服务端分页状态
 const projectGroups = ref<any[]>([]);
+const cardsCurrentPage = ref(1);
+const cardsPageSize = ref(12);
+const cardsTotal = ref(0);
+
+// 扁平列表服务端分页状态
 const dbData = ref<any[]>([]);
+const flatCurrentPage = ref(1);
+const flatPageSize = ref(50);
+const flatTotal = ref(0);
 const selectedRows = ref<any[]>([]);
 
 // 下钻抽屉状态
@@ -440,6 +574,11 @@ const isDrawerLoading = ref(false);
 const currentActiveGroup = ref<any | null>(null);
 const drawerSegments = ref<any[]>([]);
 const selectedDrawerRows = ref<any[]>([]);
+const drawerCurrentPage = ref(1);
+const drawerPageSize = ref(50);
+const drawerTotal = ref(0);
+const drawerSearchQuery = ref('');
+const drawerStatusFilter = ref<'all' | 'done' | 'pending' | 'warning'>('all');
 const restoreMode = ref<'replace' | 'append'>('replace');
 
 // 编辑工程组弹窗状态
@@ -456,8 +595,9 @@ const editGroupForm = ref({
 const coverFileInputRef = ref<HTMLInputElement | null>(null);
 const currentCoverTargetGroupId = ref<number | null>(null);
 
-// 对标抽屉状态
+// 对标抽屉状态与水合详情数据
 const compareDrawerVisible = ref(false);
+const detailedCompareRows = ref<any[]>([]);
 
 // 里程桩号格式化算法
 const formatStationStr = (length_m: number): string => {
@@ -471,53 +611,112 @@ const resolveCoverUrl = (url: string) => {
   if (!url) return '';
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
   const baseUrl = apiClient.defaults.baseURL || '';
-  // 剥离 /api/v1 路径
   const origin = baseUrl.replace(/\/api\/v1\/?$/, '');
   return `${origin}${url}`;
 };
 
-// 过滤后的工程组列表
-const filteredGroups = computed(() => {
-  return projectGroups.value.filter(grp => {
-    const matchName = grp.group_name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      (grp.description && grp.description.toLowerCase().includes(searchQuery.value.toLowerCase()));
-    const matchClass = filterClass.value ? grp.tunnel_type === filterClass.value : true;
-    return matchName && matchClass;
-  });
-});
-
-// 过滤后的扁平台账列表
-const filteredFlatData = computed(() => {
-  return dbData.value.filter(item => {
-    const matchName = item.project_name.toLowerCase().includes(searchQuery.value.toLowerCase());
-    const matchClass = filterClass.value ? item.tunnel_type === filterClass.value : true;
-    return matchName && matchClass;
-  });
-});
-
-const getGroupNameById = (groupId: number | null): string => {
-  if (!groupId) return '默认未分组';
-  const matched = projectGroups.value.find(g => g.id === groupId);
-  return matched ? matched.group_name : `组#${groupId}`;
-};
-
 // ==========================================
-// 数据检索与加载
+// 数据检索与加载管线 (服务端强分页)
 // ==========================================
-const fetchData = async () => {
+
+const fetchCardsData = async () => {
   isLoading.value = true;
   try {
-    const [groupsRes, paramsRes]: any = await Promise.all([
-      apiClient.get('/database/projects'),
-      apiClient.get('/database/parameters')
-    ]);
-    projectGroups.value = groupsRes || [];
-    dbData.value = paramsRes || [];
+    const res: any = await apiClient.get('/database/projects', {
+      params: {
+        page: cardsCurrentPage.value,
+        page_size: cardsPageSize.value,
+        search: searchQuery.value.trim() || undefined,
+        tunnel_type: filterClass.value || undefined
+      }
+    });
+    if (res && res.items) {
+      projectGroups.value = res.items;
+      cardsTotal.value = res.total;
+    } else if (Array.isArray(res)) {
+      projectGroups.value = res;
+      cardsTotal.value = res.length;
+    } else {
+      projectGroups.value = [];
+      cardsTotal.value = 0;
+    }
   } catch (error) {
-    ElMessage.error('获取数字资产库数据失败');
+    ElMessage.error('获取工程分组数据失败');
   } finally {
     isLoading.value = false;
   }
+};
+
+const fetchFlatData = async () => {
+  isLoading.value = true;
+  try {
+    const res: any = await apiClient.get('/database/parameters', {
+      params: {
+        page: flatCurrentPage.value,
+        page_size: flatPageSize.value,
+        search: searchQuery.value.trim() || undefined,
+        tunnel_type: filterClass.value || undefined
+      }
+    });
+    if (res && res.items) {
+      dbData.value = res.items;
+      flatTotal.value = res.total;
+    } else if (Array.isArray(res)) {
+      dbData.value = res;
+      flatTotal.value = res.length;
+    } else {
+      dbData.value = [];
+      flatTotal.value = 0;
+    }
+  } catch (error) {
+    ElMessage.error('获取全量分段数据失败');
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const fetchData = () => {
+  if (activeView.value === 'cards') {
+    fetchCardsData();
+  } else {
+    fetchFlatData();
+  }
+};
+
+const handleSearch = () => {
+  if (activeView.value === 'cards') {
+    cardsCurrentPage.value = 1;
+    fetchCardsData();
+  } else {
+    flatCurrentPage.value = 1;
+    fetchFlatData();
+  }
+};
+
+const handleViewModeChange = () => {
+  fetchData();
+};
+
+const handleCardsPageChange = (p: number) => {
+  cardsCurrentPage.value = p;
+  fetchCardsData();
+};
+
+const handleCardsSizeChange = (s: number) => {
+  cardsPageSize.value = s;
+  cardsCurrentPage.value = 1;
+  fetchCardsData();
+};
+
+const handleFlatPageChange = (p: number) => {
+  flatCurrentPage.value = p;
+  fetchFlatData();
+};
+
+const handleFlatSizeChange = (s: number) => {
+  flatPageSize.value = s;
+  flatCurrentPage.value = 1;
+  fetchFlatData();
 };
 
 onMounted(() => {
@@ -525,8 +724,20 @@ onMounted(() => {
 });
 
 // ==========================================
-// 统一收敛的快照双态自适应恢复管线
+// 按需水合管线 (Hydration Bridge)
 // ==========================================
+
+const hydrateParametersByIds = async (ids: number[]): Promise<any[]> => {
+  if (!ids || ids.length === 0) return [];
+  try {
+    const res: any = await apiClient.post('/database/parameters/batch-details', { ids });
+    return res || [];
+  } catch (err: any) {
+    ElMessage.error('按需水合分段大字段失败: ' + (err.message || err));
+    throw err;
+  }
+};
+
 const performRestore = (records: any[], mode: 'replace' | 'append') => {
   if (!records || records.length === 0) return;
   snapshotStore.restoreSnapshotsFromDatabase(records, { mode });
@@ -548,10 +759,12 @@ const performRestore = (records: any[], mode: 'replace' | 'append') => {
   emit('close'); // 关闭台账模态框
 };
 
-// 卡片一键整组载入
+// 卡片一键整组水合载入
 const loadEntireGroupToWorkspace = async (group: any) => {
   try {
-    const res: any = await apiClient.get(`/database/projects/${group.id}/parameters`);
+    const res: any = await apiClient.get(`/database/projects/${group.id}/parameters`, {
+      params: { full: true }
+    });
     if (!res || res.length === 0) {
       ElMessage.warning(`工程组 [${group.group_name}] 名下暂无可载入分段`);
       return;
@@ -562,40 +775,153 @@ const loadEntireGroupToWorkspace = async (group: any) => {
   }
 };
 
-// 单段载入工作台
-const loadSingleToWorkspace = (row: any) => {
-  performRestore([row], 'append');
-};
-
-// 扁平列表批量载入
-const batchLoadFlatRowsToWorkspace = (mode: 'replace' | 'append' = 'replace') => {
-  if (selectedRows.value.length === 0) return;
-  performRestore(selectedRows.value, mode);
-};
-
-// 抽屉批量载入
-const batchLoadDrawerRowsToWorkspace = () => {
-  if (selectedDrawerRows.value.length === 0) return;
-  performRestore(selectedDrawerRows.value, restoreMode.value);
-};
-
-// ==========================================
-// 下钻抽屉控制
-// ==========================================
-const openGroupDrawer = async (group: any) => {
-  currentActiveGroup.value = group;
-  drawerVisible.value = true;
-  isDrawerLoading.value = true;
-  selectedDrawerRows.value = [];
+// 单段水合载入工作台
+const loadSingleToWorkspace = async (row: any) => {
   try {
-    const res: any = await apiClient.get(`/database/projects/${group.id}/parameters`);
-    drawerSegments.value = res || [];
+    const fullRecords = await hydrateParametersByIds([row.id]);
+    if (fullRecords.length > 0) {
+      performRestore(fullRecords, 'append');
+    }
+  } catch (e) {}
+};
+
+// 扁平列表批量水合载入
+const batchLoadFlatRowsToWorkspace = async (mode: 'replace' | 'append' = 'replace') => {
+  if (selectedRows.value.length === 0) return;
+  try {
+    const ids = selectedRows.value.map(r => r.id);
+    const fullRecords = await hydrateParametersByIds(ids);
+    performRestore(fullRecords, mode);
+  } catch (e) {}
+};
+
+// 抽屉批量水合载入
+const batchLoadDrawerRowsToWorkspace = async () => {
+  if (selectedDrawerRows.value.length === 0) return;
+  try {
+    const ids = selectedDrawerRows.value.map(r => r.id);
+    const fullRecords = await hydrateParametersByIds(ids);
+    performRestore(fullRecords, restoreMode.value);
+  } catch (e) {}
+};
+
+// ==========================================
+// 跨组对标暂存篮联动机制
+// ==========================================
+
+const toBenchmarkItem = (row: any): BenchmarkItemMeta => {
+  return {
+    id: row.id,
+    group_id: row.group_id ?? (currentActiveGroup.value?.id || null),
+    group_name: row.group_name || currentActiveGroup.value?.group_name || '默认未分组',
+    project_name: row.project_name,
+    tunnel_type: row.tunnel_type,
+    start_chainage: row.start_chainage,
+    end_chainage: row.end_chainage,
+    safety_factor: row.safety_factor ?? null
+  };
+};
+
+const toggleBenchmarkItem = (row: any) => {
+  if (cartStore.isPinned(row.id)) {
+    cartStore.removeItem(row.id);
+    ElMessage.info(`已将 [${row.project_name}] 移出对标暂存篮`);
+  } else {
+    cartStore.addItem(toBenchmarkItem(row));
+  }
+};
+
+const batchAddFlatToBenchmark = () => {
+  if (selectedRows.value.length === 0) return;
+  let added = 0;
+  selectedRows.value.forEach(row => {
+    if (!cartStore.isPinned(row.id) && cartStore.count < 8) {
+      cartStore.addItem(toBenchmarkItem(row));
+      added++;
+    }
+  });
+  if (added > 0) {
+    ElMessage.success(`已批量加入 ${added} 项分段至对标暂存篮`);
+  }
+};
+
+const batchAddDrawerToBenchmark = () => {
+  if (selectedDrawerRows.value.length === 0) return;
+  let added = 0;
+  selectedDrawerRows.value.forEach(row => {
+    if (!cartStore.isPinned(row.id) && cartStore.count < 8) {
+      cartStore.addItem(toBenchmarkItem(row));
+      added++;
+    }
+  });
+  if (added > 0) {
+    ElMessage.success(`已批量加入 ${added} 项分段至对标暂存篮`);
+  }
+};
+
+const openBenchmarkCompare = async () => {
+  if (cartStore.count < 2) {
+    ElMessage.warning('请至少选取 2 项分段进行对标分析');
+    return;
+  }
+  try {
+    const ids = cartStore.cartItems.map(item => item.id);
+    const fullRecords = await hydrateParametersByIds(ids);
+    detailedCompareRows.value = fullRecords;
+    compareDrawerVisible.value = true;
+  } catch (err: any) {
+    ElMessage.error('装载对标详细参数失败: ' + (err.message || err));
+  }
+};
+
+// ==========================================
+// 下钻抽屉控制 (支持组内分页与状态筛选)
+// ==========================================
+
+const fetchDrawerSegments = async () => {
+  if (!currentActiveGroup.value) return;
+  isDrawerLoading.value = true;
+  try {
+    const res: any = await apiClient.get(`/database/projects/${currentActiveGroup.value.id}/parameters`, {
+      params: {
+        page: drawerCurrentPage.value,
+        page_size: drawerPageSize.value,
+        search: drawerSearchQuery.value.trim() || undefined,
+        status_filter: drawerStatusFilter.value
+      }
+    });
+    if (res && res.items) {
+      drawerSegments.value = res.items;
+      drawerTotal.value = res.total;
+    } else if (Array.isArray(res)) {
+      drawerSegments.value = res;
+      drawerTotal.value = res.length;
+    } else {
+      drawerSegments.value = [];
+      drawerTotal.value = 0;
+    }
   } catch (err: any) {
     ElMessage.error('获取分段明细失败');
     drawerSegments.value = [];
+    drawerTotal.value = 0;
   } finally {
     isDrawerLoading.value = false;
   }
+};
+
+const openGroupDrawer = async (group: any) => {
+  currentActiveGroup.value = group;
+  drawerVisible.value = true;
+  selectedDrawerRows.value = [];
+  drawerCurrentPage.value = 1;
+  drawerSearchQuery.value = '';
+  drawerStatusFilter.value = 'all';
+  await fetchDrawerSegments();
+};
+
+const handleDrawerFilterChange = () => {
+  drawerCurrentPage.value = 1;
+  fetchDrawerSegments();
 };
 
 const handleDrawerSelectionChange = (val: any[]) => {
@@ -604,12 +930,6 @@ const handleDrawerSelectionChange = (val: any[]) => {
 
 const handleSelectionChange = (val: any[]) => {
   selectedRows.value = val;
-};
-
-const extractFsFromRow = (row: any): number | null => {
-  if (!row.results_json) return null;
-  const res = parseJSON(row.results_json);
-  return res.original_state?.safety_factor ?? res.critical_state?.final_safety_factor ?? null;
 };
 
 // ==========================================
@@ -648,7 +968,7 @@ const submitEditGroup = async () => {
     });
     ElMessage.success('工程组信息更新成功');
     editGroupModalVisible.value = false;
-    fetchData();
+    fetchCardsData();
   } catch (err: any) {
     const detail = err.response?.data?.detail || err.message || '未知错误';
     ElMessage.error('更新失败: ' + detail);
@@ -675,7 +995,7 @@ const handleCoverFileSelected = async (e: Event) => {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
     ElMessage.success('封面图片上传成功');
-    fetchData();
+    fetchCardsData();
   } catch (err: any) {
     ElMessage.error('上传封面失败: ' + (err.message || err));
   } finally {
@@ -685,7 +1005,6 @@ const handleCoverFileSelected = async (e: Event) => {
 };
 
 const captureViewportCover = async (group: any) => {
-  // 精准查找当前工作台的 3D Three.js canvas 画布
   const canvas = document.querySelector('.viewer-container canvas') as HTMLCanvasElement;
   if (!canvas || canvas.width === 0 || canvas.height === 0) {
     ElMessage.warning('未找到有效的 3D 视口画布，请确保 3D 视口处于可见状态');
@@ -702,7 +1021,7 @@ const captureViewportCover = async (group: any) => {
       image_base64: base64Data
     });
     ElMessage.success(`已将当前 3D 视口画面设置为 [${group.group_name}] 的封面图`);
-    fetchData();
+    fetchCardsData();
   } catch (err: any) {
     ElMessage.error('设置封面失败: ' + (err.message || err));
   }
@@ -723,7 +1042,7 @@ const confirmDeleteGroup = (group: any) => {
       try {
         await apiClient.delete(`/database/projects/${group.id}`);
         ElMessage.success(`已成功删除工程组 [${group.group_name}]`);
-        fetchData();
+        fetchCardsData();
       } catch (err: any) {
         ElMessage.error('删除工程组失败: ' + (err.message || err));
       }
@@ -737,7 +1056,7 @@ const deleteFlatRecord = async (id: number) => {
       await ElMessageBox.confirm('数据删除后不可恢复，是否继续？', '风险提示', { type: 'warning' });
       await apiClient.delete(`/database/parameters/${id}`);
       ElMessage.success('清理成功');
-      fetchData();
+      fetchFlatData();
     } catch (e) { }
   }, '删除分段记录');
 };
@@ -745,18 +1064,17 @@ const deleteFlatRecord = async (id: number) => {
 const deleteDrawerRecord = async (id: number) => {
   authStore.wrapActionWithAuth(async () => {
     try {
+      await ElMessageBox.confirm('数据删除后不可恢复，是否继续？', '风险提示', { type: 'warning' });
       await apiClient.delete(`/database/parameters/${id}`);
       ElMessage.success('分段已移除');
-      if (currentActiveGroup.value) {
-        openGroupDrawer(currentActiveGroup.value);
-      }
-      fetchData();
+      fetchDrawerSegments();
+      fetchCardsData();
     } catch (e) { }
   }, '删除分段记录');
 };
 
 // ==========================================
-// 参数对标分析辅助字典与逻辑 (保全历史)
+// 参数对标分析辅助字典与逻辑 (全选定项键名全集并集 Key Union)
 // ==========================================
 interface ParamMeta {
   label: string;
@@ -765,18 +1083,51 @@ interface ParamMeta {
 }
 
 const PARAM_META_DICT: Record<string, ParamMeta> = {
-  start_chainage: { label: '分区起点里程', unit: 'm', comment: '隧道工程计算分段的起点里程桩号' },
-  end_chainage: { label: '分区终点里程', unit: 'm', comment: '隧道工程计算分段的终点里程桩号' },
-  tunnel_type: { label: '隧道类型', unit: '-', comment: '区分单洞(single)或双洞(double)水力与结构计算模式' },
+  // --- 1. 里程与工程类型 ---
+  start_chainage: { label: '分区起点里程', unit: 'm', comment: '隧道工程计算分段起点里程桩号' },
+  end_chainage: { label: '分区终点里程', unit: 'm', comment: '隧道工程计算分段终点里程桩号' },
+  tunnel_type: { label: '隧道洞型', unit: '-', comment: '单洞(single)或双洞(double)计算拓扑' },
+
+  // --- 2. 水文地质与环境特征 ---
   k_r: { label: '围岩渗透系数', unit: 'm/d', comment: '围岩天然地层水理渗透传导能力' },
-  H: { label: '初始地下水头', unit: 'm', comment: '隧道轴线上方初始水头高度' },
-  p_mm: { label: '年降雨量', unit: 'mm', comment: '地表降水补给水文指标' },
-  r_0: { label: '二衬内半径(r_0)', unit: 'm', comment: '二衬内边界半径' },
+  H: { label: '初始地下水头', unit: 'm', comment: '隧道轴线上方初始承压地下水头高度' },
+  p_mm: { label: '年降雨量', unit: 'mm', comment: '地表降水补给年降雨量' },
+  grades: { label: '围岩级别', unit: '级', comment: '国标围岩工程地质分级(1~6级)' },
+  cn_condition: { label: '灌溉入渗条件', unit: '-', comment: 'SCS-CN 水文土壤地表下渗特征' },
+  land_use: { label: '地表用地类型', unit: '-', comment: '地表植被与用地水文径流特征' },
+  gamma: { label: '地下水重度', unit: 'kN/m³', comment: '计算水力静压容重常数' },
+
+  // --- 3. 几何断面与空间尺度 ---
+  h_1: { label: '隧道中心埋深', unit: 'm', comment: '隧道中心轴线垂直地表埋深' },
+  r_0: { label: '二衬内半径(r_0)', unit: 'm', comment: '二衬内轮廓净空半径' },
   r_s: { label: '二衬外半径(r_s)', unit: 'm', comment: '二次衬砌外轮廓等效半径' },
   r_p: { label: '初支外半径(r_p)', unit: 'm', comment: '喷锚初期支护外等效半径' },
-  r_g: { label: '注浆圈外半径(r_g)', unit: 'm', comment: '注浆加固止水圈外边界半径' },
-  h_1: { label: '隧道中心埋深', unit: 'm', comment: '隧道中心轴线垂直埋深' },
-  concrete_grade: { label: '混凝土标号', unit: '-', comment: '二次衬砌混凝土强度等级' }
+  r_g: { label: '注浆圈外半径(r_g)', unit: 'm', comment: '注浆止水加固圈外边界半径' },
+  aspect_ratio: { label: '断面高宽比(扁平比)', unit: '-', comment: '隧道断面竖向与横向尺度比(h/w)' },
+  D_spacing: { label: '双洞轴线间距', unit: 'm', comment: '双洞隧道平行中心线法向间距' },
+
+  // --- 4. 支护结构与力学材料 ---
+  k_g: { label: '注浆圈渗透系数', unit: 'm/d', comment: '围岩注浆堵水加固圈渗透系数' },
+  k_p: { label: '初支渗透系数', unit: 'm/d', comment: '初期支护混凝土渗透系数' },
+  k_s: { label: '二衬渗透系数', unit: 'm/d', comment: '二次衬砌抗渗混凝土渗透系数' },
+  concrete_grade: { label: '二衬混凝土标号', unit: '-', comment: '二次衬砌混凝土强度等级(如C35)' },
+  Ag: { label: '单侧截面配筋面积', unit: 'mm²', comment: '延米二衬截面受拉/受压主筋设计面积' },
+  as_mm: { label: '主筋保护层厚度', unit: 'mm', comment: '受拉主筋受力边缘至外缘保护层厚度' },
+  tol_safety_factor: { label: '设计容许安全系数', unit: '-', comment: '衬砌抗裂抗弯极限状态控制安全系数阈值 [K]' },
+
+  // --- 5. 排水管网与水力坡降 ---
+  I_long: { label: '纵向排水坡降', unit: '-', comment: '纵向集水明沟/盲管水力坡降' },
+  I_ring: { label: '环向盲管水力坡降', unit: '-', comment: '环向排水盲管环向引流坡度' },
+  I_lat: { label: '横向排水管坡降', unit: '-', comment: '横向引水汇流管水力坡降' },
+  n_long: { label: '纵向排水管曼宁糙率', unit: '-', comment: '纵向排水主管管壁粗糙度' },
+  n_ring: { label: '环向盲管曼宁糙率', unit: '-', comment: '环向波纹打孔管壁粗糙度' },
+  n_lat: { label: '横向排水管曼宁糙率', unit: '-', comment: '横向引水管壁粗糙度' },
+  d_ring_default: { label: '环向盲管公称内径', unit: 'm', comment: '环向排水盲管公称内径' },
+  d_long_default: { label: '纵向管默认内径', unit: 'm', comment: '纵向集水主管道基准内径' },
+  d_lat_default: { label: '横向管默认内径', unit: 'm', comment: '横向导水连通管内径' },
+  S_code_max: { label: '规范最大盲管间距', unit: 'm', comment: '行业标准允许的最大布设间距上限' },
+  S_min: { label: '工程最小施工间距', unit: 'm', comment: '现场工法限制的盲管最小布设间距' },
+  has_central_ditch: { label: '中央排水沟设置', unit: '-', comment: '是否设置中央水沟(三沟式与双侧沟拓扑)' }
 };
 
 const getParamMeta = (key: string): ParamMeta => {
@@ -788,25 +1139,104 @@ const formatParamValue = (key: string, val: any): string => {
   if (key === 'tunnel_type') {
     return val === 'single' ? '单洞' : val === 'double' ? '双洞' : String(val);
   }
+  if (key === 'has_central_ditch') {
+    return val === true || val === 'true' ? '设置(三沟式)' : '不设置(双侧沟)';
+  }
   return String(val);
 };
 
+// 全选定项键名全集并集 (Key Union)，按专业规范顺序排列
 const compareKeys = computed(() => {
-  if (selectedRows.value.length === 0) return [];
-  const baseParams = parseJSON(selectedRows.value[0].parameters_json);
-  const deprecatedKeys = new Set(['beta2', 'ha', 'rebar_type', 'double_side', 'P_crit', 'c', 'K', 'h', 'r', 'r1', 'r2', 'rg', 'K1', 'K2', 'Kg']);
-  return Object.keys(baseParams).filter(k => !deprecatedKeys.has(k)).map(key => ({ key }));
+  if (detailedCompareRows.value.length === 0) return [];
+  const allKeys = new Set<string>();
+  
+  detailedCompareRows.value.forEach(row => {
+    const params = typeof row.parameters_json === 'string' 
+      ? parseJSON(row.parameters_json) 
+      : (row.parameters_json || {});
+    Object.keys(params).forEach(k => allKeys.add(k));
+  });
+
+  const deprecatedKeys = new Set([
+    'beta2', 'ha', 'rebar_type', 'double_side', 'P_crit', 
+    'c', 'K', 'h', 'r', 'r1', 'r2', 'rg', 'K1', 'K2', 'Kg'
+  ]);
+
+  const standardKeyOrder = Object.keys(PARAM_META_DICT);
+  const keyOrderMap = new Map(standardKeyOrder.map((k, idx) => [k, idx]));
+
+  return Array.from(allKeys)
+    .filter(k => !deprecatedKeys.has(k))
+    .sort((a, b) => {
+      const orderA = keyOrderMap.has(a) ? (keyOrderMap.get(a) as number) : 9999;
+      const orderB = keyOrderMap.has(b) ? (keyOrderMap.get(b) as number) : 9999;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.localeCompare(b);
+    })
+    .map(key => ({ key }));
 });
 
-const openCompare = () => { compareDrawerVisible.value = true; };
-const parseJSON = (jsonStr: string) => { try { return JSON.parse(jsonStr); } catch (e) { return {}; } };
+const parseJSON = (jsonStr: string) => {
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    return {};
+  }
+};
+
 const isDifferent = (key: string) => {
-  if (selectedRows.value.length < 2) return false;
-  const firstVal = parseJSON(selectedRows.value[0].parameters_json)[key];
-  return selectedRows.value.some(row => {
-    const rowVal = parseJSON(row.parameters_json)[key];
-    return rowVal !== firstVal;
+  if (detailedCompareRows.value.length < 2) return false;
+  const firstParams = parseJSON(detailedCompareRows.value[0].parameters_json);
+  const firstVal = firstParams[key];
+  return detailedCompareRows.value.some(row => {
+    const rowParams = parseJSON(row.parameters_json);
+    return rowParams[key] !== firstVal;
   });
+};
+
+// 导出对标 CSV 报告
+const exportBenchmarkCSV = () => {
+  if (detailedCompareRows.value.length === 0 || compareKeys.value.length === 0) {
+    ElMessage.warning('暂无可导出的对标数据');
+    return;
+  }
+
+  const headers = ['参数代码', '参数名称', '单位', '注释说明'];
+  detailedCompareRows.value.forEach(row => {
+    headers.push(`"${row.project_name.replace(/"/g, '""')}"`);
+  });
+
+  const csvRows: string[] = [headers.join(',')];
+
+  compareKeys.value.forEach(({ key }) => {
+    const meta = getParamMeta(key);
+    const rowCells = [
+      `"${key}"`,
+      `"${meta.label.replace(/"/g, '""')}"`,
+      `"${meta.unit}"`,
+      `"${meta.comment.replace(/"/g, '""')}"`
+    ];
+
+    detailedCompareRows.value.forEach(row => {
+      const params = parseJSON(row.parameters_json);
+      const val = formatParamValue(key, params[key]);
+      rowCells.push(`"${String(val).replace(/"/g, '""')}"`);
+    });
+
+    csvRows.push(rowCells.join(','));
+  });
+
+  const csvContent = '\uFEFF' + csvRows.join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `隧道工程参数多维对标报告_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  ElMessage.success('对标分析 CSV 报告已成功导出');
 };
 
 const getTagType = (type: string) => {
@@ -841,13 +1271,6 @@ const getTagType = (type: string) => {
   gap: 20px;
 }
 
-.title-section h2 {
-  margin: 0;
-  font-size: 18px;
-  color: var(--el-text-color-primary);
-  font-weight: 600;
-}
-
 .filter-group {
   display: flex;
   align-items: center;
@@ -860,12 +1283,15 @@ const getTagType = (type: string) => {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .project-cards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 20px;
+  margin-bottom: 20px;
 }
 
 .project-card {
@@ -1056,14 +1482,27 @@ const getTagType = (type: string) => {
   padding: 0 8px;
 }
 
+.cards-pagination-wrap {
+  margin-top: auto;
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 0 4px 0;
+}
+
 /* 扁平表格视口：自适应弹性伸缩与滚动封装 */
 .flat-table-wrap {
   flex: 1;
   padding: 16px 20px;
   overflow: hidden;
-  height: 0; /* 强制让 flex 容器正确计算可用高度，触发内部自适应纵向滚动 */
+  height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.flat-pagination-wrap {
+  padding: 12px 0 0 0;
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* 扁平全量台账表格排版与等宽数字对齐 (字阶 >= 12px 门禁) */
@@ -1122,7 +1561,6 @@ const getTagType = (type: string) => {
   border: 1px solid #1a365d;
 }
 
-/* 单元格级背景强制覆盖，彻底消除斑马纹白色条带 */
 .theme-tech-blue :deep(.flat-detail-table .el-table__row td.el-table__cell) {
   background-color: #0f1c2e !important;
   color: #e2e8f0;
@@ -1137,14 +1575,12 @@ const getTagType = (type: string) => {
   background-color: #1a2f4c !important;
 }
 
-/* 彻底锁定右侧操作固定列背景，杜绝横向滚动时图层透叠与文字窜色 */
 .theme-tech-blue :deep(.flat-detail-table .el-table__fixed-right),
 .theme-tech-blue :deep(.flat-detail-table .el-table__fixed-right-patch),
 .theme-tech-blue :deep(.flat-detail-table .el-table-fixed-column--right) {
   background-color: #0f1c2e !important;
 }
 
-/* 固定列边缘与单元格内边距微调 */
 .theme-tech-blue :deep(.flat-detail-table .el-table__cell) {
   padding: 8px 0;
 }
@@ -1158,13 +1594,26 @@ const getTagType = (type: string) => {
 
 .drawer-header-info {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
   padding-bottom: 12px;
   margin-bottom: 12px;
   border-bottom: 1px solid var(--el-border-color-light);
-  font-size: 13px;
-  color: var(--el-text-color-regular);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.drawer-info-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.drawer-filter-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .drawer-span-badge {
@@ -1176,10 +1625,16 @@ const getTagType = (type: string) => {
 .drawer-desc-badge {
   color: var(--el-text-color-secondary);
   font-size: 12px;
-  max-width: 400px;
+  max-width: 320px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.drawer-pagination-wrap {
+  padding: 10px 0 4px 0;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .drawer-bottom-bar {
@@ -1197,6 +1652,12 @@ const getTagType = (type: string) => {
   gap: 16px;
 }
 
+.drawer-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .selection-indicator {
   font-size: 13px;
   color: var(--el-text-color-primary);
@@ -1207,8 +1668,49 @@ const getTagType = (type: string) => {
 }
 
 /* 参数对标分析辅助样式 (字阶 >= 12px 门禁验证) */
-.compare-toolbar { margin-bottom: 12px; }
-.compare-info-tag { font-size: 13px; padding: 8px 12px; height: auto; line-height: 1.5; }
+.compare-toolbar {
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.compare-info-tag {
+  font-size: 13px;
+  padding: 8px 12px;
+  height: auto;
+  line-height: 1.5;
+}
+
+.compare-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.compare-col-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.col-header-name {
+  font-weight: 600;
+  font-size: 13px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.col-header-tag {
+  font-size: 12px;
+  height: 20px;
+  line-height: 18px;
+}
+
 .diff-highlight {
   color: #f56c6c;
   font-weight: bold;
@@ -1217,11 +1719,44 @@ const getTagType = (type: string) => {
   border-radius: 4px;
   font-size: 12px;
 }
-.param-name-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.param-label { font-weight: 600; color: var(--el-text-color-primary); font-size: 13px; }
-.param-code { font-size: 12px; color: var(--el-text-color-secondary); font-family: monospace; }
-.unit-tag { font-size: 12px; padding: 0 4px; height: 20px; line-height: 18px; }
-.param-comment { font-size: 12px; color: var(--el-text-color-regular); line-height: 1.4; }
-.text-danger { color: var(--el-color-danger) !important; }
-.text-secondary { color: var(--el-text-color-secondary); }
+
+.param-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.param-label {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+}
+
+.param-code {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  font-family: monospace;
+}
+
+.unit-tag {
+  font-size: 12px;
+  padding: 0 4px;
+  height: 20px;
+  line-height: 18px;
+}
+
+.param-comment {
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  line-height: 1.4;
+}
+
+.text-danger {
+  color: var(--el-color-danger) !important;
+}
+
+.text-secondary {
+  color: var(--el-text-color-secondary);
+}
 </style>

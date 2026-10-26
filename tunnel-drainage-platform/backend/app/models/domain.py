@@ -52,6 +52,12 @@ class TunnelParameter(Base):
     
     start_chainage = Column(Float, default=0.0, index=True, comment="该段起点里程(m)")
     end_chainage = Column(Float, default=0.0, index=True, comment="该段终点里程(m)")
+    
+    # 🟢 新增物理标量列：支撑毫秒级分页与预警检索
+    has_results = Column(Integer, default=0, index=True, comment="是否有成果: 0=待算纯参数, 1=已完成计算")
+    safety_factor = Column(Float, nullable=True, comment="控制安全系数 Fs 缓存值")
+    is_warning = Column(Integer, default=0, index=True, comment="是否处于临界加固预警: 0=安全, 1=预警")
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), comment="入库时间戳")
 
-    group = relationship("ProjectGroup", back_populates="parameters")
+    group = relationship("ProjectGroup", back_populates="parameters")

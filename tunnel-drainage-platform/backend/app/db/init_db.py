@@ -10,7 +10,7 @@ from app.models.schemas import DoubleTubeSchema
 async def migrate_sqlite_columns():
     """
     针对 SQLite 的轻量平滑增量迁移：
-    自动检查 tunnel_parameters 是否缺失 group_id, start_chainage, end_chainage 列，缺失则自动追加。
+    自动检查 tunnel_parameters 是否缺失 group_id, start_chainage, end_chainage, has_results, safety_factor, is_warning 列，缺失则自动追加。
     """
     async with engine.begin() as conn:
         # 获取当前表结构列信息
@@ -24,6 +24,56 @@ async def migrate_sqlite_columns():
                 await conn.execute(text("ALTER TABLE tunnel_parameters ADD COLUMN start_chainage REAL DEFAULT 0.0"))
             if "end_chainage" not in existing_cols:
                 await conn.execute(text("ALTER TABLE tunnel_parameters ADD COLUMN end_chainage REAL DEFAULT 0.0"))
+            if "has_results" not in existing_cols:
+                await conn.execute(text("ALTER TABLE tunnel_parameters ADD COLUMN has_results INTEGER DEFAULT 0"))
+            if "safety_factor" not in existing_cols:
+                await conn.execute(text("ALTER TABLE tunnel_parameters ADD COLUMN safety_factor REAL DEFAULT NULL"))
+            if "is_warning" not in existing_cols:
+                await conn.execute(text("ALTER TABLE tunnel_parameters ADD COLUMN is_warning INTEGER DEFAULT 0"))
+
+        # 创建/更新高效覆盖索引
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_param_group_chainage ON tunnel_parameters (group_id, start_chainage ASC)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_param_type_warn_created ON tunnel_parameters (tunnel_type, is_warning, created_at DESC)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_param_project_name ON tunnel_parameters (project_name)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_param_has_results ON tunnel_parameters (has_results)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_param_is_warning ON tunnel_parameters (is_warning)"))
+
+async def backfill_parameter_metadata():
+    """
+    回填存量分段数据的 has_results, safety_factor, is_warning 物理列
+    """
+    async with AsyncSessionLocal() as session:
+        params_res = await session.execute(select(TunnelParameter))
+        all_params = params_res.scalars().all()
+        changed = False
+        for p in all_params:
+            if p.results_json:
+                try:
+                    res_dict = json.loads(p.results_json)
+                    has_res = bool(res_dict.get("original_state") or res_dict.get("critical_state"))
+                    fs = None
+                    if res_dict.get("original_state"):
+                        fs = res_dict["original_state"].get("safety_factor")
+                    if fs is None and res_dict.get("critical_state"):
+                        fs = res_dict["critical_state"].get("final_safety_factor") or res_dict["critical_state"].get("safety_factor")
+                    
+                    is_warn = 1 if (res_dict.get("critical_state") or (fs is not None and fs < 1.2)) else 0
+                    
+                    p.has_results = 1 if has_res else 0
+                    p.safety_factor = float(fs) if fs is not None else None
+                    p.is_warning = is_warn
+                    changed = True
+                except Exception:
+                    p.has_results = 0
+                    p.safety_factor = None
+                    p.is_warning = 0
+            else:
+                p.has_results = 0
+                p.safety_factor = None
+                p.is_warning = 0
+        if changed:
+            await session.commit()
+
 
 async def init_models():
     """
@@ -35,6 +85,7 @@ async def init_models():
 
     # 2. 检查并追加字段 (SQLite 兼容)
     await migrate_sqlite_columns()
+    await backfill_parameter_metadata()
 
     # 3. 验证并注入初始示范工程组与示范分段
     async with AsyncSessionLocal() as session:

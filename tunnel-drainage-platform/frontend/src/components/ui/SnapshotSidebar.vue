@@ -1697,12 +1697,13 @@ const pendingArchiveCount = computed(() => {
 
 const onBatchArchiveModalOpen = async () => {
   try {
-    const res: any = await apiClient.get('/database/projects');
-    existingProjectGroups.value = res || [];
+    const res: any = await apiClient.get('/database/projects', { params: { all: true } });
+    existingProjectGroups.value = Array.isArray(res) ? res : (res?.items || []);
   } catch (e) {
     existingProjectGroups.value = [];
   }
 };
+
 
 const openBatchArchiveModal = (isSelectedOnly = false) => {
   if (isSelectedOnly && selectedCount.value === 0) {
