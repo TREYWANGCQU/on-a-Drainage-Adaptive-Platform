@@ -52,7 +52,7 @@
    - `parameterStore.ts`：全局响应表单变更，实时置位 `isDirty`，并在画布及面板触发警示遮罩，冻结过时云图。
    - `snapshotStore.ts`：快照列表 CRUD 与状态指示器（🟢已计算、🟡待计算、🔴计算失败、⚠️加固超限），支持多快照并发异步批量解算。
    - `themeStore.ts`：明亮白与科技蓝双主题切换与 CSS 变量双向联动。
-3. **参数数据库台账 (`ParameterDatabase.vue` & `backend/app/api/v1/endpoints/database.py`)**：
+3. **数字资产库台账 (`ParameterDatabase.vue` & `backend/app/api/v1/endpoints/database.py`)**：
    - 基于 SQLite (`aiosqlite` + `sqlalchemy`) 建立物理表 `tunnel_parameters`，提供市政、公路、铁路工程标签筛选与表单“另存为工程模板”功能。
 4. **长里程多标段 Excel 批量导入导出 (`frontend/src/utils/excelIO.ts`)**：
    - 导出标准分段 Excel 模板；解析用户上传的各标段起止桩号与地质参数，自动构建连续快照流水线（Snapshot Sequence）。

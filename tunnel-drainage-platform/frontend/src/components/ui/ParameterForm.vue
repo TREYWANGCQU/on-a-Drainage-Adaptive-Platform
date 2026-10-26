@@ -4,7 +4,7 @@
     <!-- 表单权限软锁指示条 -->
     <div class="form-header-bar">
       <div class="form-title-group">
-        <span class="form-title-text">📐 分析平台参数设置</span>
+        <span class="form-title-text">📐 平台参数设置</span>
         <span class="param-count-badge">{{ paramStore.activeTunnelType === 'single' ? '单洞35项' : '双洞36项' }}</span>
       </div>
 
@@ -30,10 +30,10 @@
           @click="handleUnlockClick"
           title="点击输入密码解锁表单参数编辑"
         >
-          🔒 解锁修改
+          🔒 解锁
         </el-button>
         <div v-else class="unlocked-indicator">
-          <span class="unlocked-badge">🔓 激活编辑态</span>
+          <span class="unlocked-badge">🔓</span>
           <el-button link size="small" class="relock-btn" @click="authStore.lockForm()">
             锁定
           </el-button>
@@ -198,7 +198,7 @@
             </el-col>
             <el-col :span="colSpan">
               <el-form-item label="主筋材料级别">
-                <el-tag type="info" size="large">HRB400 (计算引擎硬编码基准)</el-tag>
+                <el-tag type="info" size="large">HRB400</el-tag>
               </el-form-item>
             </el-col>
           </el-row>
@@ -349,7 +349,7 @@
       <!-- 表单底部操作区 -->
       <div class="form-actions">
         <el-button type="success" plain icon="UploadCloud" @click="handleOpenSaveDialog">
-          另存为至参数库
+          另存为至数字资产库
         </el-button>
       </div>
     </el-form>
@@ -357,7 +357,7 @@
     <!-- 入库参数配置弹窗 -->
     <el-dialog 
       v-model="saveDialogVisible" 
-      title="固化当前分段至参数库" 
+      title="固化当前分段至数字资产库" 
       width="440px" 
       destroy-on-close
       @open="fetchProjectGroupsForSave"

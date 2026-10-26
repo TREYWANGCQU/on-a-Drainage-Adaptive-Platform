@@ -23,7 +23,7 @@
         <!-- 2. 宽屏直列模式 (>= 1550px) -->
         <div class="wide-tools">
           <el-button type="primary" color="#4f46e5" icon="Coin" @click="dbDialogVisible = true" class="db-btn" size="default">
-            参数数据库
+            数字资产库
           </el-button>
           <el-button type="warning" color="#e6a23c" icon="Files" @click="compareDialogVisible = true" class="compare-btn" size="default">
             双视角对比
@@ -42,7 +42,7 @@
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item icon="Coin" @click="dbDialogVisible = true">参数台账库</el-dropdown-item>
+                <el-dropdown-item icon="Coin" @click="dbDialogVisible = true">数字资产库</el-dropdown-item>
                 <el-dropdown-item icon="Files" @click="compareDialogVisible = true">3D 双视角对比</el-dropdown-item>
                 <el-dropdown-item icon="Download" divided @click="downloadTemplate()">下载隧道参数模板</el-dropdown-item>
                 <el-dropdown-item icon="Upload" @click="triggerUpload">批量导入 Excel</el-dropdown-item>
@@ -134,8 +134,8 @@
         <SnapshotSidebar v-show="!isRightCollapsed" />
       </aside>
     </main>
-    <!-- [新增插入] 独立的系统计算输入参数数据库弹窗与双视角对比弹窗 -->
-    <el-dialog v-model="dbDialogVisible" title="参数台账库" fullscreen destroy-on-close>
+    <!-- [新增插入] 独立的系统计算输入数字资产库弹窗与双视角对比弹窗 -->
+    <el-dialog v-model="dbDialogVisible" title="数字资产库" fullscreen destroy-on-close>
       <ParameterDatabase @close="dbDialogVisible = false" />
     </el-dialog>
     <el-dialog v-model="compareDialogVisible" title="3D 双视角对比" fullscreen destroy-on-close class="compare-dialog">
@@ -363,6 +363,7 @@ onMounted(() => {
   --sys-shadow: rgba(0, 0, 0, 0.05);
 }
 :root.theme-tech-blue {
+  color-scheme: dark;
   --sys-bg-toolbar: #0f1c2e;
   --sys-bg-panel: #162436;
   --sys-bg-3d: #08101a;
@@ -383,6 +384,68 @@ onMounted(() => {
   --el-fill-color-blank: #0f1c2e;
   --el-fill-color-light: #1a2a40; /* [新增] 悬浮/斑马纹背景 */
   --el-fill-color: #23354e; /* [新增] 基础填充色 */
+  --el-fill-color-lighter: #14243b; /* [新增] 极浅填充色/高级参数卡片底色 */
+}
+
+/* 科技蓝专属暗色细滚动条适配：覆盖左侧参数表单面板与右侧结果面板 */
+.theme-tech-blue .left-panel,
+.theme-tech-blue .right-panel {
+  scrollbar-width: thin;
+  scrollbar-color: #2c5282 #0f1c2e;
+}
+
+.theme-tech-blue .left-panel::-webkit-scrollbar,
+.theme-tech-blue .right-panel::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.theme-tech-blue .left-panel::-webkit-scrollbar-track,
+.theme-tech-blue .right-panel::-webkit-scrollbar-track {
+  background: #0f1c2e;
+  border-radius: 3px;
+}
+
+.theme-tech-blue .left-panel::-webkit-scrollbar-thumb,
+.theme-tech-blue .right-panel::-webkit-scrollbar-thumb {
+  background: #2c5282;
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+.theme-tech-blue .left-panel::-webkit-scrollbar-thumb:hover,
+.theme-tech-blue .right-panel::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6;
+}
+
+/* 亮雅白主题细滚动条适配：保持清爽精致 */
+.theme-light .left-panel,
+.theme-light .right-panel {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f8fafc;
+}
+
+.theme-light .left-panel::-webkit-scrollbar,
+.theme-light .right-panel::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.theme-light .left-panel::-webkit-scrollbar-track,
+.theme-light .right-panel::-webkit-scrollbar-track {
+  background: #f8fafc;
+  border-radius: 3px;
+}
+
+.theme-light .left-panel::-webkit-scrollbar-thumb,
+.theme-light .right-panel::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.theme-light .left-panel::-webkit-scrollbar-thumb:hover,
+.theme-light .right-panel::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 </style>
 

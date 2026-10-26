@@ -59,7 +59,7 @@ msiexec /i TunnelDrainagePlatform-v1.0.0-x64.msi /quiet /norestart
 
 #### 2. 用户数据与存储拓扑隔离
 桌面应用严禁向只读安装程序目录写文件，用户数据统一受控落地于宿主操作系统专属应用数据目录：
-* **核心参数数据库**：`%APPDATA%\TunnelDrainagePlatform\tunnel_params.db`（首次启动自动创建，重装软件不丢失历史数据）；
+* **核心数字资产库**：`%APPDATA%\TunnelDrainagePlatform\tunnel_params.db`（首次启动自动创建，重装软件不丢失历史数据）；
 * **运行与调试日志**：`%APPDATA%\TunnelDrainagePlatform\logs\backend.log`（单文件 10MB 自动轮转，防止磁盘写满）。
 
 #### 3. 进程生命周期与防僵尸安全机制

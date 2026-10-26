@@ -250,7 +250,7 @@ def run_calculation(data):
 | | `TSK-FE-02` | `frontend/src/components/ui/ParameterForm.vue` | 1. 移除废弃参数 UI 控件；<br>2. 增加几何梯级防呆校验（$r_0 < r_s < r_p \le r_g$）；<br>3. 明确标注 `aspect_ratio` 为“3D 建模专用”。 | `TSK-FE-01` |
 | | `TSK-FE-03` | `frontend/src/components/ui/CaseSelector.vue` | 预设工程案例 JSON 参数 100% 对齐最新输入规范。 | `TSK-FE-01` |
 | **三、工具与台账交互** | `TSK-FE-04` | `frontend/src/utils/excelIO.ts` | 调整 Excel 导入导出 `fieldMapping` 字典，更新模板示例行与兼容解析；快照导出自动过滤旧别名。 | `TSK-FE-01` |
-| | `TSK-FE-05` | `frontend/src/views/ParameterDatabase.vue` | 优化参数数据库对标抽屉与载入逻辑。 | `TSK-FE-01` |
+| | `TSK-FE-05` | `frontend/src/views/ParameterDatabase.vue` | 优化数字资产库对标抽屉与载入逻辑。 | `TSK-FE-01` |
 | **四、3D 渲染与对比** | `TSK-FE-06` | `frontend/src/components/three/*` & `Viewer3D.vue` | 1. 保持 `aspect_ratio` 仅作用于 3D 几何建模网格拉伸，不向后端力学引擎透传；<br>2. 全面校准 `Environment.ts`, `Reinforcement.ts`, `PostProcessing.ts` 优先读取 `h_1`, `H`, `r_0`, `r_p`, `r_g` 标准归一化键。 | `TSK-FE-02` |
 | | `TSK-FE-07` | `frontend/src/views/Dashboard.vue` & `CompareView.vue` | 校验快照发送 payload，确保云计算请求数据 100% 契合 `drainage_engine.py`；校准 CompareView 优先读取标准键。 | `TSK-BE-01` |
 

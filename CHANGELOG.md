@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **工况快照中枢与科技蓝侧边栏 (Snapshot Central & Industrial Sidebar)**：
   - 重构 `SnapshotSidebar`，采用工业科技蓝深色毛玻璃交互规范，支持多工况快照实时比对、历史工况回放与持久化。
 - **多工况批量调度引擎与智能监控看板 (Batch Scheduler & Dashboard)**：
-  - 新增 `batchScheduler` 异步批量调度器，联动综合看板与参数数据库，支持百级工况并行解算与状态监控。
+  - 新增 `batchScheduler` 异步批量调度器，联动综合看板与数字资产库，支持百级工况并行解算与状态监控。
 - **桌面端全自动 CI/CD 与知识库流水线 (Desktop CI/CD & Wiki Automation)**：
   - 新增 `.github/workflows/release-desktop.yml`，打通 GitHub Tag 驱动的 Tauri 桌面端全自动构建、MSI 企业安装包生成与 SHA-256 签名清单生成。
   - 新增 `.github/workflows/sync-wiki.yml`，实现开发文档与 GitHub Wiki 的全自动双向同步编目。

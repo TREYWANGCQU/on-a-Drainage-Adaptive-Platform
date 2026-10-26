@@ -50,11 +50,11 @@ app.include_router(
     tags=["计算引擎"]
 )
 
-# 注册参数数据库路由
+# 注册数字资产库路由
 app.include_router(
     database_router, 
     prefix=f"{settings.API_V1_STR}/database", 
-    tags=["参数数据库台账"]
+    tags=["数字资产库台账"]
 )
 
 # 注册 Typst 计算书导出路由

@@ -1,13 +1,13 @@
 <!-- frontend/src/views/ParameterDatabase.vue -->
 <template>
-  <div class="db-container">
+  <div class="db-container" :class="{ 'theme-tech-blue': themeStore.isTechBlue }">
     <!-- 1. 顶部全局工具栏与双模态切换 -->
     <div class="header-toolbar">
       <div class="title-section">
-        <h2>隧道工程参数台账管理中心</h2>
+       
         <el-radio-group v-model="activeView" size="default" class="view-mode-toggle">
           <el-radio-button label="cards">🏛️ 工程分组卡片视图</el-radio-button>
-          <el-radio-button label="flat">📋 扁平全量台账明细</el-radio-button>
+          <el-radio-button label="flat">📋 全量数字资产明细</el-radio-button>
         </el-radio-group>
       </div>
 
@@ -175,13 +175,19 @@
         border 
         stripe 
         @selection-change="handleSelectionChange"
-        style="width: 100%; height: calc(100vh - 200px);"
+        class="flat-detail-table"
+        height="100%"
+        style="width: 100%;"
       >
         <el-table-column type="selection" width="50" align="center" />
-        <el-table-column prop="id" label="ID" width="70" align="center" />
+        <el-table-column prop="id" label="ID" width="75" align="center">
+          <template #default="scope">
+            <span class="id-capsule">#{{ scope.row.id }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="归属工程组" width="160" show-overflow-tooltip>
           <template #default="scope">
-            {{ getGroupNameById(scope.row.group_id) }}
+            <span class="group-name-cell">{{ getGroupNameById(scope.row.group_id) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="project_name" label="分段工程命名" min-width="200" show-overflow-tooltip />
@@ -190,27 +196,37 @@
             <el-tag :type="getTagType(scope.row.tunnel_type)" effect="dark">{{ scope.row.tunnel_type }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="里程区间" width="160" align="center">
+        <el-table-column label="里程区间" width="170" align="center">
           <template #default="scope">
-            {{ formatStationStr(scope.row.start_chainage) }} ~ {{ formatStationStr(scope.row.end_chainage) }}
+            <span class="chainage-mono">
+              {{ formatStationStr(scope.row.start_chainage) }} ~ {{ formatStationStr(scope.row.end_chainage) }}
+            </span>
           </template>
         </el-table-column>
-        <el-table-column label="计算状态" width="100" align="center">
+        <el-table-column label="计算状态 / 安全系数" width="165" align="center">
           <template #default="scope">
-            <el-tag :type="scope.row.results_json ? 'success' : 'warning'" size="small">
-              {{ scope.row.results_json ? '已算 (done)' : '待算 (pending)' }}
-            </el-tag>
+            <template v-if="scope.row.results_json">
+              <el-tag type="success" effect="dark" size="small">已算</el-tag>
+              <span 
+                v-if="extractFsFromRow(scope.row) !== null" 
+                class="fs-badge" 
+                :class="(extractFsFromRow(scope.row) || 0) < 1.2 ? 'fs-danger' : 'fs-normal'"
+              >
+                Fs={{ extractFsFromRow(scope.row)?.toFixed(2) }}
+              </span>
+            </template>
+            <el-tag v-else type="info" effect="plain" size="small">待算</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="入库时间" width="170" align="center">
           <template #default="scope">
-            {{ new Date(scope.row.created_at).toLocaleString() }}
+            <span class="timestamp-mono">{{ new Date(scope.row.created_at).toLocaleString() }}</span>
           </template>
         </el-table-column>
         
-        <el-table-column label="操作" width="180" fixed="right" align="center">
+        <el-table-column label="操作" width="170" fixed="right" align="center">
           <template #default="scope">
-            <el-button size="small" type="primary" plain @click="loadSingleToWorkspace(scope.row)">
+            <el-button size="small" type="primary" link @click="loadSingleToWorkspace(scope.row)">
               载入工作台
             </el-button>
             <el-button size="small" type="danger" link @click="deleteFlatRecord(scope.row.id)">
@@ -224,7 +240,7 @@
     <!-- 4. 工程分段明细下钻抽屉 (Drilldown Drawer) -->
     <el-drawer 
       v-model="drawerVisible" 
-      :title="`📁 [${currentActiveGroup?.group_name}] 分段计算资产明细 (${drawerSegments.length} 段)`" 
+      :title="`📁 [${currentActiveGroup?.group_name}] 分区计算资产明细 (${drawerSegments.length} 区段)`" 
       size="75%" 
       append-to-body
       destroy-on-close
@@ -398,12 +414,14 @@
 import { ref, computed, onMounted } from 'vue';
 import { useSnapshotStore } from '@/store/snapshotStore';
 import { useAuthStore } from '@/store/authStore';
+import { useThemeStore } from '@/store/themeStore';
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
 import apiClient from '@/api/index';
 
 const emit = defineEmits(['close']);
 const snapshotStore = useSnapshotStore();
 const authStore = useAuthStore();
+const themeStore = useThemeStore();
 
 // 视口与基础检索状态
 const activeView = ref<'cards' | 'flat'>('cards');
@@ -496,7 +514,7 @@ const fetchData = async () => {
     projectGroups.value = groupsRes || [];
     dbData.value = paramsRes || [];
   } catch (error) {
-    ElMessage.error('获取参数数据库数据失败');
+    ElMessage.error('获取数字资产库数据失败');
   } finally {
     isLoading.value = false;
   }
@@ -1038,11 +1056,97 @@ const getTagType = (type: string) => {
   padding: 0 8px;
 }
 
-/* 扁平表格视口 */
+/* 扁平表格视口：自适应弹性伸缩与滚动封装 */
 .flat-table-wrap {
   flex: 1;
   padding: 16px 20px;
   overflow: hidden;
+  height: 0; /* 强制让 flex 容器正确计算可用高度，触发内部自适应纵向滚动 */
+  display: flex;
+  flex-direction: column;
+}
+
+/* 扁平全量台账表格排版与等宽数字对齐 (字阶 >= 12px 门禁) */
+.id-capsule {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--el-color-primary);
+}
+
+.group-name-cell {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+}
+
+.chainage-mono,
+.timestamp-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
+}
+
+.fs-badge {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.fs-normal {
+  color: #68d391;
+  background-color: rgba(104, 211, 145, 0.12);
+}
+
+.fs-danger {
+  color: #f56565;
+  background-color: rgba(245, 101, 101, 0.15);
+}
+
+/* 科技蓝主题下的表格专属质感与防穿透适配 */
+.theme-tech-blue :deep(.flat-detail-table) {
+  --el-fill-color-lighter: #14243b !important;
+  --el-table-border-color: #1a365d !important;
+  --el-table-header-bg-color: #132238 !important;
+  --el-table-header-text-color: #90cdf4 !important;
+  --el-table-tr-bg-color: #0f1c2e !important;
+  --el-table-row-hover-bg-color: #1a2f4c !important;
+  --el-table-text-color: #e2e8f0 !important;
+  background-color: #0f1c2e !important;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #1a365d;
+}
+
+/* 单元格级背景强制覆盖，彻底消除斑马纹白色条带 */
+.theme-tech-blue :deep(.flat-detail-table .el-table__row td.el-table__cell) {
+  background-color: #0f1c2e !important;
+  color: #e2e8f0;
+}
+
+.theme-tech-blue :deep(.flat-detail-table .el-table__row--striped td.el-table__cell) {
+  background-color: #14243b !important;
+  color: #e2e8f0;
+}
+
+.theme-tech-blue :deep(.flat-detail-table .el-table__row:hover > td.el-table__cell) {
+  background-color: #1a2f4c !important;
+}
+
+/* 彻底锁定右侧操作固定列背景，杜绝横向滚动时图层透叠与文字窜色 */
+.theme-tech-blue :deep(.flat-detail-table .el-table__fixed-right),
+.theme-tech-blue :deep(.flat-detail-table .el-table__fixed-right-patch),
+.theme-tech-blue :deep(.flat-detail-table .el-table-fixed-column--right) {
+  background-color: #0f1c2e !important;
+}
+
+/* 固定列边缘与单元格内边距微调 */
+.theme-tech-blue :deep(.flat-detail-table .el-table__cell) {
+  padding: 8px 0;
 }
 
 /* 下钻抽屉样式 */
@@ -1120,4 +1224,4 @@ const getTagType = (type: string) => {
 .param-comment { font-size: 12px; color: var(--el-text-color-regular); line-height: 1.4; }
 .text-danger { color: var(--el-color-danger) !important; }
 .text-secondary { color: var(--el-text-color-secondary); }
-</style>
+</style>

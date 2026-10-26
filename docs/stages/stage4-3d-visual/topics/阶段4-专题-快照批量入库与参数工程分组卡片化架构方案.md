@@ -4,7 +4,7 @@
 
 ### 1. 核心业务痛点与目标分解 (Objectives)
 
-在隧道工程多维协同智能排水自适应平台中，计算分析贯穿了“单段敏感性试算”到“全线百段工程化贯通分析”。当面临真实隧道工程（如晏家隧道、中梁山隧道等，通常包含 100~500 个独立计算分段）的批量计算与成果归档时，现存的前端快照侧边栏（[SnapshotSidebar.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/SnapshotSidebar.vue)）、参数表单（[ParameterForm.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/ParameterForm.vue)）与参数数据库台账管理中心（[ParameterDatabase.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/views/ParameterDatabase.vue)）面临严重的工程断层与交互瓶颈：
+在隧道工程多维协同智能排水自适应平台中，计算分析贯穿了“单段敏感性试算”到“全线百段工程化贯通分析”。当面临真实隧道工程（如晏家隧道、中梁山隧道等，通常包含 100~500 个独立计算分段）的批量计算与成果归档时，现存的前端快照侧边栏（[SnapshotSidebar.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/SnapshotSidebar.vue)）、参数表单（[ParameterForm.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/ParameterForm.vue)）与数字资产库台账管理中心（[ParameterDatabase.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/views/ParameterDatabase.vue)）面临严重的工程断层与交互瓶颈：
 
 ```
 +---------------------------------------------------------------------------------------------------+
@@ -14,7 +14,7 @@
 |       │                                                                                           |
 |       ▼                                                                                           |
 |  [痛点 1: 侧边栏与表单入库逻辑割裂且未聚合]                                                          |
-|  侧边栏 [保存快照] 仅写前端 LocalStorage，未存入数据库；表单底部的 [另存为至参数库] 仅支持单条扁平存储，    |
+|  侧边栏 [保存快照] 仅写前端 LocalStorage，未存入数据库；表单底部的 [另存为至数字资产库] 仅支持单条扁平存储，    |
 |  缺乏统一工程项目聚合，且两者在“工程分类”上缺乏协同（侧边栏无分类，表单分类未关联分组）                    |
 |       │                                                                                           |
 |       ▼                                                                                           |
@@ -22,7 +22,7 @@
 |  缺乏里程自动序列化推导，数百个分段需要人工录入 "K0+000~K0+100"，极易错漏重叠                           |
 |       │                                                                                           |
 |       ▼                                                                                           |
-|  [痛点 3: 参数数据库单表扁平淹没]                                                                  |
+|  [痛点 3: 数字资产库单表扁平淹没]                                                                  |
 |  数据库仅有单一扁平 el-table，存入数百条分段后表格瞬间被淹没，无法按工程聚合，无法形成项目资产池           |
 |       │                                                                                           |
 |       ▼                                                                                           |
@@ -41,7 +41,7 @@
    - 在 [SnapshotSidebar.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/SnapshotSidebar.vue) 顶部操作栏与批量浮动栏中引入“批量入库”能力。
    - 用户只需定义统一工程名（如“晏家隧道”）并批量指定**工程分类**（公路/铁路/城市道路/城市轨道/水工/综合管廊/其他），系统自动依照各分段起讫里程（如 $0\text{m}\sim 100\text{m}$ 自动格式化为 `K0+000~K0+100`）执行批量规则命名，将数百个计算段与对应完整计算成果一次性打包提交至后端事务持久化。
    - 彻底梳理双层快照生命周期：明确 [SnapshotSidebar.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/SnapshotSidebar.vue) 中 `[保存快照]`（工作区瞬态缓存）与 `[批量入库]`（数据库永久持久化）的职责边界；重构 [ParameterForm.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/ParameterForm.vue) 单段存储弹窗，使其支持选择归属工程组，消除孤儿记录。
-2. **参数数据库重构为“工程分组卡片化与分段下钻体系” (Project Grouped Card Grid & Drilldown)**：
+2. **数字资产库重构为“工程分组卡片化与分段下钻体系” (Project Grouped Card Grid & Drilldown)**：
    - 彻底打破 [ParameterDatabase.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/views/ParameterDatabase.vue) 现有的单一扁平表格架构，构建现代卡片式工程网格（Project Cards Grid）。
    - 每个卡片代表一个独立隧道工程资产，直观展示工程封面图、工程名、工程分类、分段总数、里程起讫跨度（如 `K0+000 ~ K15+600 [15.6km]`）、安全受力状态统计与更新时间。
 3. **支持多段勾选自适应双态保真批量导回工作台 (Adaptive Dual-State Batch Restore)**：
@@ -81,7 +81,7 @@
   - 工程封面图片上传基于标准 RFC 7578（`multipart/form-data`），后端建立独立静态资源安全托管目录（`backend/data/uploads/covers/`），限制图片格式为 JPG/PNG/WebP，单张大小 $\le 5\text{MB}$，防范路径穿越（Path Traversal）安全漏洞。
 - **Pinia 状态树与工作台联动闭环 (State Integrity & Instant 3D Reconstruction)**：
   - 批量保存操作不能破坏当前前端 [snapshotStore.ts](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/store/snapshotStore.ts) 的本地运行态；
-  - 从参数数据库“勾选批量载入”或“整组载入工作台”时，必须调用 `snapshotStore.restoreSnapshotsFromDatabase(records, { mode })`，自适应还原计算结果/待算状态，自动将首段设为当前活动工况同步回主表单，并自动触发 `trigger3DRefresh()`，实现 3D 全线隧道的即时重构。
+  - 从数字资产库“勾选批量载入”或“整组载入工作台”时，必须调用 `snapshotStore.restoreSnapshotsFromDatabase(records, { mode })`，自适应还原计算结果/待算状态，自动将首段设为当前活动工况同步回主表单，并自动触发 `trigger3DRefresh()`，实现 3D 全线隧道的即时重构。
 
 ---
 
@@ -99,7 +99,7 @@ graph TD
     end
 
     subgraph View_ParamForm ["参数配置表单 (ParameterForm.vue)"]
-        FormSaveBtn["[另存为至参数库] 单段入库"]
+        FormSaveBtn["[另存为至数字资产库] 单段入库"]
         FormSaveModal["归属工程选择弹窗 (选择既有工程组时分类级联锁定 / 新建工程组)"]
     end
 
@@ -126,7 +126,7 @@ graph TD
         StaticServer["StaticFiles 静态封面资源托管 (/static/covers/...)"]
     end
 
-    subgraph View_Database ["参数数据库台账中心 (ParameterDatabase.vue)"]
+    subgraph View_Database ["数字资产库台账中心 (ParameterDatabase.vue)"]
         ViewSwitch["双模态视口切换: [卡片分组视图] / [扁平全量台账]"]
         CardGrid["工程卡片流网格 (封面图/分类Tag/跨度/分段数/秒级微标直读)"]
         EditGroupModal["工程组名/描述/分类再编辑弹窗"]
@@ -341,7 +341,7 @@ $$
 | 生命周期层级 | 触发入口与组件 | 核心动作与技术行为 | 数据持久化介质 | 工程分类约束 |
 | :--- | :--- | :--- | :--- | :--- |
 | **L1 工作区瞬态快照** | [SnapshotSidebar.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/SnapshotSidebar.vue) `[保存快照]` | 捕获当前表单参数与瞬态计算结果，仅推入 `snapshotStore.snapshots` 数组，用于试算比对与本地拼装。 | 内存 + 前端 `localStorage`（不请求后端） | 继承当前活动工程上下文，免填强制分类 |
-| **L2 工程资产持久化** | 1. [SnapshotSidebar.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/SnapshotSidebar.vue) `[批量入库]`<br>2. [ParameterForm.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/ParameterForm.vue) `[另存为至参数库]` | 将已勾选或全量分段连同计算成果统一打包，事务性持久化至后端数据库物理表（平权支持纯参数或带成果工况）。 | 后端 SQLite/PostgreSQL (`project_groups`, `tunnel_parameters`) | **强制必选**：统一指定工程分类（公路/铁路/市政等） |
+| **L2 工程资产持久化** | 1. [SnapshotSidebar.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/SnapshotSidebar.vue) `[批量入库]`<br>2. [ParameterForm.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/ParameterForm.vue) `[另存为至数字资产库]` | 将已勾选或全量分段连同计算成果统一打包，事务性持久化至后端数据库物理表（平权支持纯参数或带成果工况）。 | 后端 SQLite/PostgreSQL (`project_groups`, `tunnel_parameters`) | **强制必选**：统一指定工程分类（公路/铁路/市政等） |
 
 #### 4.2 快照侧边栏 ([SnapshotSidebar.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/SnapshotSidebar.vue)) 升级细节
 
@@ -361,7 +361,7 @@ $$
 
 #### 4.3 参数表单 ([ParameterForm.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/ParameterForm.vue)) 升级细节
 
-- 重构 `[另存为至参数库]` 弹窗：在输入“分段工程命名”与选择“工程分类”的基础上，增加 **“归属工程项目组”**（可选下拉：选择既有工程组如“晏家隧道”，或选择“新建独立工程组”）。
+- 重构 `[另存为至数字资产库]` 弹窗：在输入“分段工程命名”与选择“工程分类”的基础上，增加 **“归属工程项目组”**（可选下拉：选择既有工程组如“晏家隧道”，或选择“新建独立工程组”）。
 - **工程分类级联锁定规则 (Category Cascade Lock)**：
   - 当用户在下拉框中选中既有工程组时，弹窗中的“工程分类”选择框**自动强制同步锁定为该工程组的分类且置为只读禁用（`disabled`）**，彻底避免单个分段与所属工程组出现分类二义性冲突；
   - 只有当用户选择“新建独立工程组”时，工程分类下拉框方可处于可交互选择状态。
@@ -369,7 +369,7 @@ $$
 
 ---
 
-### 5. 参数数据库 ([ParameterDatabase.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/views/ParameterDatabase.vue)) 核心重构与成果保真回载
+### 5. 数字资产库 ([ParameterDatabase.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/views/ParameterDatabase.vue)) 核心重构与成果保真回载
 
 #### 5.1 双模态视口架构 (Dual-Mode View Switcher)
 
@@ -538,8 +538,8 @@ export const useSnapshotStore = defineStore('snapshot', {
 | :--- | :--- | :--- | :--- |
 | **Phase 1** | 后端数据模型与迁移<br>• [backend/app/models/domain.py](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/backend/app/models/domain.py)<br>• [backend/app/db/init_db.py](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/backend/app/db/init_db.py) | 1. 声明 `ProjectGroup` 物理实体（含 `calculated_count`、`warning_count` 与 `Float` 里程字段）与 1:N 级联关系。<br>2. 扩展 `TunnelParameter` 的 `group_id` 与 `Float` 里程字段，明确 `results_json` 支持纯参数工况为 `None`。<br>3. 编写平滑迁移脚本，历史未分组数据归纳至“默认未分组工程”，从 `parameters_json` 浮点反填起讫里程并自动统计初始已算/待算计数。 | 无 |
 | **Phase 2** | 后端 API 与静态服务<br>• [backend/app/api/v1/endpoints/database.py](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/backend/app/api/v1/endpoints/database.py)<br>• [backend/main.py](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/backend/main.py) | 1. 实现 `POST /database/parameters/batch`（平权支持纯参数与成果分段入库，事务维护统计计数与浮点里程跨度）。<br>2. 升级 `POST /database/parameters`（支持 `group_id` 关联并同步更新工程组统计字段）。<br>3. 升级 `GET /database/projects` 输出 `ProjectGroupSummaryResponse`，实现秒级微标直读，无需全量反序列化子段。<br>4. 实现工程组 CRUD 端点与多媒体封面上传托管服务。 | Phase 1 |
-| **Phase 3** | 前端状态层与侧边栏升级<br>• [snapshotStore.ts](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/store/snapshotStore.ts)<br>• [SnapshotSidebar.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/SnapshotSidebar.vue)<br>• [ParameterForm.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/ParameterForm.vue) | 1. 扩展 `snapshotStore.restoreSnapshotsFromDatabase` 自适应双态还原与首段激活联动。<br>2. 侧边栏新增 `[批量入库]` 按钮及弹窗，包含未计算工况友好提示条与自动命名预览。<br>3. 规范表单 `[另存为至参数库]` 弹窗，实现“选择既有工程组时分类强制级联锁定并禁用”。<br>4. 注入报告导出安全状态门禁，对 `pending` 分段严格拦截导出并弹出友好引导。 | Phase 2 |
-| **Phase 4** | 参数数据库重构与美化<br>• [ParameterDatabase.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/views/ParameterDatabase.vue) | 1. 构建双模态视口切换（卡片分组 vs 扁平台账）。<br>2. 实现自适应工程卡片流网格与状态徽标渲染（已算/待算/预警直读）。<br>3. 重构单段 `[载入工作台]` 与批量 `[批量载入工作台]`，统一收敛至快照恢复管线。<br>4. 实现工程信息编辑弹窗与封面图片上传组件。 | Phase 3 |
+| **Phase 3** | 前端状态层与侧边栏升级<br>• [snapshotStore.ts](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/store/snapshotStore.ts)<br>• [SnapshotSidebar.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/SnapshotSidebar.vue)<br>• [ParameterForm.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/components/ui/ParameterForm.vue) | 1. 扩展 `snapshotStore.restoreSnapshotsFromDatabase` 自适应双态还原与首段激活联动。<br>2. 侧边栏新增 `[批量入库]` 按钮及弹窗，包含未计算工况友好提示条与自动命名预览。<br>3. 规范表单 `[另存为至数字资产库]` 弹窗，实现“选择既有工程组时分类强制级联锁定并禁用”。<br>4. 注入报告导出安全状态门禁，对 `pending` 分段严格拦截导出并弹出友好引导。 | Phase 2 |
+| **Phase 4** | 数字资产库重构与美化<br>• [ParameterDatabase.vue](file:///d:/offices/Github/隧道工程多维协同智能排水自适应平台/tunnel-drainage-platform/frontend/src/views/ParameterDatabase.vue) | 1. 构建双模态视口切换（卡片分组 vs 扁平台账）。<br>2. 实现自适应工程卡片流网格与状态徽标渲染（已算/待算/预警直读）。<br>3. 重构单段 `[载入工作台]` 与批量 `[批量载入工作台]`，统一收敛至快照恢复管线。<br>4. 实现工程信息编辑弹窗与封面图片上传组件。 | Phase 3 |
 | **Phase 5** | 质量门禁与端到端质检<br>• 全链路联调与自动化测试 | 1. 纯计算参数工况与带成果工况混合批量入库与批量导回全流程测试。<br>2. 存量纯参数示范段单段载入工作台（生成 `pending` 快照且表单回显）测试。<br>3. 3D 视口待算分段中性渲染与应力探针防抛错测试。<br>4. 下游报告导出安全状态门禁拦截验证。<br>5. UI 字阶生理底线合规排查（$\ge 12\text{px}$ 验证）。 | Phase 4 |
 
 ---
@@ -552,7 +552,7 @@ export const useSnapshotStore = defineStore('snapshot', {
   - 侧边栏包含 200 个分段（无论是否已完成计算），点击“批量入库”，选择工程分类为“公路”并输入“晏家隧道”，系统在 $\le 3\text{s}$ 内完成事务入库；
   - 数据库生成对应的工程组及 200 条分段记录，所有记录的 `tunnel_type` 统一设置为“公路”，命名完全符合 `晏家隧道_K0+000~K0+100` 规范，工程组自动记录已算数与待算数。
 - **纯参数工况与已算工况自适应双态还原**：
-  - 在参数数据库中勾选存量纯参数记录（`results_json` 为空）或包含计算成果的记录，点击“批量载入工作台”；
+  - 在数字资产库中勾选存量纯参数记录（`results_json` 为空）或包含计算成果的记录，点击“批量载入工作台”；
   - 侧边栏快照池成功载入对应快照：带成果记录保持 **`已算 (done)`**，纯参数记录准确呈现 **`待算 (pending)`**；
   - 载入完成后，首个分段自动激活同步至当前工作台表单，3D 视口即时重构拼接；纯参数分段可随时在侧边栏点击“批量计算”完成闭环，全过程零报错。
 - **下游报告导出安全状态门禁**：
@@ -560,7 +560,7 @@ export const useSnapshotStore = defineStore('snapshot', {
 - **单段载入与批量载入行为收敛一致**：
   - 在台账表格中点击单条“载入工作台”，左侧快照侧边栏同步产生对应工况快照（纯参数为 `pending`，已算为 `done`），当前表单完成参数覆写，彻底消除单条只改表单、批量只改快照的交互割裂。
 - **工程分组卡片展示与元数据维护**：
-  - 打开参数数据库，以现代卡片式清晰排列各工程组，微标秒级显示“已算: X段 | 待算: Y段 | 预警: Z段”，不出现任何低于 $12\text{px}$ 的文字挤压；
+  - 打开数字资产库，以现代卡片式清晰排列各工程组，微标秒级显示“已算: X段 | 待算: Y段 | 预警: Z段”，不出现任何低于 $12\text{px}$ 的文字挤压；
   - 支持成功上传并展示封面图片，支持在界面中直接修改工程组名称与描述信息，保存后立即刷新回显。
 - **数据一致性与级联删除安全**：
   - 删除一个工程组时，二次确认机制生效；确认删除后，该组名下所有 200 个子分段及服务器物理封面图片被彻底清理，无孤立脏数据残留。
@@ -575,8 +575,8 @@ export const useSnapshotStore = defineStore('snapshot', {
 | **TC-RESTORE-MIX-02** | 在工程分段明细抽屉中，混合勾选 20 个包含计算结果的分段与 10 个未计算纯参数分段，点击“批量载入工作台（覆盖模式）”。 | 返回工作台后，侧边栏精准载入 30 项分段，前 20 项显示绿色“已算”微标，后 10 项显示黄色“待算”微标，首个分段参数同步至表单，3D 隧道瞬时完成空间拼装，无控制台异常抛错。 | 审查 Pinia 状态树、网络监控面板与 3D 画布 |
 | **TC-SINGLE-LOAD-03** | 在扁平全量台账表格中，点击存量初始示范段（`results_json` 为空）的“载入工作台”。 | 工作台表单参数完成回显，左侧快照侧边栏同步新增 1 条快照，状态显式为“待算 (pending)”，用户点击侧边栏“开始计算”可正常完成计算。 | 检查 Store 状态树与侧边栏渲染 |
 | **TC-EXPORT-GUARD-04** | 针对处于“待算 (pending)”状态的快照，尝试点击“导出 A4 计算书”或“导出 A3 施工图”。 | 弹出“导出受限提示”，明确引导用户先执行计算，系统安全拦截导出动作，控制台无任何未捕获异常。 | 异常拦截断言与 UI 交互核验 |
-| **TC-CASCADE-LOCK-05** | 在参数表单点击“另存为至参数库”，在弹窗中选择既有工程组“晏家隧道”（分类为“公路”）。 | 弹窗中“工程分类”下拉框自动强制同步变更为“公路”且处于禁用（`disabled`）状态；切换为“新建独立工程组”时恢复可选。 | 表单交互联动与字段只读状态核验 |
+| **TC-CASCADE-LOCK-05** | 在参数表单点击“另存为至数字资产库”，在弹窗中选择既有工程组“晏家隧道”（分类为“公路”）。 | 弹窗中“工程分类”下拉框自动强制同步变更为“公路”且处于禁用（`disabled`）状态；切换为“新建独立工程组”时恢复可选。 | 表单交互联动与字段只读状态核验 |
 | **TC-CHAINAGE-FLOAT-06** | 录入浮点数里程分段（如 $L_s=0.0\text{m}, L_e=47.5\text{m}$），执行入库并在 3D 视口中载入。 | 数据库准确保存浮点里程数值无截断，桩号自动格式化为 `K0+000~K0+048`，3D 视口两分段接缝严格吻合，无几何网格错位。 | 检查数据库浮点值与 3D 顶点重合度 |
-| **TC-CARD-07** | 打开参数数据库，检查多分辨率（1366×768、1920×1080）下的卡片网格响应式表现、微标统计与字阶。 | 微标准确显示各工程组的已算与待算段数，元素无溢出折行畸变，所有卡片标题、文本、标签均满足 $\ge 12\text{px}$。 | Chrome DevTools 元素审查与样式审计 |
+| **TC-CARD-07** | 打开数字资产库，检查多分辨率（1366×768、1920×1080）下的卡片网格响应式表现、微标统计与字阶。 | 微标准确显示各工程组的已算与待算段数，元素无溢出折行畸变，所有卡片标题、文本、标签均满足 $\ge 12\text{px}$。 | Chrome DevTools 元素审查与样式审计 |
 | **TC-EDIT-COVER-08** | 编辑工程卡片名称与描述，并上传一张 3MB 的 PNG 实景隧道封面图；随后尝试上传 10MB 无效文件。 | 卡片元数据即时更新，3MB 封面成功渲染；10MB 超限文件被前端与后端拦截并弹出合规告警。 | 接口报文与边界值测试 |
 | **TC-DEL-CASCADE-09** | 点击工程卡片“删除工程组”，在提示框输入二次确认并提交。 | 数据库 `project_groups` 与关联的所有子分段记录同步级联清空，孤立封面文件物理清理完毕。 | 数据库查询确认无孤立关联记录 |

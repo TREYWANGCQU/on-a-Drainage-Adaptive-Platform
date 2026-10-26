@@ -22,7 +22,7 @@
 #### 1. API 接口与双分支自适应数据契约
 * **标准化 RESTful 路由划分**：
   - **排水计算主接口**：`POST /api/v1/calculate/drainage`。接收几何尺寸、水头埋深、注浆围岩、降雨量及衬砌配筋等参数字典，触发全环水力-结构协同解算。
-  - **参数数据库接口**：`GET/POST/PUT/DELETE /api/v1/database/parameters`。管理预置典型示范工程基准与用户自定义参数模板。
+  - **数字资产库接口**：`GET/POST/PUT/DELETE /api/v1/database/parameters`。管理预置典型示范工程基准与用户自定义参数模板。
   - **计算书排版接口**：`POST /api/v1/calculation-books/export-pdf` 与 `POST /api/v1/calculation-books/batch-export`。分别负责单份 A4 计算书 PDF 编译与多工况快照 ZIP 压缩归档。
 * **双分支计算引擎与优化搜索 (`drainage_engine.py` & `optimizedDesign.py`)**：
   - **4 典型工况判断**：根据隧道洞型（单洞 `single` / 双洞 `double`）及水头比值判定准则（$r_0/H \ge 0.062$）自动划分为：`single_low`, `single_high`, `double_low`, `double_high`。
@@ -43,7 +43,7 @@
   - `snapshotStore.ts`：实现“工况快照”序列台账管理（CRUD），支持多快照独立参数与计算解算字典的持久化存储、并发批量解算以及状态感知（🟢已计算、🟡待计算、🔴错误、⚠️加固超限）。
   - `themeStore.ts`：实现“明亮白”与“科技蓝”工业双主题秒级热切换，联动 2D 组件色彩变量及 3D 画布清屏色/环境光温。
 * **批量数据 IO (`excelIO.ts`)**：提供标准 Excel 工程模板下载，支持长里程多标段多断面参数批量解析导入，系统自动解包生成连续里程快照流水线。
-* **参数数据库台账 (`ParameterDatabase.vue`)**：提供市政、公路、铁路工程标签检索，支持当前表单参数“另存为工程模版”并持久化保存至后端 SQLite 数据库。
+* **数字资产库台账 (`ParameterDatabase.vue`)**：提供市政、公路、铁路工程标签检索，支持当前表单参数“另存为工程模版”并持久化保存至后端 SQLite 数据库。
 
 #### 3. 3D 空间数字化孪生与交互表现 (`components/three/`)
 * **参数化几何构造生成器 (`TunnelGenerator.ts`)**：
@@ -106,7 +106,7 @@ tunnel-drainage-platform/
 │   │   │   └── v1/
 │   │   │       └── endpoints/
 │   │   │           ├── calculate.py      # POST /api/v1/calculate/drainage 计算主路由
-│   │   │           ├── database.py       # CRUD /api/v1/database/parameters 参数数据库路由
+│   │   │           ├── database.py       # CRUD /api/v1/database/parameters 数字资产库路由
 │   │   │           └── calculation_book.py # POST /api/v1/calculation-books Typst 导出路由
 │   │   ├── core/
 │   │   │   └── config.py                 # 全局配置 (CORS, 环境变量, 项目常量)

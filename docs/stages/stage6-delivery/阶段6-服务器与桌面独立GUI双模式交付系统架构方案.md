@@ -158,7 +158,7 @@
 
 #### 3.3.2 桌面端独立存储与文件系统拓扑
 桌面模式下，用户数据不得写入只读的安装程序目录（如 `C:\Program Files`），必须严格隔离至用户专属数据目录：
-- **参数数据库**：自动定向至 `%APPDATA%\TunnelDrainagePlatform\tunnel_params.db`；若数据库文件不存在，启动时自动从内置基准模板执行无损初始化建表。
+- **数字资产库**：自动定向至 `%APPDATA%\TunnelDrainagePlatform\tunnel_params.db`；若数据库文件不存在，启动时自动从内置基准模板执行无损初始化建表。
 - **本地日志输出**：定向至 `%APPDATA%\TunnelDrainagePlatform\logs\backend.log`，单文件上限 10MB，轮转归档，免除日志膨胀。
 - **导出文件交互**：集成 Tauri 2.0 原生 `tauri-plugin-dialog` 与 `tauri-plugin-fs`，施工图与计算书由系统原生“另存为”文件对话框引导用户保存至桌面或任意指定盘符。
 

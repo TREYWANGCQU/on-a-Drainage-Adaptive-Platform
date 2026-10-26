@@ -730,7 +730,7 @@ def get_rock_parameters(grade):
     if grade_val < 1 or grade_val > 6:
         raise ValueError("围岩级别必须在 1-6 之间")
 
-    # --- 2. 参数数据库 (取规范推荐范围的中值或典型值) ---
+    # --- 2. 数字资产库 (取规范推荐范围的中值或典型值) ---
     # 数据来源参考：公路/铁路隧道设计规范
     # 格式: [Es(GPa), vs, ms(kg/m³), Ks(MPa/m), phis(°), cs(MPa), lams]
     
