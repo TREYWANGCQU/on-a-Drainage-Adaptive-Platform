@@ -5,6 +5,7 @@ import type { CalculationBookData } from '../utils/calculationBook/bookDataModel
 import type { Snapshot } from '../store/snapshotStore';
 
 import { resolveApiBaseUrl } from './adapter';
+import { triggerBrowserBlobDownload as baseTriggerBlobDownload } from '@/utils/downloadHelper';
 
 const getBaseUrl = () => resolveApiBaseUrl();
 
@@ -30,21 +31,27 @@ function extractFilename(dispositionHeader?: string, defaultName: string = 'expo
 }
 
 /**
- * 触发浏览器本地直接下载 Blob 二进制产物
+ * 触发浏览器本地直接下载 Blob 二进制产物，并统一向用户反馈落盘路径与直达交互
  */
-export function triggerBrowserBlobDownload(blob: Blob, filename: string): void {
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  
-  setTimeout(() => {
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
-  }, 300);
+export function triggerBrowserBlobDownload(
+  blob: Blob,
+  filename: string,
+  fileTypeDesc?: string
+): void {
+  let desc = fileTypeDesc;
+  if (!desc) {
+    if (filename.endsWith('.pdf')) {
+      desc = filename.includes('施工图') ? '施工图(PDF)' : '计算书(PDF)';
+    } else if (filename.endsWith('.png')) {
+      desc = '施工图(PNG)';
+    } else if (filename.endsWith('.zip')) {
+      desc = filename.includes('施工图') ? '施工图归档包(ZIP)' : '计算书归档包(ZIP)';
+    } else {
+      desc = '工程成果文件';
+    }
+  }
+
+  baseTriggerBlobDownload(blob, filename, desc);
 }
 
 /**

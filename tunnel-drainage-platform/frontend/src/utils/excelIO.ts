@@ -1,8 +1,10 @@
 // 文件路径: tunnel-drainage-platform\frontend\src\utils\excelIO.ts
 
 import * as XLSX from 'xlsx';
+import { ElMessage } from 'element-plus';
 import { useParameterStore } from '../store/parameterStore';
 import { useSnapshotStore } from '../store/snapshotStore';
+import { notifyDownloadComplete } from './downloadHelper';
 
 /**
  * 字段映射字典，维护中文表头与 Store 内部状态键的对应关系。
@@ -100,64 +102,78 @@ export function parseBooleanCell(val: any, defaultVal = true): boolean {
  * 根据 Pydantic Schema 模型自动匹配对应的默认字段与占位数据
  */
 export const downloadTemplate = () => {
-  const headers = standardExportKeys.map(k => reverseFieldMapping[k] || k);
-  const exampleRow = standardExportKeys.map(key => {
-    // 标识与字符型参数
-    if (key === 'tunnel_type') return 'single'; // 可选值：'single' 或 'double'
-    if (key === 'cn_condition') return '灌溉良好';
-    if (key === 'land_use') return '居住地';
-    if (key === 'concrete_grade') return 'C35';
-    if (key === 'has_central_ditch') return '是'; // 对应三沟式标杆工况
+  try {
+    const filename = '隧道参数导入模板.xlsx';
+    const headers = standardExportKeys.map(k => reverseFieldMapping[k] || k);
+    const exampleRow = standardExportKeys.map(key => {
+      // 标识与字符型参数
+      if (key === 'tunnel_type') return 'single'; // 可选值：'single' 或 'double'
+      if (key === 'cn_condition') return '灌溉良好';
+      if (key === 'land_use') return '居住地';
+      if (key === 'concrete_grade') return 'C35';
+      if (key === 'has_central_ditch') return '是'; // 对应三沟式标杆工况
 
-    // 里程与围岩
-    if (key === 'start_chainage') return 0.0;
-    if (key === 'end_chainage') return 47.0;
-    if (key === 'grades') return 4;
+      // 里程与围岩
+      if (key === 'start_chainage') return 0.0;
+      if (key === 'end_chainage') return 47.0;
+      if (key === 'grades') return 4;
 
-    // Schema 中硬编码的默认参数
-    if (key === 'aspect_ratio') return 0.7;
-    if (key === 'I_long') return 0.02;
-    if (key === 'D_spacing') return 40.0;
+      // Schema 中硬编码的默认参数
+      if (key === 'aspect_ratio') return 0.7;
+      if (key === 'I_long') return 0.02;
+      if (key === 'D_spacing') return 40.0;
 
-    // 水文、结构与高级防呆参数占位符 (防止计算引擎因 0 溢出)
-    const placeholders: Record<string, number> = {
-      'k_r': 0.15, 'H': 120.0, 'p_mm': 1000.0,
-      'k_g': 0.00864, 'k_p': 0.00864, 'k_s': 0.000864,
-      'r_0': 7.95, 'r_s': 8.35, 'r_p': 8.57, 'r_g': 8.57,
-      'h_1': 130.0, 'Ag': 1000.0, 'as_mm': 50.0, 'gamma': 10.0,
-      'n_long': 0.012, 'n_ring': 0.012, 'I_ring': 0.73,
-      'n_lat': 0.012, 'I_lat': 0.01, 'S_code_max': 10.0, 'S_min': 3.0,
-      'd_ring_default': 0.05, 'd_long_default': 0.10, 'd_lat_default': 0.08,
-      'tol_safety_factor': 2.0
-    };
+      // 水文、结构与高级防呆参数占位符 (防止计算引擎因 0 溢出)
+      const placeholders: Record<string, number> = {
+        'k_r': 0.15, 'H': 120.0, 'p_mm': 1000.0,
+        'k_g': 0.00864, 'k_p': 0.00864, 'k_s': 0.000864,
+        'r_0': 7.95, 'r_s': 8.35, 'r_p': 8.57, 'r_g': 8.57,
+        'h_1': 130.0, 'Ag': 1000.0, 'as_mm': 50.0, 'gamma': 10.0,
+        'n_long': 0.012, 'n_ring': 0.012, 'I_ring': 0.73,
+        'n_lat': 0.012, 'I_lat': 0.01, 'S_code_max': 10.0, 'S_min': 3.0,
+        'd_ring_default': 0.05, 'd_long_default': 0.10, 'd_lat_default': 0.08,
+        'tol_safety_factor': 2.0
+      };
 
-    return placeholders[key] ?? 0.0;
-  });
-  const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '导入模板');
-  XLSX.writeFile(wb, `隧道参数导入模板.xlsx`);
+      return placeholders[key] ?? 0.0;
+    });
+    const ws = XLSX.utils.aoa_to_sheet([headers, exampleRow]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '导入模板');
+    XLSX.writeFile(wb, filename);
+    notifyDownloadComplete(filename, 'Excel导入模板');
+  } catch (err: any) {
+    console.error('下载模板失败:', err);
+    ElMessage.error(`下载模板失败: ${err?.message || err}`);
+  }
 };
 
 /**
  * 将当前状态机数据导出为 .xlsx 归档
  */
 export const exportCurrentData = (): void => {
-  const store = useParameterStore();
-  const payload = store.currentPayload as any;
+  try {
+    const store = useParameterStore();
+    const payload = store.currentPayload as any;
 
-  const headers = Object.keys(payload).map(key => reverseFieldMapping[key] || key);
-  const dataRow = Object.keys(payload).map(key => {
-    const val = payload[key];
-    if (key === 'has_central_ditch') return val ? '是' : '否';
-    return val;
-  });
+    const headers = Object.keys(payload).map(key => reverseFieldMapping[key] || key);
+    const dataRow = Object.keys(payload).map(key => {
+      const val = payload[key];
+      if (key === 'has_central_ditch') return val ? '是' : '否';
+      return val;
+    });
 
-  const ws = XLSX.utils.aoa_to_sheet([headers, dataRow]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '当前参数存档');
+    const ws = XLSX.utils.aoa_to_sheet([headers, dataRow]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '当前参数存档');
 
-  XLSX.writeFile(wb, `隧道排水参数_${payload.start_chainage}-${payload.end_chainage}.xlsx`);
+    const filename = `隧道排水参数_${payload.start_chainage}-${payload.end_chainage}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    notifyDownloadComplete(filename, '参数存档表格');
+  } catch (err: any) {
+    console.error('导出参数存档失败:', err);
+    ElMessage.error(`导出参数存档失败: ${err?.message || err}`);
+  }
 };
 
 /**

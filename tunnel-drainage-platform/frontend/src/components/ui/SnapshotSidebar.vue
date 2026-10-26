@@ -891,6 +891,7 @@ import {
   exportBatchCalculationBooksZip, 
   exportCalculationBookPdf 
 } from '@/utils/calculationBook/bookExporter';
+import { triggerBrowserBlobDownload } from '@/utils/downloadHelper';
 import CalculationBookModal from '../calculationBook/CalculationBookModal.vue';
 import BlueprintPreviewModal from './BlueprintPreviewModal.vue';
 import { globalBatchScheduler } from '@/utils/batchScheduler';
@@ -1276,12 +1277,7 @@ const batchDownloadBlueprints = async (format: 'pdf' | 'png' = 'pdf', targetSnap
       }
     );
 
-    ElNotification({
-      title: '批量施工图打包成功',
-      message: `已成功生成并下载单一 ZIP 归档包: ${zipFilename} (共 ${validSnaps.length} 份)`,
-      type: 'success',
-      duration: 4500
-    });
+    // 底层 triggerBrowserBlobDownload 已统一下发包含落盘路径与打开文件夹按钮的通知卡片
   } catch (err: any) {
     console.error('批量导出施工图 ZIP 失败:', err);
     ElMessage.error(`批量导出施工图失败: ${err.message || err}`);
@@ -1319,12 +1315,7 @@ const batchExportCalcBooks = async (targetSnaps?: any[]) => {
       batchExportProgress.value = 50;
       const pdfName = await exportCalculationBookPdf(validSnaps[0]);
       batchExportProgress.value = 100;
-      ElNotification({
-        title: '计算书导出成功',
-        message: `已通过 Typst 引擎成功编译并下载: ${pdfName}`,
-        type: 'success',
-        duration: 3500
-      });
+      // 底层 triggerBrowserBlobDownload 已统一下发包含落盘路径与打开文件夹按钮的通知卡片
     } catch (err: any) {
       console.error('导出计算书 PDF 失败:', err);
       ElMessage.error(`导出计算书失败: ${err.message || err}`);
@@ -1345,12 +1336,7 @@ const batchExportCalcBooks = async (targetSnaps?: any[]) => {
     const zipFilename = await exportBatchCalculationBooksZip(validSnaps);
     batchExportProgress.value = 100;
     
-    ElNotification({
-      title: '批量计算书导出成功',
-      message: `已成功生成包含 ${validSnaps.length} 份 A4 独立计算书的 ZIP 压缩包: ${zipFilename}`,
-      type: 'success',
-      duration: 4500
-    });
+    // 底层 triggerBrowserBlobDownload 已统一下发包含落盘路径与打开文件夹按钮的通知卡片
   } catch (err: any) {
     console.error('批量导出计算书 ZIP 失败:', err);
     ElMessage.error(`批量导出计算书失败: ${err.message || err}`);
@@ -1381,15 +1367,8 @@ const batchDownloadRawJson = () => {
 
   const dataStr = JSON.stringify(bundleData, null, 2);
   const blob = new Blob([dataStr], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `Batch_Drainage_Results_${selected.length}Segments_${Date.now().toString().slice(-6)}.json`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-  ElMessage.success(`已打包下载 ${selected.length} 个工况的完整计算结果 JSON`);
+  const filename = `Batch_Drainage_Results_${selected.length}Segments_${Date.now().toString().slice(-6)}.json`;
+  triggerBrowserBlobDownload(blob, filename, '工况成果JSON');
 };
 
 // 处理批量菜单命令

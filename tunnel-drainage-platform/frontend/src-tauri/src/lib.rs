@@ -171,6 +171,35 @@ fn get_backend_port(state: State<'_, BackendState>) -> u16 {
     state.port
 }
 
+/// 调起 Windows 原生资源管理器并定位至当前用户“下载”目录
+#[tauri::command]
+fn open_downloads_folder() -> Result<String, String> {
+    let download_dir = std::env::var("USERPROFILE")
+        .map(|p| PathBuf::from(p).join("Downloads"))
+        .unwrap_or_else(|_| PathBuf::from("."));
+
+    #[cfg(windows)]
+    {
+        let target_path = if download_dir.exists() {
+            download_dir
+        } else {
+            PathBuf::from(".")
+        };
+
+        std::process::Command::new("explorer")
+            .arg(&target_path)
+            .spawn()
+            .map_err(|e| format!("无法调起系统资源管理器: {}", e))?;
+
+        Ok(target_path.to_string_lossy().to_string())
+    }
+
+    #[cfg(not(windows))]
+    {
+        Ok(download_dir.to_string_lossy().to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 1. 动态探测空闲回环端口
@@ -252,7 +281,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(backend_state)
-        .invoke_handler(tauri::generate_handler![get_backend_url, get_backend_port])
+        .invoke_handler(tauri::generate_handler![
+            get_backend_url,
+            get_backend_port,
+            open_downloads_folder
+        ])
         .setup(move |app| {
             // 向前端注入全局动态 API 路径
             if let Some(main_window) = app.get_webview_window("main") {

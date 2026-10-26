@@ -542,6 +542,7 @@ import { useBenchmarkCartStore, BenchmarkItemMeta } from '@/store/benchmarkCartS
 import BenchmarkFloatingDock from '@/components/database/BenchmarkFloatingDock.vue';
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus';
 import apiClient from '@/api/index';
+import { triggerBrowserBlobDownload } from '@/utils/downloadHelper';
 
 const emit = defineEmits(['close']);
 const snapshotStore = useSnapshotStore();
@@ -1228,15 +1229,8 @@ const exportBenchmarkCSV = () => {
 
   const csvContent = '\uFEFF' + csvRows.join('\r\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `隧道工程参数多维对标报告_${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  ElMessage.success('对标分析 CSV 报告已成功导出');
+  const filename = `隧道工程参数多维对标报告_${new Date().toISOString().slice(0, 10)}.csv`;
+  triggerBrowserBlobDownload(blob, filename, '对标分析CSV报告');
 };
 
 const getTagType = (type: string) => {

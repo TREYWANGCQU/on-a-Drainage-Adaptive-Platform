@@ -3,6 +3,7 @@
 
 param (
     [string]$OperatorPassword = "",
+    [string]$Version = "",
     [switch]$NonInteractive = $false
 )
 
@@ -14,12 +15,64 @@ $BackendDir = Join-Path $RootDir "backend"
 $FrontendDir = Join-Path $RootDir "frontend"
 $DesktopReleaseDir = Join-Path $RootDir "release\desktop"
 $ConstantsFile = Join-Path $BackendDir "app\core\_build_constants.py"
+$TauriConfPath = Join-Path $FrontendDir "src-tauri\tauri.conf.json"
 
 # 前置断言：检查 Git 状态，若有未忽略的敏感构建文件已被暂存或被跟踪，立即报错阻断
 $gitStatus = git status --porcelain 2>$null
 if ($gitStatus -match "_build_constants\.py|\.env\.production") {
     Write-Error "[Security Gate] 检测到工作区存在敏感配置文件未被完全忽略或已被暂存，构建已被物理阻断！"
     exit 1
+}
+
+# 解析与对齐目标发布版本号 (单一真实源: tauri.conf.json)
+$TauriConf = Get-Content $TauriConfPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($Version) {
+    $CleanVersion = $Version.TrimStart('v')
+} else {
+    $CleanVersion = $TauriConf.version
+}
+if (-not $CleanVersion) {
+    $CleanVersion = "1.0.0"
+}
+
+# 统一同步对齐工程配置文件 (单一真实源: CleanVersion，仅替换各配置根层级版本，严禁污染依赖项)
+$PkgJsonPath = Join-Path $FrontendDir "package.json"
+$CargoTomlPath = Join-Path $FrontendDir "src-tauri\Cargo.toml"
+$needsSync = $false
+
+# 1. 同步 tauri.conf.json
+$tauriRaw = Get-Content $TauriConfPath -Raw -Encoding UTF8
+$tauriRegex = [regex]'"version":\s*"[^"]+"'
+$newTauriRaw = $tauriRegex.Replace($tauriRaw, "`"version`": `"$CleanVersion`"", 1)
+if ($newTauriRaw -ne $tauriRaw) {
+    Set-Content -Path $TauriConfPath -Value $newTauriRaw -Encoding UTF8 -Force
+    $needsSync = $true
+}
+
+# 2. 同步 package.json
+if (Test-Path $PkgJsonPath) {
+    $pkgRaw = Get-Content $PkgJsonPath -Raw -Encoding UTF8
+    $pkgRegex = [regex]'"version":\s*"[^"]+"'
+    $newPkgRaw = $pkgRegex.Replace($pkgRaw, "`"version`": `"$CleanVersion`"", 1)
+    if ($newPkgRaw -ne $pkgRaw) {
+        Set-Content -Path $PkgJsonPath -Value $newPkgRaw -Encoding UTF8 -Force
+        $needsSync = $true
+    }
+}
+
+# 3. 同步 src-tauri/Cargo.toml (仅替换 [package] 块首个行首 version，严禁污染依赖项)
+if (Test-Path $CargoTomlPath) {
+    $cargoRaw = Get-Content $CargoTomlPath -Raw -Encoding UTF8
+    $cargoRegex = [regex]'(?m)^version\s*=\s*"[^"]+"'
+    $newCargoRaw = $cargoRegex.Replace($cargoRaw, "version = `"$CleanVersion`"", 1)
+    if ($newCargoRaw -ne $cargoRaw) {
+        Set-Content -Path $CargoTomlPath -Value $newCargoRaw -Encoding UTF8 -Force
+        $needsSync = $true
+    }
+}
+
+if ($needsSync) {
+    Write-Host "[Version Sync] 配置文件已对齐至版本: v$CleanVersion" -ForegroundColor Green
 }
 
 # 交互式或参数化获取出厂固化口令
@@ -40,6 +93,7 @@ if (-not $OperatorPassword -and -not $NonInteractive) {
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host " [Desktop Mode] 启动桌面独立 GUI 自动化构建与发行流水线" -ForegroundColor Cyan
 Write-Host " 工程根目录: $RootDir" -ForegroundColor Gray
+Write-Host " 发布版本号: v$CleanVersion" -ForegroundColor Gray
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 # 0. 准备发布目录
@@ -129,7 +183,7 @@ finally {
 # 5. 归集最终交付物至 release/desktop 并生成校验和
 Write-Host "`n[Step 5/5] 归集桌面交付发行包并计算 SHA-256 完整性校验和..." -ForegroundColor Yellow
 $BundleDir = Join-Path $FrontendDir "src-tauri\target\release\bundle"
-$ReleaseExe = Join-Path $DesktopReleaseDir "TunnelDrainagePlatform-v1.0.0-x64-Setup.exe"
+$ReleaseExe = Join-Path $DesktopReleaseDir "TunnelDrainagePlatform-v$CleanVersion-x64-Setup.exe"
 
 # 查找并归集 NSIS 安装程序
 $NsisFiles = Get-ChildItem -Path "$BundleDir\nsis" -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue
@@ -140,7 +194,7 @@ if ($NsisFiles -and $NsisFiles.Count -gt 0) {
     # 尝试从 msi 目录查找
     $MsiFiles = Get-ChildItem -Path "$BundleDir\msi" -Filter "*.msi" -Recurse -ErrorAction SilentlyContinue
     if ($MsiFiles -and $MsiFiles.Count -gt 0) {
-        $ReleaseMsi = Join-Path $DesktopReleaseDir "TunnelDrainagePlatform-v1.0.0-x64.msi"
+        $ReleaseMsi = Join-Path $DesktopReleaseDir "TunnelDrainagePlatform-v$CleanVersion-x64.msi"
         Copy-Item $MsiFiles[0].FullName $ReleaseMsi -Force
         Write-Host "  -> 成功归集 MSI 安装包: $ReleaseMsi" -ForegroundColor Green
     }
@@ -160,7 +214,7 @@ if (Test-Path $TargetReleaseBin) {
     Copy-Item $TargetReleaseBin (Join-Path $PortableDir "TunnelDrainagePlatform.exe") -Force
     Copy-Item $SidecarDist (Join-Path $PortableDir "tunnel-backend-sidecar.exe") -Force
 
-    $PortableZip = Join-Path $DesktopReleaseDir "TunnelDrainagePlatform-v1.0.0-x64-Portable.zip"
+    $PortableZip = Join-Path $DesktopReleaseDir "TunnelDrainagePlatform-v$CleanVersion-x64-Portable.zip"
     if (Test-Path $PortableZip) { Remove-Item $PortableZip -Force }
     Compress-Archive -Path "$PortableDir\*" -DestinationPath $PortableZip -Force
     Remove-Item $PortableDir -Recurse -Force
