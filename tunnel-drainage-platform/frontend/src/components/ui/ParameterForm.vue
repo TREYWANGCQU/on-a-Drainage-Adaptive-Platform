@@ -198,7 +198,7 @@
             </el-col>
             <el-col :span="colSpan">
               <el-form-item label="主筋材料级别">
-                <el-tag type="info" size="large">HRB400</el-tag>
+                <el-tag class="rebar-grade-tag">HRB400</el-tag>
               </el-form-item>
             </el-col>
           </el-row>
@@ -848,5 +848,32 @@ const submitToDatabase = async () => {
   margin-top: 4px;
   display: block;
   line-height: 1.4;
+}
+
+/* 主筋材料级别只读标签：适配科技蓝主题质感与行高对齐 */
+.rebar-grade-tag {
+  font-size: 12px !important;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  height: 24px;
+  line-height: 22px;
+  padding: 0 10px;
+  border-radius: 4px;
+  background-color: var(--el-fill-color-light, #f1f5f9);
+  border: 1px solid var(--el-border-color, #cbd5e1);
+  color: var(--el-text-color-regular, #475569);
+  transition: all 0.2s ease;
+}
+
+:global(.theme-tech-blue) .rebar-grade-tag {
+  background-color: rgba(20, 36, 59, 0.75) !important;
+  border-color: #2c5282 !important;
+  color: #90cdf4 !important;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.15);
+}
+
+:global(.theme-tech-blue) .rebar-grade-tag:hover {
+  border-color: #3b82f6 !important;
+  color: #bfdbfe !important;
 }
 </style>
