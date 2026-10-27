@@ -62,6 +62,9 @@ flowchart TB
 4. **Data Fallback & Zero-Overhead Export (数据安全与纯前端零开销导出)**：
    - 临界注浆圈厚度必须遵循工程契约：当不存在临界超限加固解或 $t_g^{crit} \le 0$ 时，输出严格归一化为 `0.00`。
    - TXT 导出全流程由前端 `Blob + URL.createObjectURL` 瞬时闭环完成，无需额外后端 API 往返与网络开销；添加 `\uFEFF` UTF-8 BOM 标记，杜绝 Windows 记事本与 Excel 打开中文乱码。
+5. **Desktop Download Telemetry & Location Awareness (桌面单机版落盘感知契约)**：
+   - 严禁裸写 DOM 原生 `document.createElement('a')` 触发静默下载（在 Tauri 2.0 / Windows WebView2 桌面环境中无浏览器外壳与下载托盘，直接静默落盘至 `%USERPROFILE%\Downloads` 会导致无反馈假死感）。
+   - 必须统一接入 `@/utils/downloadHelper.ts` 的 `triggerBrowserBlobDownload` 管线，导出完成时下发包含落盘文件名及全平台感知的通知卡片；在桌面单机模式下自动挂载「📂 打开所在文件夹」按钮，支持通过 Rust 底层 Command 直达 Windows 资源管理器。
 
 ---
 
@@ -360,14 +363,10 @@ sequenceDiagram
 
     const content = '\uFEFF' + lines.join('\r\n');
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `隧道工程计算分段成果总览_${timeStr.replace(/[: ]/g, '_')}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const filename = `隧道工程计算分段成果总览_${timeStr.replace(/[: ]/g, '_')}.txt`;
+
+    // 统一接入系统标准化下载助手：触发落盘感知通知，在桌面单机模式下提供「📂 打开所在文件夹」直达
+    triggerBrowserBlobDownload(blob, filename, '分段成果总览TXT');
   };
   ```
 
@@ -382,7 +381,7 @@ sequenceDiagram
 | **G1: MiniMap 点击居中** | 在 Mini-map Canvas 上点击第 1 段、中间段、最后一段 | 对应的 `.segment-pill` 立即以平滑动画横向滚动至视口正中间，高亮外框激活 |
 | **G2: 全线概览复位** | 点击“全线概览 (不聚焦)”胶囊或取消选中 | 胶囊滑轨平滑滚动回第 1 位的 `all-overview-pill`，居左对齐 |
 | **G3: 按钮样式与字阶合规** | 检查“📄 导出总览TXT”的 CSS 渲染与布局 | `font-size: 12px` 严格达标，符合赛博/影棚高对比度毛玻璃主题 |
-| **G4: TXT 内容完整性** | 点击下载生成的 `.txt` 文件并在记事本/VS Code 打开 | 无乱码（UTF-8 BOM 正确），表头完整对齐，各行准确展示：分区编号、桩号、Fs、tg_crit（无临界解时显式输出 `0.00`） |
+| **G4: TXT 内容完整性与桌面感知** | 点击下载生成的 `.txt` 文件并在记事本/VS Code 打开；核验桌面单机版与 Web 端交互 | 1. 无乱码（UTF-8 BOM 正确），表头完整对齐，各行准确展示：分区编号、桩号、Fs、tg_crit（无临界解时显式输出 `0.00`）；<br>2. 统一弹出 `ElNotification` 成功提示；桌面单机版提供「📂 打开所在文件夹」按钮且点击可调起 Windows 资源管理器。 |
 | **G5: 边界与异常防御** | 列表为空、或分段无结果数据（未运行计算时） | 导出不会抛出运行时错误，Fs 正确降级为 `--`，tg_crit 降级为 `0.00` |
 
 ### 5.2 实施步骤顺序

@@ -659,6 +659,7 @@ import { ElMessage } from 'element-plus';
 import * as THREE from 'three';
 import { useSnapshotStore, extractSnapshotValue, Snapshot } from '@/store/snapshotStore';
 import { useParameterStore } from '@/store/parameterStore';
+import { triggerBrowserBlobDownload } from '@/utils/downloadHelper';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -1427,14 +1428,8 @@ const exportSegmentOverviewTxt = () => {
 
   const content = '\uFEFF' + lines.join('\r\n');
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `隧道工程计算分段成果总览_${timeStr.replace(/[: ]/g, '_')}.txt`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  const filename = `隧道工程计算分段成果总览_${timeStr.replace(/[: ]/g, '_')}.txt`;
+  triggerBrowserBlobDownload(blob, filename, '分段成果总览TXT');
 };
 
 // 全部不选 / 取消聚焦状态
