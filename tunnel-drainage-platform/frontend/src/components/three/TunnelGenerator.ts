@@ -21,6 +21,7 @@ export class TunnelGenerator {
   private readonly c_ring: number = 1;  // 隧道主体单环实例数恒定为1
 
   private readonly has_central_ditch: boolean;
+  private readonly rMax: number;
   private isIsolatedDimmed: boolean = false;
 
   constructor(
@@ -37,10 +38,11 @@ export class TunnelGenerator {
     delta_l_min: number = 1.0,
     has_central_ditch: boolean = true
   ) {
-    // 从 store 传入的空间里程推导纵深 L_max
+    // 从 store 传入的空间里程推导纵深 L_max 与全局包围极值半径 rMax
     this.L_max = Math.abs(end_chainage - start_chainage);
     this.delta_l_min = delta_l_min;
     this.has_central_ditch = has_central_ditch;
+    this.rMax = (type === TunnelType.DOUBLE ? D_spacing / 2 : 0) + Math.max(r2, rg, 2.5 * r);
 
     // 构建二衬 (r -> r1 - eps) 与 初支 (r1 - eps -> r2) 拓扑无缝衔接几何体，彻底消除洞口端面 2mm 缝隙与侧壁 Z-fighting
     const eps = 0.0005;
@@ -88,16 +90,14 @@ export class TunnelGenerator {
 
     const nMax = Math.ceil(this.L_max / this.delta_l_min) * this.c_ring;
 
-    // 二衬 Mesh
+    // 二衬 Mesh (恢复原生视锥裁剪)
     this.mesh = new THREE.InstancedMesh(secondaryGeometry, secondaryMaterial, nMax);
-    this.mesh.frustumCulled = false;
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.count = 0;
     this.mesh.renderOrder = 2;
 
-    // 初支 Mesh
+    // 初支 Mesh (恢复原生视锥裁剪)
     this.primaryMesh = new THREE.InstancedMesh(primaryGeometry, primaryMaterial, nMax);
-    this.primaryMesh.frustumCulled = false;
     this.primaryMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.primaryMesh.count = 0;
     this.primaryMesh.renderOrder = 1;
@@ -291,13 +291,11 @@ export class TunnelGenerator {
     });
 
     this.roadMesh = new THREE.InstancedMesh(roadGeo, roadMat, nMax);
-    this.roadMesh.frustumCulled = false;
     this.roadMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.roadMesh.count = 0;
     this.roadMesh.renderOrder = 10; // 路面位于底层
 
     this.ditchMesh = new THREE.InstancedMesh(ditchGeo, ditchMat, nMax);
-    this.ditchMesh.frustumCulled = false;
     this.ditchMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.ditchMesh.count = 0;
     this.ditchMesh.renderOrder = 12; // 水沟位于路面之上绘制，突出 3D 敞口槽体
@@ -525,6 +523,19 @@ export class TunnelGenerator {
     if (this.roadMesh) this.roadMesh.instanceMatrix.needsUpdate = true;
     if (this.ditchMesh) this.ditchMesh.instanceMatrix.needsUpdate = true;
     if (this.ditchEdgeMesh) this.ditchEdgeMesh.instanceMatrix.needsUpdate = true;
+
+    // 显式挂载精确分段全局包围球，为硬件级视锥裁剪提供严密几何包围 (规避基底 1.0m 环形切片包围球假阳性误剔除)
+    const segLen = nCurrent * spacingZ;
+    const centerZ = -segLen / 2;
+    const boundRadius = Math.sqrt(Math.pow(segLen / 2, 2) + Math.pow(this.rMax, 2));
+    const segmentSphere = new THREE.Sphere(new THREE.Vector3(0, 0, centerZ), boundRadius);
+
+    [this.mesh, this.primaryMesh, this.roadMesh, this.ditchMesh].forEach(m => {
+      if (m) {
+        m.frustumCulled = true;
+        m.boundingSphere = segmentSphere.clone();
+      }
+    });
 
     if (stateColors) {
       [this.mesh, this.primaryMesh].forEach(meshObj => {

@@ -839,6 +839,10 @@ const toggleWaterParticleAnimation = () => {
 
 // 追踪已挂载对象与组件实例 (升级为 List 数组管理，解耦多快照组装单例覆盖)
 let activeMeshes: THREE.Object3D[] = [];
+let interactiveAnnotationMeshes: THREE.Object3D[] = [];
+let pointerMoveRafId: number | null = null;
+const raycaster = new THREE.Raycaster();
+const mouseVec = new THREE.Vector2();
 let probeManager: StressProbeManager | null = null;
 const focusHighlightGroup = new THREE.Group();
 
@@ -872,22 +876,39 @@ const isPipesGroupOpen = ref(false);
 const liningParentCheckboxRef = ref<HTMLInputElement | null>(null);
 const waterproofingParentCheckboxRef = ref<HTMLInputElement | null>(null);
 
-const layerVisibility = reactive({
-  environment: true,        // 1. 水文环境 (主图层总控)
+// 默认轻量化图层状态常量基线 (全景轻量加载模式：仅二衬独占显示，其余图层全部默认关闭)
+const DEFAULT_LIGHTWEIGHT_LAYERS = {
+  environment: false,       // 1. 水文环境 (主图层总控)
   ground: false,            // └ 地面/地表 (效果不佳，作前端彻底隐藏处理)
-  flowLines: true,          // └ 地下水流线
-  waterParticles: true,     // └ 地下水粒子特效
-  lining: true,             // 2. 隧道衬砌 (主图层总控)
-  liningSecondary: true,    // └ 隧道二衬 (r -> r1)
-  liningPrimary: true,      // └ 初支 (r1 -> r2)
-  liningRoadDitch: true,    // └ 路面与排水沟
-  waterproofing: true,      // 3. 防水设计 (主图层总控)
-  initialGrouting: true,    // └ 初始注浆圈 (rg)
-  criticalGrouting: true,   // └ 设计注浆圈 (tg_crit)
-  pipes: true,              // 4. 排水设计 (主图层总控)
-  pipeAnnotations: true,    // └ 排水管网参数标注
-  probe: true               // 5. 结构安全性分析
-});
+  flowLines: false,         // └ 地下水流线
+  waterParticles: false,    // └ 地下水粒子特效
+  lining: true,             // 2. 隧道衬砌 (主图层总控 - 驱动半选态)
+  liningSecondary: true,    // └ 隧道二衬 (核心保留项：提供 2km 全线完整马蹄形轮廓)
+  liningPrimary: false,     // └ 初支
+  liningRoadDitch: false,   // └ 路面与排水沟
+  waterproofing: false,     // 3. 防水设计 (主图层总控)
+  initialGrouting: false,   // └ 初始注浆圈 (rg)
+  criticalGrouting: false,  // └ 设计注浆圈 (tg_crit)
+  pipes: false,             // 4. 排水设计 (主图层总控)
+  pipeAnnotations: false,   // └ 排水管网参数标注
+  probe: false              // 5. 结构安全性分析
+};
+
+const layerVisibility = reactive({ ...DEFAULT_LIGHTWEIGHT_LAYERS });
+
+const resetToLightweightLayers = () => {
+  Object.assign(layerVisibility, DEFAULT_LIGHTWEIGHT_LAYERS);
+  updateLayerVisibility();
+  nextTick(() => {
+    if (liningParentCheckboxRef.value) {
+      liningParentCheckboxRef.value.indeterminate = isLiningParentSomeChecked.value && !isLiningParentChecked.value;
+    }
+    if (waterproofingParentCheckboxRef.value) {
+      waterproofingParentCheckboxRef.value.indeterminate = 
+        isWaterproofingParentSomeChecked.value && !isWaterproofingParentChecked.value;
+    }
+  });
+};
 
 // 隧道衬砌图层组联动计算属性与方法
 const isLiningParentChecked = computed(() => {
@@ -1714,12 +1735,12 @@ const initWebGL = () => {
   renderer = new THREE.WebGLRenderer({
     canvas: canvasRef.value,
     antialias: true,
-    logarithmicDepthBuffer: true,
+    logarithmicDepthBuffer: false,
     alpha: true,
-    preserveDrawingBuffer: true
+    preserveDrawingBuffer: false
   });
 
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
   renderer.setSize(width, height);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -1730,13 +1751,13 @@ const initWebGL = () => {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1d24);
 
-  perspectiveCamera = new THREE.PerspectiveCamera(45, aspect, 0.5, 2000);
+  perspectiveCamera = new THREE.PerspectiveCamera(45, aspect, 0.5, 3500);
   perspectiveCamera.position.set(0, 25, 60);
 
   const initD = perspectiveCamera.position.distanceTo(new THREE.Vector3(0, 0, -20));
   const halfH = initD * Math.tan((45 * Math.PI) / 360);
   const halfW = halfH * aspect;
-  orthographicCamera = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.5, 2000);
+  orthographicCamera = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.5, 3500);
   orthographicCamera.position.copy(perspectiveCamera.position);
 
   activeCamera = cameraMode.value === 'orthographic' ? orthographicCamera : perspectiveCamera;
@@ -1782,28 +1803,34 @@ const initWebGL = () => {
 };
 
 /**
- * 悬停 Raycasting 检测
+ * 悬停 Raycasting 检测 (靶向过滤与 Raf 实时防抖)
  */
 const handleCanvasPointerMove = (event: MouseEvent) => {
   if (!canvasRef.value || !camera) return;
 
+  // 短路门禁：若未勾选管网或未勾选管网标注，直接跳过检测
+  if (!layerVisibility.pipes || !layerVisibility.pipeAnnotations) {
+    if (!isMeasuring.value) canvasRef.value.style.cursor = 'default';
+    return;
+  }
+
+  // 1. 立即计算最新归一化屏幕坐标，杜绝 Raf 内坐标时序漂移
   const rect = canvasRef.value.getBoundingClientRect();
   mouseVec.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   mouseVec.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-  raycaster.setFromCamera(mouseVec, camera);
-  const intersects = raycaster.intersectObjects(activeMeshes, true);
-
-  if (intersects.length > 0) {
-    const hit = intersects[0].object;
-    if (hit && hit.userData && hit.userData.isAnnotation === true && (hit.userData.pipeCategory || hit.userData.name)) {
-      canvasRef.value.style.cursor = 'pointer';
-      return;
+  // 2. Raf 防抖调度
+  if (pointerMoveRafId !== null) return;
+  pointerMoveRafId = requestAnimationFrame(() => {
+    pointerMoveRafId = null;
+    if (!canvasRef.value || !camera) return;
+    // 仅检测带标注属性的专用轻量锚点，绝不遍历 activeMeshes 全量模型
+    raycaster.setFromCamera(mouseVec, camera);
+    const intersects = raycaster.intersectObjects(interactiveAnnotationMeshes, false);
+    if (!isMeasuring.value) {
+      canvasRef.value.style.cursor = intersects.length > 0 ? 'pointer' : 'default';
     }
-  }
-  if (!isMeasuring.value) {
-    canvasRef.value.style.cursor = 'default';
-  }
+  });
 };
 
 /**
@@ -1863,8 +1890,6 @@ const setCameraProjectionMode = (mode: 'perspective' | 'orthographic') => {
 const isMeasuring = ref(false);
 const measurePoints = ref<THREE.Vector3[]>([]);
 const measureGroup = new THREE.Group();
-const raycaster = new THREE.Raycaster();
-const mouseVec = new THREE.Vector2();
 let cameraAnimFrameId: number | null = null;
 
 /**
@@ -2048,9 +2073,10 @@ const handleCanvasClick = (event: MouseEvent) => {
   mouseVec.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
   raycaster.setFromCamera(mouseVec, camera);
-  const intersects = raycaster.intersectObjects(activeMeshes, true);
 
+  // 测距模式下仍需检测实体网格
   if (isMeasuring.value) {
+    const intersects = raycaster.intersectObjects(activeMeshes, true);
     if (intersects.length > 0) {
       const point = intersects[0].point;
       measurePoints.value.push(point);
@@ -2115,12 +2141,16 @@ const handleCanvasClick = (event: MouseEvent) => {
     return;
   }
 
-  if (intersects.length > 0) {
-    const hit = intersects[0].object;
-    if (hit && hit.userData && hit.userData.isAnnotation === true && (hit.userData.pipeCategory || hit.userData.name)) {
-      pipPipeData.value = { ...hit.userData };
-      isPipActive.value = true;
-      return;
+  // 非测距常规模式：仅对轻量标注锚点组执行快速靶向检测
+  if (layerVisibility.pipes && layerVisibility.pipeAnnotations) {
+    const intersects = raycaster.intersectObjects(interactiveAnnotationMeshes, false);
+    if (intersects.length > 0) {
+      const hit = intersects[0].object;
+      if (hit && hit.userData && hit.userData.isAnnotation === true && (hit.userData.pipeCategory || hit.userData.name)) {
+        pipPipeData.value = { ...hit.userData };
+        isPipActive.value = true;
+        return;
+      }
     }
   }
 
@@ -2219,6 +2249,7 @@ const renderSceneData = () => {
   // 清理上一轮实体
   activeMeshes.forEach(mesh => scene.remove(mesh));
   activeMeshes = [];
+  interactiveAnnotationMeshes = [];
   
   envInstances.forEach(env => env.dispose());
   envInstances = [];
@@ -2293,13 +2324,12 @@ const renderSceneData = () => {
 
     const tType = tunnel_type === 'double' ? TunnelType.DOUBLE : TunnelType.SINGLE;
 
-    // 1. 隧道主洞体与路面水沟生成
+    // 1. 隧道主洞体与路面水沟生成 (遵从原生视锥裁剪)
     const tGen = new TunnelGenerator(tType, start_chainage, end_chainage, r, aspect_ratio, D_spacing, r1, r2, rg, c, 1.0, has_central_ditch);
     tGen.setVisualParadigm(visualParadigm.value);
     tGen.getMeshes().forEach(mesh => {
       mesh.castShadow = false;
       mesh.receiveShadow = false;
-      mesh.frustumCulled = false;
     });
 
     const spacingZ = 1.0;
@@ -2313,6 +2343,13 @@ const renderSceneData = () => {
       activeMeshes.push(mesh);
     });
     tGenInstances.push(tGen);
+
+    // 计算分段精确包围球 (为硬件级视锥裁剪提供严密几何包围)
+    const segLen = Math.abs(end_chainage - start_chainage);
+    const rMax = (tunnel_type === 'double' ? D_spacing / 2 : 0) + Math.max(rg, r2, 2.5 * r);
+    const centerZ = -segLen / 2;
+    const boundRadius = Math.sqrt(Math.pow(segLen / 2, 2) + Math.pow(rMax, 2));
+    const segmentSphere = new THREE.Sphere(new THREE.Vector3(0, 0, centerZ), boundRadius);
 
     // 2. 加固注浆圈
     const rManager = new ReinforcementManager({
@@ -2330,7 +2367,8 @@ const renderSceneData = () => {
     rManager.updateFromSnapshot(rawData);
     rManager.getMeshes().forEach(mesh => {
       mesh.position.z = -start_chainage;
-      mesh.frustumCulled = false;
+      mesh.frustumCulled = true;
+      mesh.boundingSphere = segmentSphere.clone();
       scene.add(mesh);
       activeMeshes.push(mesh);
     });
@@ -2356,13 +2394,19 @@ const renderSceneData = () => {
     pipeGen.updateFromSnapshot(rawData, props.mode);
     pipeGen.getMeshes().forEach(mesh => {
       mesh.position.z = -start_chainage;
-      mesh.frustumCulled = false;
+      mesh.frustumCulled = true;
+      mesh.boundingSphere = segmentSphere.clone();
       scene.add(mesh);
       activeMeshes.push(mesh);
     });
     if (pipeGen.annotationGroup) {
       scene.add(pipeGen.annotationGroup);
       activeMeshes.push(pipeGen.annotationGroup);
+      pipeGen.annotationGroup.children.forEach(child => {
+        if (child.userData && child.userData.isAnnotation) {
+          interactiveAnnotationMeshes.push(child);
+        }
+      });
     }
     pipeGenInstances.push(pipeGen);
 
@@ -2406,8 +2450,18 @@ const renderSceneData = () => {
   scheduleRender();
 };
 
+// 显式 3D 刷新触发 (包括批量 Excel 导入入库与手动点击“刷新 3D”)
 watch(
-  [() => snapshotStore.refresh3DTrigger, () => props.mode, () => props.snapshotOverride],
+  () => snapshotStore.refresh3DTrigger,
+  () => {
+    resetToLightweightLayers();
+    renderSceneData();
+  }
+);
+
+// 常规参数模式切换或单段覆盖更新，保留当前图层选中状态
+watch(
+  [() => props.mode, () => props.snapshotOverride],
   () => renderSceneData()
 );
 
@@ -2461,6 +2515,7 @@ const handleResize = () => {
 };
 
 onMounted(() => {
+  resetToLightweightLayers();
   initWebGL();
   renderSceneData();
   window.addEventListener('resize', handleResize);
@@ -2477,6 +2532,11 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (pointerMoveRafId !== null) {
+    cancelAnimationFrame(pointerMoveRafId);
+    pointerMoveRafId = null;
+  }
+  interactiveAnnotationMeshes = [];
   if (resizeObserver) {
     resizeObserver.disconnect();
     resizeObserver = null;
@@ -2494,6 +2554,7 @@ onBeforeUnmount(() => {
   pipeGenInstances = [];
   rManagerInstances.forEach(rm => rm.dispose());
   rManagerInstances = [];
+  tGenInstances = [];
   if (probeManager) probeManager.dispose();
   renderer?.dispose();
 });

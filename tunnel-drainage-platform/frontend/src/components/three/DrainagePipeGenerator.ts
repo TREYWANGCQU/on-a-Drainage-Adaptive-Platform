@@ -560,8 +560,8 @@ export class DrainagePipeGenerator {
    */
   private createTextSprite(text: string, color = '#38bdf8'): THREE.Sprite {
     const canvas = document.createElement('canvas');
-    const canvasWidth = 512;
-    const canvasHeight = 128;
+    const canvasWidth = 800;
+    const canvasHeight = 160;
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
     const ctx = canvas.getContext('2d')!;
@@ -570,10 +570,10 @@ export class DrainagePipeGenerator {
     let fontSize = 34;
     ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
     let textWidth = ctx.measureText(text).width;
-    const maxAllowedWidth = 460; // 边框内最大有效文本宽度
+    const maxAllowedWidth = 730; // 边框内最大有效文本宽度
 
     if (textWidth > maxAllowedWidth) {
-      fontSize = Math.max(18, Math.floor(fontSize * (maxAllowedWidth / textWidth)));
+      fontSize = Math.max(20, Math.floor(fontSize * (maxAllowedWidth / textWidth)));
       ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`;
     }
 
@@ -609,7 +609,7 @@ export class DrainagePipeGenerator {
     });
     const sprite = new THREE.Sprite(spriteMaterial);
     sprite.renderOrder = 999;
-    sprite.scale.set(6.0, 1.5, 1.0);
+    sprite.scale.set(7.5, 1.5, 1.0);
     sprite.userData = { isAnnotation: true };
     return sprite;
   }
@@ -667,7 +667,7 @@ export class DrainagePipeGenerator {
     // 2. 纵向排水管标注 (拱脚管位)
     const longDiamMm = Math.round(this.config.longDiam * 1000);
     const longText = `${prefix}纵向排水管: HDPE双壁打孔波纹管， DN Φ${longDiamMm}mm 🔍`;
-    const longSprite = this.createTextSprite(longText, '#2ec`c71');
+    const longSprite = this.createTextSprite(longText, '#2ecc71');
     longSprite.position.set(mainXOffset + ditchGeo.xLongFoot, ditchGeo.yLongFoot + 0.5, -this.config.startChainage - length * 0.4);
     longSprite.userData = {
       isAnnotation: true,
@@ -708,7 +708,7 @@ export class DrainagePipeGenerator {
     const threeWaySprite = this.createTextSprite(threeWayText, '#a855f7');
     threeWaySprite.position.set(
       mainXOffset + ditchGeo.xLongFoot,
-      ditchGeo.yLongFoot + 0.4,
+      ditchGeo.yLongFoot + 1.2,
       -this.config.startChainage - length * 0.25
     );
     threeWaySprite.userData = {
